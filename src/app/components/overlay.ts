@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, ElementRef, afterRenderEffect, computed, inject, viewChild } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { assetUrl, clock } from '../core/assets';
 import { OverlayState } from '../core/models';
@@ -11,7 +11,6 @@ const PREVIEW: OverlayState = {
   kills: 3,
   deaths: 1,
   assists: 5,
-  cs: 96,
   timers: [
     { key: 'dragon', label: 'Dragon', spawnAt: 860, side: 'neutral' },
     { key: 'inhib', label: 'Enemy Mid inhib', spawnAt: 1012, side: 'enemy' },
@@ -31,13 +30,20 @@ const PREVIEW: OverlayState = {
   selector: 'rl-overlay',
   template: `
     @if (state(); as o) {
-      <div class="panel" [class.unlocked]="!locked()" [attr.data-tauri-drag-region]="locked() ? null : ''" [style.opacity]="opacity()">
+      <div class="panel" [style.opacity]="opacity()">
         @if (!locked()) {
-          <div class="unlock-hint" data-tauri-drag-region>Drag to move · Lock in Settings</div>
+          <div class="drag-layer" data-tauri-drag-region>Drag to move, then lock</div>
         }
         <div class="top">
           <span class="clock">{{ time(o.gameTime) }}</span>
-          <span class="kda">{{ o.kills }}/{{ o.deaths }}/{{ o.assists }} · {{ o.cs }} cs</span>
+          <span class="kda">{{ o.kills }}/{{ o.deaths }}/{{ o.assists }}</span>
+          <button #lockBtn class="lock" [class.open]="!locked()" [title]="locked() ? 'Unlock to move' : 'Lock in place'"
+            (click)="rift.setOverlayLocked(!locked())">
+            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+              <rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor" />
+              <path [attr.d]="locked() ? 'M5 7V5a3 3 0 0 1 6 0v2' : 'M5 7V5a3 3 0 0 1 6 0'" fill="none" stroke="currentColor" stroke-width="1.6" />
+            </svg>
+          </button>
         </div>
         @if (o.skillMax.length) {
           <div class="skills">
@@ -83,6 +89,7 @@ const PREVIEW: OverlayState = {
   styles: `
     :host { display: block; padding: 6px; }
     .panel {
+      position: relative;
       background: rgba(9, 12, 21, 0.86);
       border: 1px solid rgba(217, 173, 85, 0.35);
       border-radius: 10px;
@@ -91,15 +98,24 @@ const PREVIEW: OverlayState = {
       font-size: 13px;
       text-shadow: 0 1px 2px #000;
     }
-    .panel.unlocked { border: 1px dashed var(--gold); cursor: move; }
-    .unlock-hint {
-      margin: -10px -12px 8px; padding: 4px 12px; text-align: center;
-      font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
-      background: rgba(217, 173, 85, 0.22); color: var(--gold); cursor: move;
+    .drag-layer {
+      position: absolute; inset: 0; z-index: 10;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px dashed var(--gold); border-radius: 10px;
+      background: rgba(9, 12, 21, 0.55);
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--gold); cursor: move;
     }
-    .top { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+    .top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
     .clock { font: 600 18px var(--mono); color: var(--gold); }
-    .kda { font: 12px var(--mono); color: var(--text-dim); }
+    .kda { margin-left: auto; font: 12px var(--mono); color: var(--text-dim); }
+    .lock {
+      all: unset; position: relative; z-index: 11;
+      display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px;
+      color: var(--text-faint); cursor: pointer;
+    }
+    .lock:hover { color: var(--gold); background: rgba(217, 173, 85, 0.16); }
+    .lock.open { color: var(--gold); background: rgba(217, 173, 85, 0.22); }
     .skills { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; font-size: 12.5px; }
     .skills b { color: var(--gold); }
     .skills .sep { color: var(--text-faint); }
@@ -133,6 +149,14 @@ export class Overlay {
   protected readonly opacity = computed(() => this.rift.config()?.overlayOpacity ?? 0.9);
   protected readonly locked = this.rift.overlayLocked;
   protected time = clock;
+  private readonly lockBtn = viewChild<ElementRef<HTMLElement>>('lockBtn');
+
+  constructor() {
+    afterRenderEffect(() => {
+      const r = this.lockBtn()?.nativeElement.getBoundingClientRect();
+      this.rift.setOverlayButton(r ? [r.x, r.y, r.width, r.height] : null);
+    });
+  }
 
   itemIcon(id: number): string {
     return assetUrl(this.rift.itemById().get(id)?.iconPath);

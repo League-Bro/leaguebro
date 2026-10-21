@@ -2,11 +2,12 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { PlayerCard } from './player-card';
 import { RecCard } from './rec-card';
+import { PostGameView } from './post-game';
 import { championIcon, clock, positionLabel } from '../core/assets';
 
 @Component({
   selector: 'rl-live',
-  imports: [PlayerCard, RecCard],
+  imports: [PlayerCard, RecCard, PostGameView],
   template: `
     @if (!rift.status().connected) {
       <div class="empty card">
@@ -81,7 +82,6 @@ import { championIcon, clock, positionLabel } from '../core/assets';
         <section class="ingame card row">
           <div class="clock mono">{{ time(o.gameTime) }}</div>
           <div class="mono">{{ o.kills }}/{{ o.deaths }}/{{ o.assists }} <span class="faint">KDA</span></div>
-          <div class="mono">{{ o.cs }} <span class="faint">CS</span></div>
           <div class="spacer"></div>
           @for (t of o.timers; track t.key) {
             <div class="timer"><span class="muted">{{ t.label }}</span> <span class="mono">{{ time(t.spawnAt - o.gameTime) }}</span></div>
@@ -107,6 +107,13 @@ import { championIcon, clock, positionLabel } from '../core/assets';
           <rl-player [name]="p.name" [puuid]="p.puuid" [championId]="p.championId" [position]="p.position" side="enemy"
             [hiddenLabel]="'Hidden player'" [hiddenNote]="'This player has streamer mode on'" />
         }
+      </div>
+    } @else if (visiblePostGame(); as pg) {
+      <rl-post-game [game]="pg" />
+    } @else if (postGamePhase() && !rift.postGame()) {
+      <div class="empty card">
+        <h2>Game over</h2>
+        <p class="muted">Getting your game summary from the League client…</p>
       </div>
     } @else {
       <div class="empty card">
@@ -152,6 +159,13 @@ export class LiveView {
     if (li && cs && li.championId === cs.myChampionId) return li.message;
     return null;
   });
+  protected readonly visiblePostGame = computed(() => {
+    const pg = this.rift.postGame();
+    return pg && pg.gameId !== this.rift.closedPostGame() ? pg : null;
+  });
+  protected readonly postGamePhase = computed(() =>
+    ['WaitingForStats', 'PreEndOfGame', 'EndOfGame'].includes(this.rift.status().phase),
+  );
   protected readonly lookupCount = computed(() => {
     const l = this.rift.loading();
     if (!l) return 0;

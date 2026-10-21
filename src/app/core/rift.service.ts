@@ -10,6 +10,7 @@ import {
   OverlayState,
   PatchInfo,
   PatchNotes,
+  PostGame,
   Profile,
   RecState,
   RunePage,
@@ -17,7 +18,7 @@ import {
   StaticData,
   Status,
 } from './models';
-import { demoChampSelect, demoConfig, demoPatch, demoPatchList, demoSnapshot, demoStatic } from './demo';
+import { demoChampSelect, demoConfig, demoPatch, demoPatchList, demoPostGame, demoSnapshot, demoStatic } from './demo';
 
 export function inTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -32,6 +33,9 @@ export class RiftService {
   readonly lastImport = signal<ImportEvent | null>(null);
   readonly overlay = signal<OverlayState | null>(null);
   readonly rec = signal<RecState | null>(null);
+  readonly postGame = signal<PostGame | null>(null);
+  /** Game id of a summary the user closed. */
+  readonly closedPostGame = signal<number | null>(null);
   readonly overlayPreview = signal(false);
   readonly overlayLocked = signal(true);
   readonly config = signal<Config | null>(null);
@@ -64,6 +68,13 @@ export class RiftService {
         snap.overlay = null;
         snap.champSelect = demoChampSelect();
       }
+      if (new URLSearchParams(location.search).get('scene') === 'postgame') {
+        snap.status.phase = 'EndOfGame';
+        snap.loading = null;
+        snap.overlay = null;
+        snap.rec = null;
+        snap.postGame = demoPostGame();
+      }
       this.applySnapshot(snap);
       this.statics.set(demoStatic());
       this.config.set(demoConfig());
@@ -78,6 +89,7 @@ export class RiftService {
       listen<ImportEvent>('rune-import', (e) => this.lastImport.set(e.payload)),
       listen<OverlayState | null>('overlay', (e) => this.overlay.set(e.payload)),
       listen<RecState | null>('recommendation', (e) => this.rec.set(e.payload)),
+      listen<PostGame | null>('post-game', (e) => this.postGame.set(e.payload)),
       listen<boolean>('overlay-preview', (e) => this.overlayPreview.set(e.payload)),
       listen<boolean>('overlay-locked', (e) => this.overlayLocked.set(e.payload)),
       listen<Config>('config', (e) => this.config.set(e.payload)),
@@ -95,6 +107,7 @@ export class RiftService {
     this.lastImport.set(s.lastImport);
     this.overlay.set(s.overlay);
     this.rec.set(s.rec);
+    this.postGame.set(s.postGame);
     const p: Record<string, Profile> = {};
     for (const x of s.profiles) p[x.puuid] = x;
     this.profiles.set(p);
@@ -148,5 +161,14 @@ export class RiftService {
   getPatch(url: string): Promise<PatchNotes> {
     if (this.demo) return Promise.resolve(demoPatch(url));
     return invoke<PatchNotes>('get_patch', { url });
+  }
+
+  private lastButtonRect = '';
+  setOverlayButton(rect: [number, number, number, number] | null): void {
+    if (this.demo || this.windowLabel() !== 'overlay') return;
+    const key = JSON.stringify(rect);
+    if (key === this.lastButtonRect) return;
+    this.lastButtonRect = key;
+    invoke('set_overlay_button', { rect }).catch(() => (this.lastButtonRect = ''));
   }
 }
