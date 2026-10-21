@@ -1,0 +1,189 @@
+import { Component, computed, inject } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
+import { RiftService } from '../core/rift.service';
+import { assetUrl } from '../core/assets';
+import { ItemSet } from '../core/models';
+
+const MIN_GAMES = 20;
+
+/** OP.GG's recommendation for your current champion: runes, spells, skills, items. */
+@Component({
+  selector: 'rl-rec-card',
+  imports: [DecimalPipe],
+  template: `
+    @if (rift.config()?.recSource === 'opgg' && state(); as s) {
+      <section class="card rec">
+        <div class="head">
+          <h3>Recommended for {{ rift.champName(s.championId) }}</h3>
+          <div class="spacer"></div>
+          @if (s.rec; as r) {
+            <span class="faint small">
+              OP.GG · {{ r.games | number }} games
+              @if (r.runes; as ru) { · {{ ru.winRate * 100 | number: '1.0-1' }}% win }
+            </span>
+          }
+        </div>
+
+        @if (s.loading) {
+          <p class="muted small">Looking up {{ rift.champName(s.championId) }} on OP.GG…</p>
+        } @else if (s.error) {
+          <p class="loss small">Couldn't get OP.GG data: {{ s.error }}. Runes fall back to the League client's suggestion.</p>
+        } @else if (s.rec; as r) {
+          @if (r.games < minGames) {
+            <p class="warn small">Only {{ r.games }} games on OP.GG for this pick, so runes and spells use the League client's suggestion instead. The data below is shown for reference.</p>
+          }
+          <div class="grid">
+            @if (r.runes; as ru) {
+              <div class="block runes">
+                <div class="label">Runes</div>
+                <div class="row">
+                  @if (perkIcon(ru.perkIds[0]); as url) { <img class="keystone" [src]="url" alt="" /> }
+                  <div>
+                    <div class="strong">{{ ru.keystoneName }}</div>
+                    <div class="muted small">{{ ru.primaryName }} / {{ ru.secondaryName }}</div>
+                  </div>
+                </div>
+                <div class="perks">
+                  @for (id of ru.perkIds.slice(1); track $index) {
+                    @if (perkIcon(id); as url) {
+                      <img [src]="url" [title]="perkName(id)" alt="" [class.shard]="$index >= 5" />
+                    }
+                  }
+                </div>
+                <div class="faint small names">{{ ru.perkNames.slice(1).join(' · ') }}</div>
+              </div>
+            }
+
+            <div class="block">
+              @if (r.spells.length === 2) {
+                <div class="label">Summoner spells</div>
+                <div class="row spells">
+                  @for (id of r.spells; track $index) {
+                    @if (spellIcon(id); as url) { <img [src]="url" alt="" /> }
+                    <span>{{ spellName(id) }}</span>
+                  }
+                </div>
+              }
+              @if (r.skillMax.length) {
+                <div class="label">Skill order</div>
+                <div class="row max">
+                  @for (k of r.skillMax; track $index; let last = $last) {
+                    <span class="key">{{ k }}</span>@if (!last) { <span class="faint">›</span> }
+                  }
+                </div>
+                @if (r.skillOrder.length) {
+                  <div class="levels">
+                    @for (k of r.skillOrder; track $index) {
+                      <span [class]="'lvl k' + k" [title]="'Level ' + ($index + 1)">{{ k }}</span>
+                    }
+                  </div>
+                }
+              }
+            </div>
+
+            <div class="block items">
+              @if (r.starter; as st) {
+                <div class="label">Start</div>
+                <div class="row">
+                  @for (id of st.ids; track $index) {
+                    @if (itemIcon(id); as url) { <img [src]="url" [title]="itemName(id, st, $index)" alt="" /> } @else { <span class="chip">{{ itemName(id, st, $index) }}</span> }
+                  }
+                </div>
+              }
+              @if (r.buildOrder.length) {
+                <div class="label">Build</div>
+                <div class="row build">
+                  @for (id of r.buildOrder; track id; let last = $last) {
+                    @if (itemIcon(id); as url) { <img [src]="url" [title]="itemNameAny(id, r)" alt="" /> } @else { <span class="chip">{{ itemNameAny(id, r) }}</span> }
+                    @if (!last) { <span class="faint arrow">›</span> }
+                  }
+                </div>
+                @if (!hasSavedBuild(s.championId) && rift.config()?.useRecommendedBuilds) {
+                  <div class="faint small">The overlay will remind you of this build in game.</div>
+                }
+              }
+            </div>
+          </div>
+        }
+      </section>
+    }
+  `,
+  styles: `
+    .rec { margin: 14px 0 4px; display: flex; flex-direction: column; gap: 10px; }
+    .head { display: flex; align-items: baseline; gap: 10px; }
+    .small { font-size: 12.5px; margin: 0; }
+    .warn { color: var(--gold); }
+    .grid { display: grid; grid-template-columns: 1.1fr 1fr 1.3fr; gap: 18px; }
+    .block { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); margin-top: 2px; }
+    .strong { font-weight: 600; }
+    .keystone { width: 44px; height: 44px; }
+    .perks { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+    .perks img { width: 26px; height: 26px; }
+    .perks img.shard { width: 18px; height: 18px; opacity: 0.85; }
+    .names { line-height: 1.35; }
+    .spells img, .items img { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--line-strong); }
+    .spells span { margin-right: 8px; }
+    .key {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px; border-radius: 6px;
+      background: var(--gold-soft); color: var(--gold); font-weight: 700;
+    }
+    .levels { display: flex; gap: 1px; flex-wrap: nowrap; }
+    .lvl {
+      width: 16px; height: 18px; border-radius: 4px; font-size: 10.5px; font-weight: 700;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--bg-sunken); color: var(--text-dim);
+    }
+    .lvl.kQ { color: #7cc4f5; } .lvl.kW { color: #8de28d; } .lvl.kE { color: #f0b46a; } .lvl.kR { color: var(--gold); background: var(--gold-soft); }
+    .build { flex-wrap: wrap; gap: 4px; }
+    .arrow { margin: 0 1px; }
+    .chip { font-size: 11.5px; background: var(--bg-sunken); border-radius: 5px; padding: 2px 6px; }
+    @media (max-width: 960px) { .grid { grid-template-columns: 1fr 1fr; } .items { grid-column: 1 / -1; } }
+  `,
+})
+export class RecCard {
+  protected readonly rift = inject(RiftService);
+  protected readonly minGames = MIN_GAMES;
+
+  /** Only show the recommendation for the champion currently picked. */
+  protected readonly state = computed(() => {
+    const s = this.rift.rec();
+    if (!s) return null;
+    const cs = this.rift.champSelect();
+    if (cs && cs.myChampionId && cs.myChampionId !== s.championId) return null;
+    return s;
+  });
+
+  perkIcon(id: number): string {
+    return assetUrl(this.rift.perkById().get(id)?.iconPath);
+  }
+  perkName(id: number): string {
+    return this.rift.perkById().get(id)?.name ?? '';
+  }
+  spellIcon(id: number): string {
+    return assetUrl(this.rift.spellById().get(id)?.iconPath);
+  }
+  spellName(id: number): string {
+    return this.rift.spellById().get(id)?.name ?? `Spell ${id}`;
+  }
+  itemIcon(id: number): string {
+    return assetUrl(this.rift.itemById().get(id)?.iconPath);
+  }
+  itemName(id: number, set: ItemSet, i: number): string {
+    return this.rift.itemById().get(id)?.name ?? set.names[i] ?? `Item ${id}`;
+  }
+  /** Name for an item in the build order, from the client or OP.GG's own names. */
+  itemNameAny(id: number, r: { starter: ItemSet | null; boots: ItemSet | null; core: ItemSet | null; later: ItemSet[][] }): string {
+    const known = this.rift.itemById().get(id)?.name;
+    if (known) return known;
+    for (const set of [r.boots, r.core, ...r.later.flat()]) {
+      const i = set?.ids.indexOf(id) ?? -1;
+      if (set && i >= 0 && set.names[i]) return set.names[i];
+    }
+    return `Item ${id}`;
+  }
+  hasSavedBuild(champ: number): boolean {
+    return (this.rift.config()?.builds[String(champ)] ?? []).length > 0;
+  }
+}

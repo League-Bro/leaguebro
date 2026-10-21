@@ -1,0 +1,7 @@
+class LolGetChampionAnalysis: data
+class Data: summoner_spells,runes,counters_meta
+class SummonerSpells: ids,ids_names,win,play,pick_rate
+class Runes: id,primary_page_id,primary_page_name,primary_rune_ids,primary_rune_names,secondary_page_id,secondary_page_name,secondary_rune_ids,secondary_rune_names,stat_mod_ids,stat_mod_names,play,win,pick_rate
+class CountersMeta: message
+
+LolGetChampionAnalysis(Data(SummonerSpells([4,11],[4,11],0,2,1),Runes(8128,8100,"Domination",[8128,8143,8141,8106],["Dark Harvest","Sudden Impact","Deep Ward","Ultimate Hunter"],8300,"Inspiration",[8321,8347],["Cash Back","Cosmic Insight"],[5008,5008,5001],[5008,5008,5001],1,0,0.5),CountersMeta("Insufficient matchup sample. See data.summary.positions[].counters[] for raw matchup data (smaller sample).")))

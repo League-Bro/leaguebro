@@ -1,7 +1,7 @@
 // Sample data used when the UI runs in a plain browser (`npm start`)
 // instead of inside the Tauri app, so the layout can be worked on
 // without League running.
-import { ChampSelectView, Config, Profile, Snapshot, StaticData } from './models';
+import { ChampSelectView, Config, Profile, RecState, Snapshot, StaticData } from './models';
 
 const champs: [number, string][] = [
   [103, 'Ahri'], [64, 'Lee Sin'], [222, 'Jinx'], [412, 'Thresh'], [122, 'Darius'],
@@ -67,7 +67,7 @@ export function demoSnapshot(): Snapshot {
       profile('e4', '', '', 0, 0, 0, [145, 222]),
       profile('e5', 'SILVER', 'I', 91, 30, 37, [555, 412]),
     ],
-    lastImport: { ok: true, championId: 103, message: 'Set "League Buddy: Ahri Mid" (client recommendation)' },
+    lastImport: { ok: true, championId: 103, message: 'Set "League Buddy: Ahri Mid" (OP.GG) · Flash + Ignite' },
     overlay: {
       gameTime: 742,
       gameMode: 'CLASSIC',
@@ -83,11 +83,15 @@ export function demoSnapshot(): Snapshot {
         { key: 'inhib', label: 'Enemy Mid inhib', spawnAt: 1012, side: 'enemy' },
       ],
       nextItems: [
-        { id: 6655, name: "Luden's Companion", price: 2850, affordable: false },
-        { id: 1058, name: 'Needlessly Large Rod', price: 1200, affordable: true },
+        { id: 4645, name: 'Shadowflame', price: 3200, affordable: false },
+        { id: 3157, name: "Zhonya's Hourglass", price: 3250, affordable: false },
       ],
       hasBuild: true,
+      buildSource: 'OP.GG',
+      skillMax: ['Q', 'W', 'E'],
+      nextSkill: 'Q',
     },
+    rec: demoRec(),
   };
 }
 
@@ -100,8 +104,27 @@ export function demoStatic(): StaticData {
       { id: 1058, name: 'Needlessly Large Rod', priceTotal: 1200, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/1058_Mage_T1_NeedlesslyLargeRod.png' },
       { id: 3089, name: "Rabadon's Deathcap", priceTotal: 3600, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/3089_Mage_T3_RabadonsDeathcap.png' },
       { id: 3157, name: "Zhonya's Hourglass", priceTotal: 3250, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/3157_Mage_T3_ZhonyasHourglass.png' },
+      { id: 3118, name: 'Malignance', priceTotal: 2700, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/3118_Mage_T3_Malignance.png' },
+      { id: 4645, name: 'Shadowflame', priceTotal: 3200, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/4645_Mage_T3_Shadowflame.png' },
+      { id: 3135, name: 'Void Staff', priceTotal: 3000, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/3135_Mage_T3_VoidStaff.png' },
+      { id: 1056, name: "Doran's Ring", priceTotal: 400, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/1056_Mage_T1_DoransRing.png' },
+      { id: 2003, name: 'Health Potion', priceTotal: 50, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/2003_Class_T1_HealthPotion.png' },
     ],
-    perks: [],
+    perks: [
+      [8112, 'Electrocute', 'Domination/Electrocute/Electrocute.png'],
+      [8139, 'Taste of Blood', 'Domination/TasteOfBlood/GreenTerror_TasteOfBlood.png'],
+      [8140, 'Grisly Mementos', 'Domination/GrislyMementos/GrislyMementos.png'],
+      [8106, 'Ultimate Hunter', 'Domination/UltimateHunter/UltimateHunter.png'],
+      [8210, 'Transcendence', 'Sorcery/Transcendence/Transcendence.png'],
+      [8226, 'Manaflow Band', 'Sorcery/ManaflowBand/ManaflowBand.png'],
+      [5005, 'Attack Speed', 'StatMods/StatModsAttackSpeedIcon.png'],
+      [5008, 'Adaptive Force', 'StatMods/StatModsAdaptiveForceIcon.png'],
+      [5001, 'Health Scaling', 'StatMods/StatModsHealthScalingIcon.png'],
+    ].map(([id, name, path]) => ({ id: id as number, name: name as string, iconPath: `/lol-game-data/assets/v1/perk-images/Styles/${path}` })),
+    spells: [
+      { id: 4, name: 'Flash', iconPath: '/lol-game-data/assets/DATA/Spells/Icons2D/Summoner_flash.png' },
+      { id: 14, name: 'Ignite', iconPath: '/lol-game-data/assets/DATA/Spells/Icons2D/SummonerIgnite.png' },
+    ],
     styles: [
       { id: 8100, name: 'Domination', iconPath: '' },
       { id: 8200, name: 'Sorcery', iconPath: '' },
@@ -117,7 +140,11 @@ export function demoConfig(): Config {
     runeOverrides: {
       '103': { name: 'Electrocute Ahri', primaryStyleId: 8100, subStyleId: 8200, selectedPerkIds: [8112, 8139, 8138, 8135, 8226, 8237, 5008, 5008, 5001] },
     },
-    builds: { '103': [3020, 6655, 3089, 3157] },
+    builds: {},
+    recSource: 'opgg',
+    setSummonerSpells: true,
+    useRecommendedBuilds: true,
+    showSkillHint: true,
     scoutInChampSelect: true,
     scoutOnLoading: true,
     overlayEnabled: true,
@@ -148,5 +175,42 @@ export function demoChampSelect(): ChampSelectView {
     enemies: [5, 6, 7, 8, 9].map((c, i) => ({ ...hidden(c, ''), championId: [122, 238, 0, 0, 0][i] })),
     bans: [157, 555, 84, 99],
     timerPhase: 'BAN_PICK',
+  };
+}
+
+/** Real OP.GG answer for Ahri mid (from the probe), as League Buddy shows it. */
+export function demoRec(): RecState {
+  const set = (ids: number[], names: string[], games: number, wins: number) => ({ ids, names, games, winRate: wins / games });
+  return {
+    championId: 103,
+    position: 'mid',
+    loading: false,
+    error: null,
+    rec: {
+      championId: 103,
+      position: 'mid',
+      gameMode: 'ranked',
+      runes: {
+        primaryStyleId: 8100,
+        subStyleId: 8200,
+        perkIds: [8112, 8139, 8140, 8106, 8210, 8226, 5005, 5008, 5001],
+        keystoneName: 'Electrocute',
+        primaryName: 'Domination',
+        secondaryName: 'Sorcery',
+        perkNames: ['Electrocute', 'Taste of Blood', 'Grisly Mementos', 'Ultimate Hunter', 'Transcendence', 'Manaflow Band'],
+        games: 3764,
+        winRate: 1930 / 3764,
+      },
+      spells: [4, 14],
+      skillMax: ['Q', 'W', 'E'],
+      skillOrder: ['W', 'Q', 'E', 'Q', 'Q', 'R', 'Q', 'W', 'Q', 'W', 'R', 'W', 'W', 'E', 'E'],
+      starter: set([1056, 2003, 2003], ["Doran's Ring", 'Health Potion', 'Health Potion'], 7944, 4084),
+      boots: set([3020], ["Sorcerer's Shoes"], 4455, 2271),
+      core: set([3118, 4645, 3157], ['Malignance', 'Shadowflame', "Zhonya's Hourglass"], 619, 328),
+      later: [],
+      buildOrder: [3118, 3020, 4645, 3157, 3089, 3135],
+      games: 3764,
+      source: 'OP.GG',
+    },
   };
 }

@@ -16,13 +16,17 @@ To uninstall, use Windows **Settings → Apps → Installed apps → League Budd
 
 ## What it does
 
-### Rune auto-import
+### Recommendations (OP.GG)
 
-When you lock in a champion, League Buddy creates a rune page called `League Buddy: <Champion> <Role>` and selects it. It reuses that one page every game, so your other pages are never touched.
+When you hover or lock a champion, League Buddy pulls OP.GG's ranked stats for that champion and role and shows the most popular rune page, summoner spells, skill order, starting items and build path, with game counts and win rate.
 
-- **Default:** the League client's own recommended page for your champion and role.
-- **Your own page:** select it in the client's rune editor, then save it for that champion on the **Runes** tab. From then on League Buddy uses yours.
-- **Options:** turn on "Import while hovering" for blind pick. If all your page slots are full, delete one page, or turn on "Reuse the selected page when slots are full".
+### Rune and summoner spell auto-import
+
+When you lock in, League Buddy creates a rune page called `League Buddy: <Champion> <Role>` and selects it. It reuses that one page every game, so your other pages are never touched. It also sets your summoner spells, keeping Flash on whichever key you already use.
+
+- **Where the page comes from:** your own saved page for that champion if you have one, otherwise OP.GG's most popular page. For rare picks with too few games on OP.GG, it uses the League client's own suggestion.
+- **Your own page:** select it in the client's rune editor, then save it for that champion on the **Runes** tab.
+- **Options:** under **Settings → Recommendations** you can switch to League client suggestions only, or turn off summoner spells. Turn on "Import while hovering" for blind pick. If all your page slots are full, delete one page, or turn on "Reuse the selected page when slots are full".
 
 ### Scouting
 
@@ -37,13 +41,14 @@ A small, click-through panel in the top-right corner shows:
 
 - the game clock, your KDA and CS
 - objective timers: dragon (switching to Elder after a soul), Baron, and destroyed inhibitors
-- the next two items from your saved build for that champion, with the price turning green when you can afford it. Set up builds on the **Builds** tab.
+- which ability to max, plus a "Level up Q" hint whenever you have an unspent skill point
+- the next two items to buy, with the price turning green when you can afford it. These come from your saved build for that champion (set on the **Builds** tab), or from OP.GG's build otherwise.
 
 You can change the overlay's position, opacity and the timer values under **Settings**. Use **Preview overlay** to see where it sits.
 
 ### What it doesn't do
 
-League Buddy doesn't read game memory, use a Riot API key, or track enemy ability or summoner spell cooldowns. It uses only the League client's local API and Riot's official in-game data API (port 2999), and stays within [Riot's third-party app rules](https://developer.riotgames.com/policies/general).
+League Buddy doesn't read game memory, use a Riot API key, or track enemy ability or summoner spell cooldowns. It uses only the League client's local API, Riot's official in-game data API (port 2999), and OP.GG's public stats, and stays within [Riot's third-party app rules](https://developer.riotgames.com/policies/general).
 
 ## Troubleshooting
 
@@ -54,6 +59,7 @@ League Buddy doesn't read game memory, use a Riot API key, or track enemy abilit
 | Rune import fails | Your rune page slots are full. Delete one page, or turn on "Reuse the selected page when slots are full". |
 | Objective timer is off | Riot changes spawn times between seasons. Adjust them under **Settings → Objective timers**. |
 | Champion or item icons missing | Icons load from CommunityDragon and need an internet connection. |
+| "Couldn't get OP.GG data" | OP.GG is unreachable or changed something. Runes fall back to the League client's suggestion automatically. You can also switch to "League client only" under **Settings → Recommendations**. |
 
 Settings are stored in `%APPDATA%\dev.dom.leaguebuddy\settings.json`. Delete that file to reset everything.
 
@@ -63,24 +69,72 @@ Settings are stored in `%APPDATA%\dev.dom.leaguebuddy\settings.json`. Delete tha
 
 Built with [Tauri 2](https://tauri.app) (Rust) and Angular 21.
 
-### Prerequisites (Windows)
+### Quick setup (Windows)
 
-- [Node.js 22 LTS](https://nodejs.org)
-- [Rust](https://rustup.rs), installed with the defaults
-- [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/), with "Desktop development with C++" selected
-- [Git](https://git-scm.com)
-
-### Run and build
+Clone the repo, then run the setup script from the project folder:
 
 ```powershell
-npm install
-npm run tauri dev      # run the app with live reload
-npm run tauri build    # build an installer into src-tauri\target\release\bundle\nsis\
+git clone https://github.com/doliaro/leaguebuddy.git
+cd leaguebuddy
+scripts\setup-dev.cmd
 ```
 
-`npm start` runs only the UI at http://localhost:4200, with demo data and no League needed. Add `?scene=champselect` to see champ select, or `?window=overlay` to see the overlay.
+The script checks for each tool below and installs whatever is missing with `winget`. It also lets `npm` run in PowerShell and runs `npm install`. It's safe to run again any time; anything already installed is skipped.
 
-Rust tests: `cd src-tauri; cargo test`
+- Expect a few Windows permission prompts.
+- The Visual Studio Build Tools download is several GB, so the first run can take 15–30 minutes.
+- Add `-Build` (`scripts\setup-dev.cmd -Build`) to also compile the Rust side once, so your first `npm run tauri dev` starts fast.
+
+When it says **All set**, open a **new** terminal (so it sees the updated PATH) and run:
+
+```powershell
+npm run tauri dev
+```
+
+The first run compiles all the Rust dependencies (about 5 minutes), then the League Buddy window opens. After that it starts in seconds.
+
+### Manual setup
+
+If you'd rather install things yourself, or the script reports a problem:
+
+| Tool | Why | Install |
+| --- | --- | --- |
+| [Git](https://git-scm.com) | source control | `winget install --id Git.Git -e` |
+| [Node.js](https://nodejs.org) 22.12+ (LTS) | Angular UI and the Tauri CLI | `winget install --id OpenJS.NodeJS.LTS -e` |
+| [Rust](https://rustup.rs) (stable, MSVC) | the app's backend | `winget install --id Rustlang.Rustup -e` |
+| [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with **Desktop development with C++** | Rust's linker on Windows | `winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"` |
+| [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) | renders the UI | built into Windows 10/11 |
+
+Then close and reopen your terminal and run:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned   # once, so npm runs in PowerShell
+npm install
+npm run tauri dev
+```
+
+### Day-to-day
+
+```powershell
+npm run tauri dev      # run the app; UI changes reload instantly, Rust changes rebuild and restart it
+npm start              # UI only, in your browser at http://127.0.0.1:4200 with demo data (no League needed)
+npm run tauri build    # build an installer into src-tauri\target\release\bundle\nsis\
+cd src-tauri; cargo test   # Rust unit tests
+```
+
+In browser mode, add `?scene=champselect` to the URL to see champ select, or `?window=overlay` to see the overlay.
+
+Don't run a dev copy and an installed copy of League Buddy at the same time; both would try to manage your rune page.
+
+### Troubleshooting setup
+
+| Problem | Fix |
+| --- | --- |
+| `'git'` / `'node'` / `'cargo'` is not recognized | Close and reopen the terminal (and VS Code) so it picks up the new PATH. |
+| `npm.ps1 cannot be loaded because running scripts is disabled` | Run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or use `npm.cmd` instead of `npm`. |
+| `linker 'link.exe' not found` | The Visual Studio Build Tools (C++ workload) are missing. Rerun the setup script or install them as above. |
+| Stuck on `Waiting for your frontend dev server to start` | Something else is using port 4200, or `npm run start` failed. Run `npm start` alone to see the error. |
+| `winget` isn't recognized | Install **App Installer** from the Microsoft Store, or use the manual links above. |
 
 ### Releasing a new version
 
@@ -121,7 +175,9 @@ src-tauri/src/
   engine.rs                background loop: game phase, champ select, loading screen, overlay
   runes.rs                 rune page selection and import
   scout.rs                 rank and match history lookups
-  live.rs                  in-game data, objective timers, next-item reminder
+  live.rs                  in-game data, objective timers, next-item and skill hints
+  opgg.rs                  OP.GG recommendations (MCP client + response parser)
   config.rs                settings file
 .github/workflows/         Windows installer release workflow
+scripts/setup-dev.cmd      one-step dev environment setup (runs setup-dev.ps1)
 ```

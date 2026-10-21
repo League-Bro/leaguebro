@@ -9,6 +9,7 @@ import {
   LoadingView,
   OverlayState,
   Profile,
+  RecState,
   RunePage,
   Snapshot,
   StaticData,
@@ -28,6 +29,7 @@ export class RiftService {
   readonly profiles = signal<Record<string, Profile>>({});
   readonly lastImport = signal<ImportEvent | null>(null);
   readonly overlay = signal<OverlayState | null>(null);
+  readonly rec = signal<RecState | null>(null);
   readonly overlayPreview = signal(false);
   readonly config = signal<Config | null>(null);
   readonly statics = signal<StaticData | null>(null);
@@ -42,6 +44,7 @@ export class RiftService {
   });
   readonly itemById = computed(() => new Map((this.statics()?.items ?? []).map((i) => [i.id, i])));
   readonly perkById = computed(() => new Map((this.statics()?.perks ?? []).map((p) => [p.id, p])));
+  readonly spellById = computed(() => new Map((this.statics()?.spells ?? []).map((p) => [p.id, p])));
   readonly styleById = computed(() => new Map((this.statics()?.styles ?? []).map((p) => [p.id, p])));
 
   private started = false;
@@ -71,6 +74,7 @@ export class RiftService {
       listen<Profile>('scout', (e) => this.profiles.update((p) => ({ ...p, [e.payload.puuid]: e.payload }))),
       listen<ImportEvent>('rune-import', (e) => this.lastImport.set(e.payload)),
       listen<OverlayState | null>('overlay', (e) => this.overlay.set(e.payload)),
+      listen<RecState | null>('recommendation', (e) => this.rec.set(e.payload)),
       listen<boolean>('overlay-preview', (e) => this.overlayPreview.set(e.payload)),
       listen<Config>('config', (e) => this.config.set(e.payload)),
       listen<StaticData>('static', (e) => this.statics.set(e.payload)),
@@ -86,6 +90,7 @@ export class RiftService {
     this.loading.set(s.loading);
     this.lastImport.set(s.lastImport);
     this.overlay.set(s.overlay);
+    this.rec.set(s.rec);
     const p: Record<string, Profile> = {};
     for (const x of s.profiles) p[x.puuid] = x;
     this.profiles.set(p);
@@ -111,7 +116,7 @@ export class RiftService {
   }
 
   importRunesNow(): Promise<string> {
-    if (this.demo) return Promise.resolve('Set "League Buddy: Ahri Mid" (client recommendation)');
+    if (this.demo) return Promise.resolve('Set "League Buddy: Ahri Mid" (OP.GG) · Flash + Ignite');
     return invoke<string>('import_runes_now');
   }
 

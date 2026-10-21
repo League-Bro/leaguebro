@@ -37,8 +37,9 @@ import { RunePage } from '../core/models';
         <section class="card stack">
           <h2>Where pages come from</h2>
           <p class="muted">
-            By default League Buddy uses the League client's own recommended page for your champion and role. To use your own page
-            for a champion instead, select that page in the client's rune editor, then save it here.
+            By default League Buddy uses OP.GG's most popular page for your champion and role (set under Settings → Recommendations),
+            falling back to the League client's own suggestion for rare picks. To use your own page for a champion instead, select
+            that page in the client's rune editor, then save it here.
           </p>
           <div class="row">
             <rl-champ-picker placeholder="Champion to save for…" (picked)="saveFor($event)" />

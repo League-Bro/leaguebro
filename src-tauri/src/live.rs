@@ -46,6 +46,37 @@ pub struct OverlayState {
     pub timers: Vec<Timer>,
     pub next_items: Vec<NextItem>,
     pub has_build: bool,
+    /// "saved" (your build) or "OP.GG".
+    pub build_source: String,
+    /// Ability max order, e.g. ["Q", "W", "E"]; empty when the hint is off.
+    pub skill_max: Vec<String>,
+    /// Ability to put your next point in, when you have one unspent.
+    pub next_skill: Option<String>,
+}
+
+/// What the overlay should suggest beyond timers.
+#[derive(Default)]
+pub struct Guidance<'a> {
+    pub build: Option<&'a [i64]>,
+    pub build_source: &'a str,
+    pub skill_max: &'a [String],
+    pub skill_order: &'a [String],
+}
+
+/// The ability to level next, if you have an unspent skill point, following
+/// the recommended level-by-level order.
+pub fn next_skill(data: &Value, order: &[String]) -> Option<String> {
+    let ap = data.get("activePlayer")?;
+    let level = ap.get("level").and_then(Value::as_i64)?;
+    let abilities = ap.get("abilities")?;
+    let spent: i64 = ["Q", "W", "E", "R"]
+        .iter()
+        .map(|k| abilities.pointer(&format!("/{k}/abilityLevel")).and_then(Value::as_i64).unwrap_or(0))
+        .sum();
+    if spent >= level {
+        return None;
+    }
+    order.get(spent as usize).cloned()
 }
 
 fn s<'a>(v: &'a Value, k: &str) -> &'a str {
@@ -207,9 +238,10 @@ pub fn next_items(
 pub fn overlay_state(
     data: &Value,
     cfg: &TimerConfig,
-    build: Option<&Vec<i64>>,
+    guide: &Guidance,
     items: &HashMap<i64, (String, i64)>,
 ) -> OverlayState {
+    let build = guide.build;
     let me = find_me(data);
     let score = |k: &str| me.and_then(|p| p.pointer(&format!("/scores/{k}"))).and_then(Value::as_i64).unwrap_or(0);
     OverlayState {
@@ -224,6 +256,9 @@ pub fn overlay_state(
         timers: compute_timers(data, cfg),
         next_items: build.map(|b| next_items(data, b, items, 2)).unwrap_or_default(),
         has_build: build.map(|b| !b.is_empty()).unwrap_or(false),
+        build_source: if build.is_some() { guide.build_source.to_string() } else { String::new() },
+        skill_max: guide.skill_max.to_vec(),
+        next_skill: next_skill(data, guide.skill_order),
     }
 }
 
@@ -291,7 +326,19 @@ mod tests {
         assert_eq!(next[0].id, 6655);
         assert!(!next[0].affordable);
         assert!(next[1].affordable);
-        let st = overlay_state(&sample(600.0, json!([])), &TimerConfig::default(), None, &items);
+        let st = overlay_state(&sample(600.0, json!([])), &TimerConfig::default(), &Guidance::default(), &items);
         assert_eq!((st.kills, st.cs, st.champion_name.as_str()), (3, 120, "Ahri"));
+        assert!(st.next_skill.is_none());
+    }
+
+    #[test]
+    fn skill_hint() {
+        let order: Vec<String> = ["Q", "W", "E", "Q", "Q", "R"].iter().map(|s| s.to_string()).collect();
+        let mut d = sample(100.0, json!([]));
+        d["activePlayer"]["level"] = json!(4);
+        d["activePlayer"]["abilities"] = json!({"Q": {"abilityLevel": 1}, "W": {"abilityLevel": 1}, "E": {"abilityLevel": 1}, "R": {"abilityLevel": 0}});
+        assert_eq!(next_skill(&d, &order).as_deref(), Some("Q"));
+        d["activePlayer"]["abilities"]["Q"]["abilityLevel"] = json!(2);
+        assert_eq!(next_skill(&d, &order), None);
     }
 }

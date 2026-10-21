@@ -4,6 +4,7 @@
 use crate::config::Config;
 use crate::lcu::{self, Lcu};
 use crate::live::{self, OverlayState};
+use crate::opgg::{self, OpGg, Recommendation};
 use crate::runes;
 use crate::scout::{self, Profile};
 use serde::Serialize;
@@ -49,6 +50,7 @@ pub struct StaticData {
     pub items: Vec<ItemInfo>,
     pub perks: Vec<PerkInfo>,
     pub styles: Vec<PerkInfo>,
+    pub spells: Vec<PerkInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -121,6 +123,17 @@ pub struct ImportEvent {
     pub message: String,
 }
 
+/// The current champion's recommendation, as shown in the UI.
+#[derive(Debug, Clone, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RecState {
+    pub champion_id: i64,
+    pub position: String,
+    pub loading: bool,
+    pub rec: Option<Recommendation>,
+    pub error: Option<String>,
+}
+
 #[derive(Default)]
 pub struct Shared {
     pub lcu: Option<Lcu>,
@@ -129,7 +142,9 @@ pub struct Shared {
     pub champ_select: Option<ChampSelectView>,
     pub loading: Option<LoadingView>,
     pub map_id: i64,
+    pub queue_id: i64,
     pub my_champion_id: i64,
+    pub rec: Option<RecState>,
     pub profiles: HashMap<String, Profile>,
     pub last_import: Option<ImportEvent>,
     pub overlay: Option<OverlayState>,
@@ -140,6 +155,7 @@ pub struct AppState {
     pub config: RwLock<Config>,
     pub config_path: PathBuf,
     pub shared: Mutex<Shared>,
+    pub opgg: OpGg,
 }
 
 impl AppState {
@@ -157,6 +173,7 @@ pub struct Snapshot {
     pub profiles: Vec<Profile>,
     pub last_import: Option<ImportEvent>,
     pub overlay: Option<OverlayState>,
+    pub rec: Option<RecState>,
 }
 
 // ---------- parsing helpers ----------
@@ -289,6 +306,7 @@ async fn load_statics(lcu: &Lcu) -> anyhow::Result<StaticData> {
     let items = lcu.get_req("/lol-game-data/assets/v1/items.json").await?;
     let perks = lcu.get("/lol-game-data/assets/v1/perks.json").await.ok().flatten().unwrap_or(Value::Null);
     let styles = lcu.get("/lol-game-data/assets/v1/perkstyles.json").await.ok().flatten().unwrap_or(Value::Null);
+    let spells = lcu.get("/lol-game-data/assets/v1/summoner-spells.json").await.ok().flatten().unwrap_or(Value::Null);
     let arr = |v: &Value| v.as_array().cloned().unwrap_or_default();
     let mut champions: Vec<ChampInfo> = arr(&champs)
         .iter()
@@ -320,6 +338,7 @@ async fn load_statics(lcu: &Lcu) -> anyhow::Result<StaticData> {
         items,
         perks: arr(&perks).iter().map(perk).collect(),
         styles: styles.get("styles").map(arr).unwrap_or_default().iter().map(perk).collect(),
+        spells: arr(&spells).iter().map(perk).collect(),
     })
 }
 
@@ -357,6 +376,7 @@ struct Engine {
     phase: String,
     last_connect_try: Option<Instant>,
     last_import_key: Option<(i64, String)>,
+    last_rec_key: Option<(i64, String)>,
     requested: HashSet<String>,
     loading_game_id: Option<i64>,
     overlay_shown: bool,
@@ -460,18 +480,26 @@ impl Engine {
         self.set_status(true, phase, summoner, "").await;
         if phase == "ChampSelect" {
             self.last_import_key = None;
+            self.last_rec_key = None;
             self.loading_game_id = None;
             {
                 let state = self.state();
                 let mut sh = state.shared.lock().await;
                 sh.loading = None;
                 sh.my_champion_id = 0;
+                sh.rec = None;
             }
             let _ = self.app.emit("loading", Option::<LoadingView>::None);
-            // Map id (11 = Summoner's Rift, 12 = ARAM) for the rune lookup.
+            let _ = self.app.emit("recommendation", Option::<RecState>::None);
+            // Map (11 = Summoner's Rift, 12 = ARAM) and queue pick the rune
+            // lookup and OP.GG's game mode.
             if let Ok(Some(s)) = lcu.get("/lol-gameflow/v1/session").await {
                 let map_id = s.pointer("/map/id").and_then(Value::as_i64).unwrap_or(11);
-                self.state().shared.lock().await.map_id = map_id;
+                let queue_id = s.pointer("/gameData/queue/id").and_then(Value::as_i64).unwrap_or(0);
+                let state = self.state();
+                let mut sh = state.shared.lock().await;
+                sh.map_id = map_id;
+                sh.queue_id = queue_id;
             }
         }
         if prev == "ChampSelect" && phase != "ChampSelect" {
@@ -521,6 +549,17 @@ impl Engine {
                     self.scout(lcu, id);
                 }
             }
+        }
+        // Fetch the recommendation as soon as a champion is hovered so it's
+        // ready (and visible) by lock-in.
+        let rec_key = (view.my_champion_id, view.my_position.clone());
+        if view.my_champion_id != 0 && self.last_rec_key.as_ref() != Some(&rec_key) {
+            self.last_rec_key = Some(rec_key);
+            let app = self.app.clone();
+            let (champ, pos) = (view.my_champion_id, view.my_position.clone());
+            tauri::async_runtime::spawn(async move {
+                ensure_rec(&app, champ, &pos, None).await;
+            });
         }
         let should_import = cfg.auto_import_runes
             && view.my_champion_id != 0
@@ -574,6 +613,7 @@ impl Engine {
             _ => return, // game still loading
         };
         let cfg = self.state().config();
+        let mut fetch_rec: Option<(i64, String, String)> = None;
         let state = {
             let state = self.state();
             let mut sh = state.shared.lock().await;
@@ -589,11 +629,46 @@ impl Engine {
                     sh.my_champion_id = c.id;
                 }
             }
-            let build = cfg.builds.get(&sh.my_champion_id.to_string());
-            let st = live::overlay_state(&data, &cfg.timers, build, &items);
+            // If League Buddy was started mid-game (no champ select), look the
+            // recommendation up from the live game instead.
+            let champ = sh.my_champion_id;
+            let need_rec = champ != 0
+                && cfg.rec_source == "opgg"
+                && self.last_rec_key.as_ref().map(|k| k.0) != Some(champ);
+            if need_rec {
+                let me = live::find_me(&data);
+                let pos = me.and_then(|p| p.get("position")).and_then(Value::as_str).unwrap_or("").to_lowercase();
+                let mode = data.pointer("/gameData/gameMode").and_then(Value::as_str).unwrap_or("").to_string();
+                fetch_rec = Some((champ, pos, mode));
+            }
+            let rec = sh.rec.as_ref().filter(|r| r.champion_id == champ).and_then(|r| r.rec.clone());
+            let saved = cfg.builds.get(&champ.to_string()).filter(|b| !b.is_empty());
+            let recommended = rec
+                .as_ref()
+                .filter(|r| cfg.use_recommended_builds && r.games >= opgg::MIN_GAMES && !r.build_order.is_empty())
+                .map(|r| r.build_order.as_slice());
+            let (build, build_source) = match (saved, recommended) {
+                (Some(b), _) => (Some(b.as_slice()), "saved"),
+                (None, Some(b)) => (Some(b), "OP.GG"),
+                _ => (None, ""),
+            };
+            let empty: Vec<String> = Vec::new();
+            let (skill_max, skill_order) = match rec.as_ref().filter(|_| cfg.show_skill_hint) {
+                Some(r) => (r.skill_max.as_slice(), r.skill_order.as_slice()),
+                None => (empty.as_slice(), empty.as_slice()),
+            };
+            let guide = live::Guidance { build, build_source, skill_max, skill_order };
+            let st = live::overlay_state(&data, &cfg.timers, &guide, &items);
             sh.overlay = Some(st.clone());
             st
         };
+        if let Some((champ, pos, mode)) = fetch_rec {
+            self.last_rec_key = Some((champ, pos.clone()));
+            let app = self.app.clone();
+            tauri::async_runtime::spawn(async move {
+                ensure_rec(&app, champ, &pos, Some(&mode)).await;
+            });
+        }
         let _ = self.app.emit("overlay", Some(state));
         if cfg.overlay_enabled && !self.overlay_shown {
             self.overlay_shown = true;
@@ -633,10 +708,128 @@ pub async fn import_for(app: &AppHandle, champion_id: i64, position: &str) -> Re
         (sh.lcu.clone(), if sh.map_id == 0 { 11 } else { sh.map_id }, name)
     };
     let lcu = lcu.ok_or("Not connected to the League client")?;
-    runes::import(&lcu, &cfg, champion_id, &name, position, map_id)
+    let rec = ensure_rec(app, champion_id, position, None).await;
+    let rune_rec = rec.as_ref().and_then(|r| r.runes.as_ref());
+    let result = runes::import(&lcu, &cfg, champion_id, &name, position, map_id, rune_rec)
         .await
         .map(|r| format!("Set \"{}\" ({})", r.page_name, r.source))
-        .map_err(|e| format!("{e:#}"))
+        .map_err(|e| format!("{e:#}"))?;
+    let spells = match rec.as_ref().filter(|r| cfg.set_summoner_spells && r.games >= opgg::MIN_GAMES) {
+        Some(r) if r.spells.len() == 2 => match set_spells(app, &lcu, &r.spells).await {
+            Ok(Some(names)) => format!(" · {names}"),
+            Ok(None) => String::new(),
+            Err(e) => format!(" · couldn't set spells: {e:#}"),
+        },
+        _ => String::new(),
+    };
+    Ok(format!("{result}{spells}"))
+}
+
+/// Puts each recommended spell where you already have it (so Flash stays on
+/// your usual key), filling the remaining slot with the other one.
+pub fn arrange_spells(rec: &[i64], current: (i64, i64)) -> (i64, i64) {
+    let (a, b) = (rec[0], rec[1]);
+    if current.0 == b || current.1 == a {
+        (b, a)
+    } else {
+        (a, b)
+    }
+}
+
+async fn set_spells(app: &AppHandle, lcu: &Lcu, rec: &[i64]) -> anyhow::Result<Option<String>> {
+    let session = lcu.get_req("/lol-champ-select/v1/session").await?;
+    let me_cell = i(&session, "localPlayerCellId");
+    let me = session
+        .get("myTeam")
+        .and_then(Value::as_array)
+        .and_then(|t| t.iter().find(|p| i(p, "cellId") == me_cell))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let current = (i(&me, "spell1Id"), i(&me, "spell2Id"));
+    let (s1, s2) = arrange_spells(rec, current);
+    let state = app.state::<AppState>();
+    let names: HashMap<i64, String> = state
+        .shared
+        .lock()
+        .await
+        .statics
+        .as_ref()
+        .map(|s| s.spells.iter().map(|p| (p.id, p.name.clone())).collect())
+        .unwrap_or_default();
+    let label = format!(
+        "{} + {}",
+        names.get(&s1).cloned().unwrap_or_else(|| format!("spell {s1}")),
+        names.get(&s2).cloned().unwrap_or_else(|| format!("spell {s2}"))
+    );
+    if (s1, s2) == current {
+        return Ok(Some(label));
+    }
+    lcu.patch("/lol-champ-select/v1/session/my-selection", &serde_json::json!({"spell1Id": s1, "spell2Id": s2}))
+        .await?;
+    Ok(Some(label))
+}
+
+/// Fetches (or reuses) the OP.GG recommendation for a champion and publishes
+/// it to the UI. `live_mode` is the in-game gameMode when called mid-game.
+pub async fn ensure_rec(app: &AppHandle, champion_id: i64, position: &str, live_mode: Option<&str>) -> Option<Recommendation> {
+    let state = app.state::<AppState>();
+    if state.config().rec_source != "opgg" || champion_id == 0 {
+        return None;
+    }
+    let (alias, game_mode) = {
+        let sh = state.shared.lock().await;
+        if let Some(r) = sh.rec.as_ref() {
+            if r.champion_id == champion_id && r.position == position && r.rec.is_some() {
+                return r.rec.clone();
+            }
+        }
+        let alias = sh
+            .statics
+            .as_ref()
+            .and_then(|s| s.champions.iter().find(|c| c.id == champion_id))
+            .map(|c| c.alias.clone());
+        let mode = match live_mode {
+            Some(m) => mode_from_live(m),
+            None => opgg::game_mode_for(sh.queue_id, if sh.map_id == 0 { 11 } else { sh.map_id }),
+        };
+        (alias, mode)
+    };
+    let (Some(alias), Some(game_mode)) = (alias, game_mode) else { return None };
+    let publish = |rs: RecState| async move {
+        let state = app.state::<AppState>();
+        let mut sh = state.shared.lock().await;
+        // A slower lookup for a champion you've since swapped off of
+        // shouldn't replace the current one.
+        if sh.my_champion_id != 0 && sh.my_champion_id != rs.champion_id {
+            return;
+        }
+        sh.rec = Some(rs.clone());
+        drop(sh);
+        let _ = app.emit("recommendation", Some(rs));
+    };
+    let base = RecState { champion_id, position: position.to_string(), ..Default::default() };
+    publish(RecState { loading: true, ..base.clone() }).await;
+    match state.opgg.recommend(champion_id, &alias, position, game_mode).await {
+        Ok(rec) => {
+            publish(RecState { rec: Some(rec.clone()), ..base }).await;
+            Some(rec)
+        }
+        Err(e) => {
+            publish(RecState { error: Some(format!("{e:#}")), ..base }).await;
+            None
+        }
+    }
+}
+
+/// OP.GG game mode from the live game's gameMode.
+fn mode_from_live(mode: &str) -> Option<&'static str> {
+    match mode {
+        "CLASSIC" | "SWIFTPLAY" => Some("ranked"),
+        "ARAM" => Some("aram"),
+        "URF" | "ARURF" => Some("urf"),
+        "NEXUSBLITZ" => Some("nexus_blitz"),
+        _ => None, // Arena (CHERRY), Tutorial, etc.
+    }
 }
 
 pub async fn snapshot(app: &AppHandle) -> Snapshot {
@@ -649,6 +842,7 @@ pub async fn snapshot(app: &AppHandle) -> Snapshot {
         profiles: sh.profiles.values().cloned().collect(),
         last_import: sh.last_import.clone(),
         overlay: sh.overlay.clone(),
+        rec: sh.rec.clone(),
     }
 }
 
@@ -660,6 +854,7 @@ pub async fn run(app: AppHandle) {
         phase: String::new(),
         last_connect_try: None,
         last_import_key: None,
+        last_rec_key: None,
         requested: HashSet::new(),
         loading_game_id: None,
         overlay_shown: false,
@@ -710,6 +905,18 @@ mod tests {
         assert_eq!(v.enemies[0].champion_id, 238);
         assert!(v.enemies[0].name.is_none() && v.enemies[0].puuid.is_none());
         assert_eq!(v.bans, vec![157, 555]);
+    }
+
+    #[test]
+    fn spells_keep_flash_on_your_key() {
+        // OP.GG says Flash + Ignite; you keep Flash on F (slot 2).
+        assert_eq!(arrange_spells(&[4, 14], (12, 4)), (14, 4));
+        // You keep Flash on D.
+        assert_eq!(arrange_spells(&[4, 14], (4, 7)), (4, 14));
+        // Neither spell set yet: OP.GG's order.
+        assert_eq!(arrange_spells(&[4, 14], (6, 7)), (4, 14));
+        // Smite already on D.
+        assert_eq!(arrange_spells(&[4, 11], (11, 4)), (11, 4));
     }
 
     #[test]

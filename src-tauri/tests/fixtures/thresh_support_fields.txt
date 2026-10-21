@@ -1,0 +1,8 @@
+class LolGetChampionAnalysis: data
+class Data: core_items,boots,starter_items,fourth_items,fifth_items,summoner_spells,runes,skills,skill_masteries
+class CoreItems: ids,ids_names,play,win,pick_rate
+class Runes: id,primary_page_id,primary_page_name,primary_rune_ids,primary_rune_names,secondary_page_id,secondary_page_name,secondary_rune_ids,secondary_rune_names,stat_mod_ids,stat_mod_names,play,win,pick_rate
+class Skills: order,play,win,pick_rate
+class SkillMasteries: ids,play,win,pick_rate
+
+LolGetChampionAnalysis(Data(CoreItems([3190,3109,3050],["Locket of the Iron Solari","Knight's Vow","Zeke's Convergence"],589,331,0.13),CoreItems([3009],["Boots of Swiftness"],8103,4354,0.64),CoreItems([2003,2003],["Health Potion","Health Potion"],12621,6595,0.97),[CoreItems([3075],["Thornmail"],122,61,0.22),CoreItems([2524],["Bandlepipes"],82,47,0.15),CoreItems([3050],["Zeke's Convergence"],66,42,0.12)],[CoreItems([3222],["Mikael's Blessing"],2,2,0.29),CoreItems([3050],["Zeke's Convergence"],2,0,0.29),CoreItems([3107],["Redemption"],1,1,0.14)],CoreItems([4,14],[4,14],7167,3683,0.55),Runes(8439,8400,"Resolve",[8439,8463,8473,8242],["Aftershock","Font of Life","Bone Plating","Unflinching"],8300,"Inspiration",[8345,8347],["Biscuit Delivery","Cosmic Insight"],[5008,5008,5001],[5008,5008,5001],3925,2019,0.3),Skills(["Q","E","W","Q","Q","R","Q","E","Q","E","R","E","E","W","W"],1195,778,0.49),SkillMasteries(["Q","E","W"],1772,1148,0.72)))

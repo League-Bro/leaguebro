@@ -1,12 +1,13 @@
 //! Rune page import.
 //!
-//! The page comes from your own saved page for that champion if you have
-//! one, otherwise from the League client's built-in recommended pages
-//! (the same ones shown in the client's rune editor). League Buddy keeps a
+//! The page comes from, in order: your own saved page for that champion,
+//! OP.GG's most popular page (when there's enough data), or the League
+//! client's built-in recommended pages (the ones in the client's rune editor). League Buddy keeps a
 //! single page named "League Buddy: ..." and replaces it each time.
 
 use crate::config::{Config, RunePage};
 use crate::lcu::Lcu;
+use crate::opgg::{RuneRec, MIN_GAMES};
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
 
@@ -127,10 +128,18 @@ pub async fn import(
     champion_name: &str,
     position: &str,
     map_id: i64,
+    rec: Option<&RuneRec>,
 ) -> Result<ImportResult> {
-    let (mut page, source) = match config.rune_overrides.get(&champion_id.to_string()) {
-        Some(p) => (p.clone(), "your saved page"),
-        None => (recommended_page(lcu, champion_id, position, map_id).await?, "client recommendation"),
+    let from_rec = rec.filter(|r| r.games >= MIN_GAMES).map(|r| RunePage {
+        name: String::new(),
+        primary_style_id: r.primary_style_id,
+        sub_style_id: r.sub_style_id,
+        selected_perk_ids: r.perk_ids.clone(),
+    });
+    let (mut page, source) = match (config.rune_overrides.get(&champion_id.to_string()), from_rec) {
+        (Some(p), _) => (p.clone(), "your saved page"),
+        (None, Some(p)) => (p, "OP.GG"),
+        (None, None) => (recommended_page(lcu, champion_id, position, map_id).await?, "client recommendation"),
     };
     let label = position_label(position);
     page.name = page_name(champion_name, label);

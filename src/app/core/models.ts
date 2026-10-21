@@ -107,6 +107,50 @@ export interface NextItem {
   affordable: boolean;
 }
 
+export interface RuneRec {
+  primaryStyleId: number;
+  subStyleId: number;
+  perkIds: number[];
+  keystoneName: string;
+  primaryName: string;
+  secondaryName: string;
+  perkNames: string[];
+  games: number;
+  winRate: number;
+}
+
+export interface ItemSet {
+  ids: number[];
+  names: string[];
+  games: number;
+  winRate: number;
+}
+
+export interface Recommendation {
+  championId: number;
+  position: string;
+  gameMode: string;
+  runes: RuneRec | null;
+  spells: number[];
+  skillMax: string[];
+  skillOrder: string[];
+  starter: ItemSet | null;
+  boots: ItemSet | null;
+  core: ItemSet | null;
+  later: ItemSet[][];
+  buildOrder: number[];
+  games: number;
+  source: string;
+}
+
+export interface RecState {
+  championId: number;
+  position: string;
+  loading: boolean;
+  rec: Recommendation | null;
+  error: string | null;
+}
+
 export interface OverlayState {
   gameTime: number;
   gameMode: string;
@@ -119,6 +163,9 @@ export interface OverlayState {
   timers: Timer[];
   nextItems: NextItem[];
   hasBuild: boolean;
+  buildSource: string;
+  skillMax: string[];
+  nextSkill: string | null;
 }
 
 export interface Snapshot {
@@ -128,6 +175,7 @@ export interface Snapshot {
   profiles: Profile[];
   lastImport: ImportEvent | null;
   overlay: OverlayState | null;
+  rec: RecState | null;
 }
 
 export interface ChampInfo {
@@ -154,6 +202,7 @@ export interface StaticData {
   items: ItemInfo[];
   perks: PerkInfo[];
   styles: PerkInfo[];
+  spells: PerkInfo[];
 }
 
 export interface RunePage {
@@ -178,6 +227,10 @@ export interface Config {
   reuseCurrentPageWhenFull: boolean;
   runeOverrides: Record<string, RunePage>;
   builds: Record<string, number[]>;
+  recSource: 'opgg' | 'client';
+  setSummonerSpells: boolean;
+  useRecommendedBuilds: boolean;
+  showSkillHint: boolean;
   scoutInChampSelect: boolean;
   scoutOnLoading: boolean;
   overlayEnabled: boolean;

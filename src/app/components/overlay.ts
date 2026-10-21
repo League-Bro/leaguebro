@@ -22,6 +22,9 @@ const PREVIEW: OverlayState = {
     { id: 1058, name: 'Needlessly Large Rod', price: 1200, affordable: true },
   ],
   hasBuild: true,
+  buildSource: 'OP.GG',
+  skillMax: ['Q', 'W', 'E'],
+  nextSkill: 'Q',
 };
 
 @Component({
@@ -33,6 +36,17 @@ const PREVIEW: OverlayState = {
           <span class="clock">{{ time(o.gameTime) }}</span>
           <span class="kda">{{ o.kills }}/{{ o.deaths }}/{{ o.assists }} · {{ o.cs }} cs</span>
         </div>
+        @if (o.skillMax.length) {
+          <div class="skills">
+            <span class="cap">Max</span>
+            @for (k of o.skillMax; track $index; let last = $last) {
+              <b>{{ k }}</b>@if (!last) { <span class="sep">›</span> }
+            }
+            @if (o.nextSkill) {
+              <span class="levelup">Level up <b>{{ o.nextSkill }}</b></span>
+            }
+          </div>
+        }
         @if (o.timers.length) {
           <div class="timers">
             @for (t of o.timers; track t.key) {
@@ -45,7 +59,7 @@ const PREVIEW: OverlayState = {
         }
         @if (o.nextItems.length) {
           <div class="build">
-            <div class="cap">Next</div>
+            <div class="cap">Next{{ o.buildSource === 'OP.GG' ? ' · OP.GG build' : '' }}</div>
             @for (it of o.nextItems; track it.id) {
               <div class="item" [class.ready]="it.affordable">
                 @if (itemIcon(it.id); as url) { <img [src]="url" alt="" /> }
@@ -77,6 +91,15 @@ const PREVIEW: OverlayState = {
     .top { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
     .clock { font: 600 18px var(--mono); color: var(--gold); }
     .kda { font: 12px var(--mono); color: var(--text-dim); }
+    .skills { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; font-size: 12.5px; }
+    .skills b { color: var(--gold); }
+    .skills .sep { color: var(--text-faint); }
+    .skills .cap { margin-right: 2px; }
+    .levelup {
+      margin-left: auto; padding: 1px 7px; border-radius: 5px;
+      background: rgba(217, 173, 85, 0.22); animation: pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes pulse { 50% { background: rgba(217, 173, 85, 0.08); } }
     .timers { display: flex; flex-direction: column; gap: 3px; }
     .timer { display: flex; justify-content: space-between; padding: 3px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.04); border-left: 2px solid var(--text-faint); }
     .timer.ally { border-left-color: var(--ally); }

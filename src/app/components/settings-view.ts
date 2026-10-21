@@ -51,6 +51,38 @@ type BoolKey = 'scoutInChampSelect' | 'scoutOnLoading' | 'overlayEnabled';
         </section>
 
         <section class="card stack">
+          <h2>Recommendations</h2>
+          <div class="seg">
+            <button [class.on]="cfg.recSource === 'opgg'" (click)="setSource('opgg')">OP.GG meta</button>
+            <button [class.on]="cfg.recSource === 'client'" (click)="setSource('client')">League client only</button>
+          </div>
+          <p class="faint small">
+            @if (cfg.recSource === 'opgg') {
+              Runes, summoner spells, skill order and items come from OP.GG's ranked stats for your champion and role. Your own saved rune pages and builds always come first.
+            } @else {
+              Runes come from the League client's built-in suggestions. No spells, skill order or item builds.
+            }
+          </p>
+          @if (cfg.recSource === 'opgg') {
+            <label class="toggle">
+              <input type="checkbox" [checked]="cfg.setSummonerSpells" (change)="setRec('setSummonerSpells', $any($event.target).checked)" />
+              <span class="track"></span>
+              <span class="label"><b>Set summoner spells</b><span>On lock-in. Flash stays on whichever key you already use.</span></span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" [checked]="cfg.useRecommendedBuilds" (change)="setRec('useRecommendedBuilds', $any($event.target).checked)" />
+              <span class="track"></span>
+              <span class="label"><b>Use OP.GG builds in the overlay</b><span>For champions you haven't saved a build for on the Builds tab.</span></span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" [checked]="cfg.showSkillHint" (change)="setRec('showSkillHint', $any($event.target).checked)" />
+              <span class="track"></span>
+              <span class="label"><b>Skill order in the overlay</b><span>Shows which ability to max and what to level when you have a point.</span></span>
+            </label>
+          }
+        </section>
+
+        <section class="card stack">
           <h2>Scouting</h2>
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.scoutInChampSelect" (change)="setBool('scoutInChampSelect', $any($event.target).checked)" />
@@ -96,6 +128,11 @@ type BoolKey = 'scoutInChampSelect' | 'scoutOnLoading' | 'overlayEnabled';
     .field > span:first-child { width: 150px; color: var(--text-dim); }
     .field input[type='range'] { flex: 1; accent-color: var(--gold); }
     .wide { flex: 1; }
+    .seg { display: flex; gap: 0; }
+    .seg button { border-radius: 0; }
+    .seg button:first-child { border-radius: 8px 0 0 8px; }
+    .seg button:last-child { border-radius: 0 8px 8px 0; border-left: none; }
+    .seg button.on { background: var(--gold-soft); border-color: var(--gold); color: var(--gold); }
     .small { font-size: 12.5px; margin: 0; }
   `,
 })
@@ -118,6 +155,12 @@ export class SettingsView {
   }
 
   setBool(key: BoolKey, v: boolean): void {
+    this.save((c) => ({ ...c, [key]: v }));
+  }
+  setSource(v: 'opgg' | 'client'): void {
+    this.save((c) => ({ ...c, recSource: v }));
+  }
+  setRec(key: 'setSummonerSpells' | 'useRecommendedBuilds' | 'showSkillHint', v: boolean): void {
     this.save((c) => ({ ...c, [key]: v }));
   }
   setNum(key: 'overlayOpacity', v: number): void {

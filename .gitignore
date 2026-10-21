@@ -46,3 +46,6 @@ Thumbs.db
 # Tauri
 /src-tauri/target
 /src-tauri/gen
+
+# OP.GG probe output
+/scripts/probe-output

@@ -175,6 +175,10 @@ impl Lcu {
         Ok(self.send(Method::PUT, path, Some(body)).await?.unwrap_or(Value::Null))
     }
 
+    pub async fn patch(&self, path: &str, body: &Value) -> Result<Value> {
+        Ok(self.send(Method::PATCH, path, Some(body)).await?.unwrap_or(Value::Null))
+    }
+
     pub async fn delete(&self, path: &str) -> Result<()> {
         self.send(Method::DELETE, path, None).await.map(|_| ())
     }

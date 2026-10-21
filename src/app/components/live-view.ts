@@ -1,11 +1,12 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { PlayerCard } from './player-card';
+import { RecCard } from './rec-card';
 import { championIcon, clock, positionLabel } from '../core/assets';
 
 @Component({
   selector: 'rl-live',
-  imports: [PlayerCard],
+  imports: [PlayerCard, RecCard],
   template: `
     @if (!rift.status().connected) {
       <div class="empty card">
@@ -31,14 +32,15 @@ import { championIcon, clock, positionLabel } from '../core/assets';
             @if (importMsg()) {
               {{ importMsg() }}
             } @else if (rift.config()?.autoImportRunes) {
-              <span class="muted">Runes import automatically when you lock in.</span>
+              <span class="muted">Runes{{ rift.config()?.setSummonerSpells && rift.config()?.recSource === 'opgg' ? ' and summoner spells' : '' }} import automatically when you lock in.</span>
             } @else {
               <span class="muted">Auto-import is off.</span>
             }
           </div>
         </div>
-        <button class="primary" [disabled]="!cs.myChampionId || busy()" (click)="importNow()">Import runes now</button>
+        <button class="primary" [disabled]="!cs.myChampionId || busy()" (click)="importNow()">Import now</button>
       </section>
+      <rl-rec-card />
 
       <h3 class="section">Your team</h3>
       <div class="stack tight">
@@ -86,6 +88,7 @@ import { championIcon, clock, positionLabel } from '../core/assets';
           }
         </section>
       }
+      <rl-rec-card />
       <div class="row head">
         <h3 class="section">{{ l.queueName || 'Game' }}</h3>
         <div class="spacer"></div>

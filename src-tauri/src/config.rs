@@ -58,6 +58,16 @@ pub struct Config {
     pub rune_overrides: HashMap<String, RunePage>,
     /// Item build order per champion id, shown as "next item" in the overlay.
     pub builds: HashMap<String, Vec<i64>>,
+    /// Where rune/spell/item/skill recommendations come from:
+    /// "opgg" (OP.GG meta stats) or "client" (League's own rune suggestions only).
+    pub rec_source: String,
+    /// Set summoner spells from the recommendation when you lock in.
+    pub set_summoner_spells: bool,
+    /// Use the recommended item build in the overlay for champions you
+    /// haven't saved a build for.
+    pub use_recommended_builds: bool,
+    /// Show the skill max order and "level up" hint in the overlay.
+    pub show_skill_hint: bool,
     pub scout_in_champ_select: bool,
     pub scout_on_loading: bool,
     pub overlay_enabled: bool,
@@ -78,6 +88,10 @@ impl Default for Config {
             reuse_current_page_when_full: false,
             rune_overrides: HashMap::new(),
             builds: HashMap::new(),
+            rec_source: "opgg".into(),
+            set_summoner_spells: true,
+            use_recommended_builds: true,
+            show_skill_hint: true,
             scout_in_champ_select: true,
             scout_on_loading: true,
             overlay_enabled: true,
@@ -122,6 +136,7 @@ mod tests {
         let c: Config = serde_json::from_str(r#"{"autoImportRunes": false}"#).unwrap();
         assert!(!c.auto_import_runes);
         assert!(c.overlay_enabled);
+        assert_eq!(c.rec_source, "opgg");
         assert_eq!(c.timers.baron_respawn, 360.0);
     }
 

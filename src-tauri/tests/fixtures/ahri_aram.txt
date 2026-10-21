@@ -1,0 +1,9 @@
+class LolGetChampionAnalysis: data
+class Data: core_items,summoner_spells,runes,skill_masteries,counters_meta
+class CoreItems: ids,ids_names,play,win,pick_rate
+class Runes: id,primary_page_id,primary_page_name,primary_rune_ids,primary_rune_names,secondary_page_id,secondary_page_name,secondary_rune_ids,secondary_rune_names,stat_mod_ids,stat_mod_names,play,win,pick_rate
+class SkillMasteries: ids,play,win,pick_rate,builds
+class Build: order,play,win,pick_rate
+class CountersMeta: message
+
+LolGetChampionAnalysis(Data(CoreItems([6655,4646,4645],["Luden's Echo","Stormsurge","Shadowflame"],250,123,0.18),CoreItems([4,32],[4,32],1235,608,0.63),Runes(8128,8100,"Domination",[8128,8126,8140,8106],["Dark Harvest","Cheap Shot","Grisly Mementos","Ultimate Hunter"],8000,"Precision",[8009,8014],["Presence of Mind","Coup de Grace"],[5008,5008,5001],[5008,5008,5001],665,340,0.34),SkillMasteries(["Q","W","E"],994,517,0.71,[Build(["Q","W","E","Q","Q","R","Q","W","Q","W","R","W","W","E","E"],695,363,0.7),Build(["Q","W","E","Q","Q","R","Q","W","Q","E","R","W","W","W","E"],24,12,0.02),Build(["Q","W","E","Q","Q","R","Q","W","Q","W","R","E","W","W","E"],20,8,0.02),Build(["Q","W","E","Q","Q","R","Q","E","Q","W","R","W","W","W","E"],20,14,0.02),Build(["Q","W","E","Q","Q","R","Q","W","Q","W","R","W","E","W","E"],16,7,0.02)]),CountersMeta("Insufficient matchup sample. See data.summary.positions[].counters[] for raw matchup data (smaller sample).")))

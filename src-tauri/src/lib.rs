@@ -1,6 +1,7 @@
 mod config;
 mod engine;
 mod lcu;
+mod opgg;
 mod live;
 mod runes;
 mod scout;
@@ -96,6 +97,7 @@ pub fn run() {
                 config: std::sync::RwLock::new(config),
                 config_path,
                 shared: Mutex::new(Shared::default()),
+                opgg: opgg::OpGg::new(env!("CARGO_PKG_VERSION")),
             });
             if let Some(overlay) = app.get_webview_window("overlay") {
                 let _ = overlay.set_ignore_cursor_events(true);
