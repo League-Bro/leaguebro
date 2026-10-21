@@ -1,7 +1,7 @@
 // Sample data used when the UI runs in a plain browser (`npm start`)
 // instead of inside the Tauri app, so the layout can be worked on
 // without League running.
-import { ChampSelectView, Config, Profile, RecState, Snapshot, StaticData } from './models';
+import { ChampSelectView, Config, ItemInfo, PatchInfo, PatchNotes, Profile, RecState, Snapshot, StaticData } from './models';
 
 const champs: [number, string][] = [
   [103, 'Ahri'], [64, 'Lee Sin'], [222, 'Jinx'], [412, 'Thresh'], [122, 'Darius'],
@@ -95,39 +95,52 @@ export function demoSnapshot(): Snapshot {
   };
 }
 
+const roles: Record<number, string[]> = {
+  103: ['mage', 'assassin'], 64: ['fighter', 'assassin'], 222: ['marksman'], 412: ['support', 'tank'],
+  122: ['fighter', 'tank'], 238: ['assassin'], 254: ['fighter', 'assassin'], 157: ['fighter', 'assassin'],
+  99: ['mage', 'support'], 145: ['marksman'], 516: ['tank', 'fighter'], 89: ['tank', 'support'],
+  555: ['support', 'assassin'], 1: ['mage', 'support'], 84: ['assassin'],
+};
+
+function demoItem(id: number, name: string, priceTotal: number, file: string, stats: string[], desc: string, categories: string[]): ItemInfo {
+  return { id, name, priceTotal, iconPath: `/lol-game-data/assets/ASSETS/Items/Icons2D/${file}`, stats, desc, categories };
+}
+
 export function demoStatic(): StaticData {
   return {
-    champions: champs.map(([id, name]) => ({ id, name, alias: name.replace(/[^A-Za-z]/g, '') })),
+    champions: champs.map(([id, name]) => ({ id, name, alias: name.replace(/[^A-Za-z]/g, ''), roles: roles[id] ?? [] })),
     items: [
-      { id: 3020, name: "Sorcerer's Shoes", priceTotal: 1100, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/3020_Mage_T2_SorcererShoes.png' },
-      { id: 6655, name: "Luden's Companion", priceTotal: 2850, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/6655_Mage_T4_LudensCompanion.png' },
-      { id: 1058, name: 'Needlessly Large Rod', priceTotal: 1200, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/1058_Mage_T1_NeedlesslyLargeRod.png' },
-      { id: 3089, name: "Rabadon's Deathcap", priceTotal: 3600, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/3089_Mage_T3_RabadonsDeathcap.png' },
-      { id: 3157, name: "Zhonya's Hourglass", priceTotal: 3250, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/3157_Mage_T3_ZhonyasHourglass.png' },
-      { id: 3118, name: 'Malignance', priceTotal: 2700, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/3118_Mage_T3_Malignance.png' },
-      { id: 4645, name: 'Shadowflame', priceTotal: 3200, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/4645_Mage_T3_Shadowflame.png' },
-      { id: 3135, name: 'Void Staff', priceTotal: 3000, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/3135_Mage_T3_VoidStaff.png' },
-      { id: 1056, name: "Doran's Ring", priceTotal: 400, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/1056_Mage_T1_DoransRing.png' },
-      { id: 2003, name: 'Health Potion', priceTotal: 50, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/2003_Class_T1_HealthPotion.png' },
+      demoItem(3020, "Sorcerer's Shoes", 1100, '3020_Mage_T2_SorcererShoes.png', ['12 Magic Penetration', '45 Move Speed'], '', ['Boots', 'MagicPenetration']),
+      demoItem(6655, "Luden's Companion", 2850, '6655_Mage_T4_LudensCompanion.png', ['100 Ability Power', '600 Mana', '10 Ability Haste'], 'Echo\nDamaging abilities fire bonus magic damage at the target and nearby enemies.', ['SpellDamage', 'Mana', 'AbilityHaste']),
+      demoItem(1058, 'Needlessly Large Rod', 1200, '1058_Mage_T1_NeedlesslyLargeRod.png', ['60 Ability Power'], '', ['SpellDamage']),
+      demoItem(3089, "Rabadon's Deathcap", 3600, '3089_Mage_T3_RabadonsDeathcap.png', ['130 Ability Power'], 'Magical Opus\nIncreases your total Ability Power.', ['SpellDamage']),
+      demoItem(3157, "Zhonya's Hourglass", 3250, '3157_Mage_T3_ZhonyasHourglass.png', ['105 Ability Power', '50 Armor'], 'Time Stop\nBecome invulnerable and untargetable for a short time, but unable to act.', ['SpellDamage', 'Armor', 'Active']),
+      demoItem(3118, 'Malignance', 2700, '3118_Mage_T3_Malignance.png', ['80 Ability Power', '600 Mana', '25 Ability Haste'], 'Scorn\nGain Ultimate Ability Haste.\nHatefog\nYour ultimate burns the ground and lowers Magic Resist of enemies inside.', ['SpellDamage', 'Mana', 'AbilityHaste']),
+      demoItem(4645, 'Shadowflame', 3200, '4645_Mage_T3_Shadowflame.png', ['110 Ability Power', '15 Magic Penetration'], 'Cinderbloom\nMagic and true damage crit against low health enemies.', ['SpellDamage', 'MagicPenetration']),
+      demoItem(3135, 'Void Staff', 3000, '3135_Mage_T3_VoidStaff.png', ['95 Ability Power', '40% Magic Penetration'], '', ['SpellDamage', 'MagicPenetration']),
+      demoItem(1056, "Doran's Ring", 400, '1056_Mage_T1_DoransRing.png', ['18 Ability Power', '90 Health'], 'Focus\nAttacks deal bonus damage to minions.\nDrain\nRestore mana over time.', ['Health', 'SpellDamage', 'ManaRegen', 'Lane']),
+      demoItem(2003, 'Health Potion', 50, '2003_Class_T1_HealthPotion.png', [], 'Click to consume: restore health over 15 seconds.', ['Consumable', 'HealthRegen', 'Active']),
     ],
     perks: [
-      [8112, 'Electrocute', 'Domination/Electrocute/Electrocute.png'],
-      [8139, 'Taste of Blood', 'Domination/TasteOfBlood/GreenTerror_TasteOfBlood.png'],
-      [8140, 'Grisly Mementos', 'Domination/GrislyMementos/GrislyMementos.png'],
-      [8106, 'Ultimate Hunter', 'Domination/UltimateHunter/UltimateHunter.png'],
-      [8210, 'Transcendence', 'Sorcery/Transcendence/Transcendence.png'],
-      [8226, 'Manaflow Band', 'Sorcery/ManaflowBand/ManaflowBand.png'],
-      [5005, 'Attack Speed', 'StatMods/StatModsAttackSpeedIcon.png'],
-      [5008, 'Adaptive Force', 'StatMods/StatModsAdaptiveForceIcon.png'],
-      [5001, 'Health Scaling', 'StatMods/StatModsHealthScalingIcon.png'],
-    ].map(([id, name, path]) => ({ id: id as number, name: name as string, iconPath: `/lol-game-data/assets/v1/perk-images/Styles/${path}` })),
+      [8112, 'Electrocute', 'Domination/Electrocute/Electrocute.png', 'Hitting a champion with 3 separate attacks or abilities in 3s deals bonus adaptive damage.', 'Combo Damage'],
+      [8139, 'Taste of Blood', 'Domination/TasteOfBlood/GreenTerror_TasteOfBlood.png', 'Heal when you damage an enemy champion.', 'Healing'],
+      [8140, 'Grisly Mementos', 'Domination/GrislyMementos/GrislyMementos.png', 'Gain Ability Haste for each champion takedown.', 'Ability Haste'],
+      [8106, 'Ultimate Hunter', 'Domination/UltimateHunter/UltimateHunter.png', 'Your ultimate gains haste for each unique champion takedown.', 'Ultimate Cooldown'],
+      [8210, 'Transcendence', 'Sorcery/Transcendence/Transcendence.png', 'Gain Ability Haste at levels 5 and 8; takedowns refund basic ability cooldowns at level 11.', 'Ability Haste'],
+      [8226, 'Manaflow Band', 'Sorcery/ManaflowBand/ManaflowBand.png', 'Hitting champions with abilities permanently increases maximum mana.', 'Mana'],
+      [5005, 'Attack Speed', 'StatMods/StatModsAttackSpeedIcon.png', '+10% Attack Speed', ''],
+      [5008, 'Adaptive Force', 'StatMods/StatModsAdaptiveForceIcon.png', '+9 Adaptive Force', ''],
+      [5001, 'Health Scaling', 'StatMods/StatModsHealthScalingIcon.png', '+10-180 Health (based on level)', ''],
+    ].map(([id, name, path, desc, tag]) => ({
+      id: id as number, name: name as string, iconPath: `/lol-game-data/assets/v1/perk-images/Styles/${path}`, desc: desc as string, tag: tag as string,
+    })),
     spells: [
-      { id: 4, name: 'Flash', iconPath: '/lol-game-data/assets/DATA/Spells/Icons2D/Summoner_flash.png' },
-      { id: 14, name: 'Ignite', iconPath: '/lol-game-data/assets/DATA/Spells/Icons2D/SummonerIgnite.png' },
+      { id: 4, name: 'Flash', iconPath: '/lol-game-data/assets/DATA/Spells/Icons2D/Summoner_flash.png', desc: 'Teleports your champion a short distance toward your cursor.', tag: '' },
+      { id: 14, name: 'Ignite', iconPath: '/lol-game-data/assets/DATA/Spells/Icons2D/SummonerIgnite.png', desc: 'Ignites a target enemy champion, dealing true damage over 5 seconds and reducing healing.', tag: '' },
     ],
     styles: [
-      { id: 8100, name: 'Domination', iconPath: '' },
-      { id: 8200, name: 'Sorcery', iconPath: '' },
+      { id: 8100, name: 'Domination', iconPath: '', desc: '', tag: '' },
+      { id: 8200, name: 'Sorcery', iconPath: '', desc: '', tag: '' },
     ],
   };
 }
@@ -180,7 +193,8 @@ export function demoChampSelect(): ChampSelectView {
 
 /** Real OP.GG answer for Ahri mid (from the probe), as League Buddy shows it. */
 export function demoRec(): RecState {
-  const set = (ids: number[], names: string[], games: number, wins: number) => ({ ids, names, games, winRate: wins / games });
+  const total = 10962;
+  const set = (ids: number[], names: string[], games: number, wins: number) => ({ ids, names, games, winRate: wins / games, pickRate: games / total });
   return {
     championId: 103,
     position: 'mid',
@@ -200,17 +214,84 @@ export function demoRec(): RecState {
         perkNames: ['Electrocute', 'Taste of Blood', 'Grisly Mementos', 'Ultimate Hunter', 'Transcendence', 'Manaflow Band'],
         games: 3764,
         winRate: 1930 / 3764,
+        pickRate: 3764 / total,
       },
       spells: [4, 14],
+      spellStats: { games: 6120, winRate: 0.512, pickRate: 0.56 },
       skillMax: ['Q', 'W', 'E'],
+      skillStats: { games: 8810, winRate: 0.509, pickRate: 0.8 },
+      damageType: 'AP',
       skillOrder: ['W', 'Q', 'E', 'Q', 'Q', 'R', 'Q', 'W', 'Q', 'W', 'R', 'W', 'W', 'E', 'E'],
       starter: set([1056, 2003, 2003], ["Doran's Ring", 'Health Potion', 'Health Potion'], 7944, 4084),
       boots: set([3020], ["Sorcerer's Shoes"], 4455, 2271),
       core: set([3118, 4645, 3157], ['Malignance', 'Shadowflame', "Zhonya's Hourglass"], 619, 328),
-      later: [],
+      later: [
+        [set([3089], ["Rabadon's Deathcap"], 212, 113), set([3135], ['Void Staff'], 140, 77)],
+        [set([3135], ['Void Staff'], 98, 52)],
+      ],
       buildOrder: [3118, 3020, 4645, 3157, 3089, 3135],
       games: 3764,
       source: 'OP.GG',
     },
+  };
+}
+
+const PATCH_URL = 'https://www.leagueoflegends.com/en-us/news/game-updates/league-of-legends-patch-26-21-notes';
+
+export function demoPatchList(): PatchInfo[] {
+  return [
+    { version: '26.21', title: 'League of Legends Patch 26.21 Notes', url: PATCH_URL, published: '2026-10-20T18:00:00.000Z' },
+    { version: '26.20', title: 'League of Legends Patch 26.20 Notes', url: PATCH_URL.replace('26-21', '26-20'), published: '2026-10-06T18:00:00.000Z' },
+  ];
+}
+
+/** Made-up changes in the shape the Rust side sends, for the browser preview. */
+export function demoPatch(url: string): PatchNotes {
+  const info = demoPatchList().find((p) => p.url === url) ?? demoPatchList()[0];
+  const line = (label: string, before: string, after: string, effect: 'buff' | 'nerf' | '' = '') => ({ label, before, after, text: '', effect });
+  const text = (t: string) => ({ label: '', before: '', after: '', text: t, effect: '' as const });
+  return {
+    info,
+    sections: [
+      { title: 'Patch Highlights', kind: 'other', notes: ['Demo data: in the app this page shows the real notes from leagueoflegends.com.'], entries: [] },
+      {
+        title: 'Champions', kind: 'champion', notes: [], entries: [
+          { name: 'Ahri', verdict: 'buff', context: 'Ahri has been struggling to find kills in mid lane, so her charm lasts a little longer.', groups: [
+            { title: 'E - Charm', lines: [line('Charm Duration', '1.4 - 2 seconds', '1.5 - 2.1 seconds', 'buff')] },
+          ] },
+          { name: 'Zed', verdict: 'nerf', context: 'Zed escapes too easily after an all-in.', groups: [
+            { title: 'W - Living Shadow', lines: [line('Cooldown', '20 / 18.5 / 17 / 15.5 / 14 seconds', '22 / 20 / 18 / 16 / 14 seconds', 'nerf')] },
+          ] },
+          { name: 'Jinx', verdict: 'nerf', context: '', groups: [
+            { title: 'Base Stats', lines: [line('Base Attack Damage', '59', '57', 'nerf')] },
+          ] },
+          { name: 'Lee Sin', verdict: 'adjusted', context: 'Moving power from his early game into his late game.', groups: [
+            { title: 'Q - Sonic Wave', lines: [line('Base Damage', '55 / 80 / 105 / 130 / 155', '50 / 80 / 110 / 140 / 170')] },
+            { title: 'R - Dragon\'s Rage', lines: [text('Now knocks back slightly further at max rank.')] },
+          ] },
+          { name: "Kai'Sa", verdict: 'buff', context: '', groups: [
+            { title: 'Base Stats', lines: [line('Health Growth', '102', '108', 'buff')] },
+          ] },
+        ],
+      },
+      {
+        title: 'Items', kind: 'item', notes: [], entries: [
+          { name: 'Shadowflame', verdict: 'buff', context: 'A little more damage for mages who rush it.', groups: [
+            { title: '', lines: [line('Ability Power', '110', '115', 'buff'), line('Total Cost', '3200', '3100', 'buff')] },
+          ] },
+          { name: 'Void Staff', verdict: 'nerf', context: '', groups: [{ title: '', lines: [line('Magic Penetration', '40%', '35%', 'nerf')] }] },
+        ],
+      },
+      {
+        title: 'Arena', kind: 'other', notes: ['A few augment changes.'], entries: [
+          { name: 'Big Brain', verdict: 'new', context: 'Back from an earlier season.', groups: [{ title: '', lines: [text('Gain a shield that scales with Ability Power.')] }] },
+        ],
+      },
+      {
+        title: 'Bugfixes & QoL Changes', kind: 'other', notes: [], entries: [
+          { name: 'Bugfixes', verdict: '', context: '', groups: [{ title: '', lines: [text('Fixed a demo bug.'), text('Fixed another demo bug.')] }] },
+        ],
+      },
+    ],
   };
 }

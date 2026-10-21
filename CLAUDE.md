@@ -49,6 +49,7 @@ The Rust side runs one background loop (`engine.rs`, 1 s tick) that pushes state
    - Results are cached in memory for 6 h per champion+position+mode.
    - The `scripts/opgg-probe*.mjs` scripts (if present locally) call the endpoint and save raw responses to `scripts/probe-output/` (git-ignored). Use them to see the real format; Claude's cloud sandbox couldn't reach op.gg.
 4. **CommunityDragon** (`raw.communitydragon.org`) for champion, item, rune and spell icons (`assets.ts`). Client asset paths are lowercased and mapped there.
+5. **Riot patch notes** (`www.leagueoflegends.com`) for the Patch Notes tab (`patch.rs`). The site is Next.js, so `patch.rs` reads the JSON in `<script id="__NEXT_DATA__">`: the patch-notes tag page for the list, then each article's `richText.body` HTML, parsed with `scraper` into buffs, nerfs and adjustments. Only fetched when the Patch Notes tab is opened. Both are saved to disk (`%LOCALAPPDATA%\dev.dom.leaguebuddy\patch-notes`): a patch's notes are downloaded once and never again; the list is re-checked only when the next patch's notes are due (the day before that patch in `PATCH_SCHEDULE`, Riot's published dates; newest notes + 14 days once the table runs out), then at most every 6 h until they appear. **Add each new year's dates to `PATCH_SCHEDULE`** from https://support.riotgames.com/league-of-legends/gameplay/patch-schedule-league-of-legends. Bump `CACHE_FORMAT` when the parser or saved shapes change. `get_patch` only fetches URLs under `https://www.leagueoflegends.com/`. Fixtures: `tests/fixtures/patch_list.html`, `patch_article.html`.
 
 **Precedence rules (keep these):**
 
@@ -78,6 +79,7 @@ src-tauri/src/
   lcu.rs        League client discovery + HTTP
   runes.rs      rune page choice/naming/import
   opgg.rs       OP.GG client, compact-format parser, Recommendation model
+  patch.rs      Riot patch notes: list + article parsing into buffs/nerfs
   scout.rs      rank + match history summaries
   live.rs       live game: timers, next items, skill hint, overlay state
   config.rs     settings (%APPDATA%\dev.dom.leaguebuddy\settings.json), serde defaults for new fields

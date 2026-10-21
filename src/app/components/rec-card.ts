@@ -1,15 +1,16 @@
-import { Component, computed, inject } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
+import { Component, computed, inject, signal } from '@angular/core';
+import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { assetUrl } from '../core/assets';
 import { ItemSet } from '../core/models';
+import { buildWhy, rolesLabel } from '../core/why';
 
 const MIN_GAMES = 20;
 
 /** OP.GG's recommendation for your current champion: runes, spells, skills, items. */
 @Component({
   selector: 'rl-rec-card',
-  imports: [DecimalPipe],
+  imports: [DecimalPipe, NgTemplateOutlet],
   template: `
     @if (rift.config()?.recSource === 'opgg' && state(); as s) {
       <section class="card rec">
@@ -21,6 +22,9 @@ const MIN_GAMES = 20;
               OP.GG · {{ r.games | number }} games
               @if (r.runes; as ru) { · {{ ru.winRate * 100 | number: '1.0-1' }}% win }
             </span>
+            <button class="ghost why-toggle" [class.on]="showWhy()" (click)="showWhy.set(!showWhy())">
+              {{ showWhy() ? 'Hide why' : 'Why these picks?' }}
+            </button>
           }
         </div>
 
@@ -104,9 +108,58 @@ const MIN_GAMES = 20;
               }
             </div>
           </div>
+
+          @if (showWhy() && why(); as w) {
+            <div class="why">
+              <div class="why-intro muted small">{{ intro() }}</div>
+              <div class="why-grid">
+                <div class="why-col">
+                  <div class="label">Runes</div>
+                  @for (x of w.runes; track x.id) {
+                    <ng-container *ngTemplateOutlet="whyRow; context: { $implicit: x, rune: true }" />
+                  }
+                  @for (n of w.runeNotes; track $index) { <p class="faint small note">{{ n }}</p> }
+
+                  @if (w.spells.length || w.skills.length) {
+                    <div class="label">Spells &amp; skills</div>
+                    @for (x of w.spells; track x.id) {
+                      <ng-container *ngTemplateOutlet="whyRow; context: { $implicit: x }" />
+                    }
+                    @for (n of w.skills; track $index) { <p class="muted small note">{{ n }}</p> }
+                  }
+                </div>
+                <div class="why-col">
+                  <div class="label">Items</div>
+                  @for (x of w.items; track $index) {
+                    <ng-container *ngTemplateOutlet="whyRow; context: { $implicit: x }" />
+                  }
+                </div>
+              </div>
+            </div>
+          }
         }
       </section>
     }
+
+    <ng-template #whyRow let-x let-rune="rune">
+      <div class="why-row">
+        @if (iconFor(x.iconPath); as url) { <img [src]="url" alt="" [class.round]="rune" /> } @else { <span class="icon-gap"></span> }
+        <div class="why-body">
+          <div class="why-title">
+            <span class="strong">{{ x.name }}</span>
+            @if (x.tag) { <span class="tag">{{ x.tag }}</span> }
+          </div>
+          @if (x.stats.length) { <div class="faint small">{{ x.stats.join(' · ') }}</div> }
+          @if (x.what) { <div class="muted small what">{{ x.what }}</div> }
+          @if (x.reasons.length) {
+            <ul class="reasons">
+              @for (reason of x.reasons; track $index) { <li>{{ reason }}</li> }
+            </ul>
+          }
+          @if (x.data) { <div class="data small">{{ x.data }}</div> }
+        </div>
+      </div>
+    </ng-template>
   `,
   styles: `
     .rec { margin: 14px 0 4px; display: flex; flex-direction: column; gap: 10px; }
@@ -140,11 +193,58 @@ const MIN_GAMES = 20;
     .arrow { margin: 0 1px; }
     .chip { font-size: 11.5px; background: var(--bg-sunken); border-radius: 5px; padding: 2px 6px; }
     @media (max-width: 960px) { .grid { grid-template-columns: 1fr 1fr; } .items { grid-column: 1 / -1; } }
+    .why-toggle { margin-left: 4px; font-size: 12.5px; color: var(--gold); }
+    .why-toggle.on { border-color: var(--line-strong); }
+    .why { border-top: 1px solid var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+    .why-intro { line-height: 1.5; }
+    .why-grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: 22px; }
+    .why-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+    .why-row { display: flex; gap: 10px; align-items: flex-start; }
+    .why-row img { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--line-strong); flex: none; margin-top: 2px; }
+    .why-row img.round { border-radius: 50%; border: none; background: var(--bg-sunken); }
+    .icon-gap { width: 30px; flex: none; }
+    .why-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    .why-title { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .tag {
+      font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-dim); background: var(--bg-sunken); border-radius: 4px; padding: 1px 6px;
+    }
+    .what { line-height: 1.4; }
+    .reasons { margin: 2px 0 0; padding-left: 16px; font-size: 12.5px; line-height: 1.45; }
+    .reasons li::marker { color: var(--gold); }
+    .data { color: var(--gold); opacity: 0.9; }
+    .note { line-height: 1.45; }
+    @media (max-width: 960px) { .why-grid { grid-template-columns: 1fr; } }
   `,
 })
 export class RecCard {
   protected readonly rift = inject(RiftService);
   protected readonly minGames = MIN_GAMES;
+  protected readonly showWhy = signal(false);
+
+  protected readonly why = computed(() => {
+    const r = this.state()?.rec;
+    if (!r) return null;
+    const champ = this.rift.statics()?.champions.find((c) => c.id === r.championId);
+    return buildWhy(r, champ, this.rift.itemById(), this.rift.perkById(), this.rift.styleById(), this.rift.spellById());
+  });
+
+  /** "Ahri is a mage / assassin who deals magic damage. Each pick below…" */
+  protected readonly intro = computed(() => {
+    const s = this.state();
+    if (!s?.rec) return '';
+    const name = this.rift.champName(s.championId);
+    const roles = rolesLabel(this.rift.statics()?.champions.find((c) => c.id === s.championId)).toLowerCase();
+    const damage = { AD: 'physical', AP: 'magic', BOTH: 'mixed physical and magic' }[s.rec.damageType];
+    let who = name;
+    if (roles) who += ` is a ${roles}`;
+    if (damage) who += `${roles ? ' who deals' : ' deals'} ${damage} damage`;
+    const lead = who === name ? '' : `${who}. `;
+    return `${lead}Each pick below shows what it does, why it suits ${name}, and how it does on OP.GG.`;
+  });
+  iconFor(path: string): string {
+    return assetUrl(path);
+  }
 
   /** Only show the recommendation for the champion currently picked. */
   protected readonly state = computed(() => {
@@ -158,8 +258,10 @@ export class RecCard {
   perkIcon(id: number): string {
     return assetUrl(this.rift.perkById().get(id)?.iconPath);
   }
+  /** Hover text: the rune's name and what it does. */
   perkName(id: number): string {
-    return this.rift.perkById().get(id)?.name ?? '';
+    const p = this.rift.perkById().get(id);
+    return p ? [p.name, p.desc].filter(Boolean).join('\n') : '';
   }
   spellIcon(id: number): string {
     return assetUrl(this.rift.spellById().get(id)?.iconPath);

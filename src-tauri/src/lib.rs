@@ -3,6 +3,7 @@ mod engine;
 mod lcu;
 mod opgg;
 mod live;
+mod patch;
 mod runes;
 mod scout;
 
@@ -82,6 +83,18 @@ async fn set_overlay_locked(app: AppHandle, state: State<'_, AppState>, locked: 
     Ok(())
 }
 
+/// Recent patch notes articles on leagueoflegends.com, newest first.
+#[tauri::command]
+async fn list_patches(state: State<'_, AppState>) -> Result<Vec<patch::PatchInfo>, String> {
+    state.patches.list().await.map_err(|e| format!("{e:#}"))
+}
+
+/// One patch's changes, sorted into buffs, nerfs and adjustments.
+#[tauri::command]
+async fn get_patch(state: State<'_, AppState>, url: String) -> Result<patch::PatchNotes, String> {
+    state.patches.notes(&url).await.map_err(|e| format!("{e:#}"))
+}
+
 /// Shows the overlay outside a game so you can check its position.
 #[tauri::command]
 async fn preview_overlay(app: AppHandle, show: bool) -> Result<(), String> {
@@ -116,6 +129,10 @@ pub fn run() {
                 config_path,
                 shared: Mutex::new(Shared::default()),
                 opgg: opgg::OpGg::new(env!("CARGO_PKG_VERSION")),
+                patches: patch::PatchNotesClient::new(
+                    env!("CARGO_PKG_VERSION"),
+                    app.path().app_cache_dir().ok().map(|d| d.join("patch-notes")),
+                ),
             });
             if let Some(overlay) = app.get_webview_window("overlay") {
                 let _ = overlay.set_ignore_cursor_events(true);
@@ -140,7 +157,9 @@ pub fn run() {
             import_runes_now,
             save_current_page_for,
             preview_overlay,
-            set_overlay_locked
+            set_overlay_locked,
+            list_patches,
+            get_patch
         ])
         .run(tauri::generate_context!())
         .expect("error while running League Buddy");

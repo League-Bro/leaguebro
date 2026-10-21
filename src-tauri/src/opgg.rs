@@ -183,6 +183,8 @@ pub struct RuneRec {
     pub perk_names: Vec<String>,
     pub games: i64,
     pub win_rate: f64,
+    /// Share of the champion's games that used this page (0–1).
+    pub pick_rate: f64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Default)]
@@ -192,6 +194,17 @@ pub struct ItemSet {
     pub names: Vec<String>,
     pub games: i64,
     pub win_rate: f64,
+    /// Share of the champion's games that bought this (0–1).
+    pub pick_rate: f64,
+}
+
+/// How often a choice (skill order, spells) was picked and how it did.
+#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PickStats {
+    pub games: i64,
+    pub win_rate: f64,
+    pub pick_rate: f64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Default)]
@@ -202,8 +215,12 @@ pub struct Recommendation {
     pub game_mode: String,
     pub runes: Option<RuneRec>,
     pub spells: Vec<i64>,
+    pub spell_stats: Option<PickStats>,
     /// Ability max priority, e.g. ["Q", "W", "E"].
     pub skill_max: Vec<String>,
+    pub skill_stats: Option<PickStats>,
+    /// "AD", "AP" or "BOTH" (empty when OP.GG doesn't say).
+    pub damage_type: String,
     /// Ability to level at each champion level (1-based index = level).
     pub skill_order: Vec<String>,
     pub starter: Option<ItemSet>,
@@ -239,12 +256,20 @@ fn win_rate(v: &Value) -> f64 {
     }
 }
 
+fn pick_rate(v: &Value) -> f64 {
+    v.get("pick_rate").and_then(Value::as_f64).unwrap_or(0.0)
+}
+fn pick_stats(v: &Value) -> Option<PickStats> {
+    let games = n(v, "play");
+    (games > 0).then(|| PickStats { games, win_rate: win_rate(v), pick_rate: pick_rate(v) })
+}
+
 fn item_set(v: &Value) -> Option<ItemSet> {
     let ids = ids(v, "ids");
     if ids.is_empty() {
         return None;
     }
-    Some(ItemSet { names: strs(v, "ids_names"), games: n(v, "play"), win_rate: win_rate(v), ids })
+    Some(ItemSet { names: strs(v, "ids_names"), games: n(v, "play"), win_rate: win_rate(v), pick_rate: pick_rate(v), ids })
 }
 
 /// Purchase order for the overlay: first core item, boots, rest of the core,
@@ -302,12 +327,14 @@ pub fn extract(parsed: &Value, champion_id: i64, position: &str, game_mode: &str
             perk_names: names,
             games: n(r, "play"),
             win_rate: win_rate(r),
+            pick_rate: pick_rate(r),
             perk_ids: primary.into_iter().chain(secondary).chain(shards).collect(),
         })
     });
     let spells = data.get("summoner_spells").map(|s| ids(s, "ids")).unwrap_or_default();
     let masteries = data.get("skill_masteries");
     let skill_max = masteries.map(|m| strs(m, "ids")).unwrap_or_default();
+    let skill_stats = masteries.and_then(pick_stats);
     let skill_order = data
         .get("skills")
         .map(|s| strs(s, "order"))
@@ -342,7 +369,10 @@ pub fn extract(parsed: &Value, champion_id: i64, position: &str, game_mode: &str
         build_order: build_order(core.as_ref(), boots.as_ref(), &later),
         runes,
         spells,
+        spell_stats: data.get("summoner_spells").and_then(pick_stats),
         skill_max,
+        skill_stats,
+        damage_type: data.get("damage_type").and_then(Value::as_str).unwrap_or("").to_string(),
         skill_order,
         starter: set("starter_items"),
         boots,
@@ -391,6 +421,7 @@ pub fn game_mode_for(queue_id: i64, map_id: i64) -> Option<&'static str> {
 // ---------- MCP client ----------
 
 const FIELDS: &[&str] = &[
+    "data.damage_type",
     "data.runes",
     "data.summoner_spells",
     "data.skills",
@@ -579,6 +610,9 @@ mod tests {
         // the 6th-item options have under 10 games each, so they're skipped.
         assert_eq!(r.build_order, vec![3118, 3020, 4645, 3157, 3089, 3135]);
         assert!(r.games > 1000);
+        assert_eq!(r.damage_type, "AP");
+        assert!(r.core.as_ref().unwrap().pick_rate > 0.0);
+        assert!(r.skill_stats.as_ref().is_some_and(|s| s.games > 0 && s.pick_rate > 0.0));
     }
 
     #[test]

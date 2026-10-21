@@ -8,6 +8,8 @@ import {
   ImportEvent,
   LoadingView,
   OverlayState,
+  PatchInfo,
+  PatchNotes,
   Profile,
   RecState,
   RunePage,
@@ -15,7 +17,7 @@ import {
   StaticData,
   Status,
 } from './models';
-import { demoChampSelect, demoConfig, demoSnapshot, demoStatic } from './demo';
+import { demoChampSelect, demoConfig, demoPatch, demoPatchList, demoSnapshot, demoStatic } from './demo';
 
 export function inTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -136,5 +138,15 @@ export class RiftService {
   async setOverlayLocked(locked: boolean): Promise<void> {
     this.overlayLocked.set(locked);
     if (!this.demo) await invoke('set_overlay_locked', { locked });
+  }
+
+  listPatches(): Promise<PatchInfo[]> {
+    if (this.demo) return Promise.resolve(demoPatchList());
+    return invoke<PatchInfo[]>('list_patches');
+  }
+
+  getPatch(url: string): Promise<PatchNotes> {
+    if (this.demo) return Promise.resolve(demoPatch(url));
+    return invoke<PatchNotes>('get_patch', { url });
   }
 }

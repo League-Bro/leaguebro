@@ -5,8 +5,9 @@ import { LiveView } from './live-view';
 import { RunesView } from './runes-view';
 import { BuildsView } from './builds-view';
 import { SettingsView } from './settings-view';
+import { PatchView } from './patch-view';
 
-type Tab = 'live' | 'runes' | 'builds' | 'settings';
+type Tab = 'live' | 'runes' | 'builds' | 'patch' | 'settings';
 
 const PHASE_LABELS: Record<string, string> = {
   None: 'In client',
@@ -24,7 +25,7 @@ const PHASE_LABELS: Record<string, string> = {
 
 @Component({
   selector: 'rl-shell',
-  imports: [LiveView, RunesView, BuildsView, SettingsView],
+  imports: [LiveView, RunesView, BuildsView, PatchView, SettingsView],
   template: `
     <header>
       <div class="brand">
@@ -77,6 +78,7 @@ const PHASE_LABELS: Record<string, string> = {
         @case ('live') { <rl-live /> }
         @case ('runes') { <rl-runes /> }
         @case ('builds') { <rl-builds /> }
+        @case ('patch') { <rl-patch /> }
         @case ('settings') { <rl-settings /> }
       }
     </main>
@@ -123,6 +125,7 @@ export class Shell implements OnInit {
     { id: 'live', label: 'Live' },
     { id: 'runes', label: 'Runes' },
     { id: 'builds', label: 'Builds' },
+    { id: 'patch', label: 'Patch Notes' },
     { id: 'settings', label: 'Settings' },
   ];
   ngOnInit(): void {

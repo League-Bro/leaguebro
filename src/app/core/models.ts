@@ -117,6 +117,8 @@ export interface RuneRec {
   perkNames: string[];
   games: number;
   winRate: number;
+  /** Share of the champion's games that used this page (0–1). */
+  pickRate: number;
 }
 
 export interface ItemSet {
@@ -124,6 +126,14 @@ export interface ItemSet {
   names: string[];
   games: number;
   winRate: number;
+  /** Share of the champion's games that bought this (0–1). */
+  pickRate: number;
+}
+
+export interface PickStats {
+  games: number;
+  winRate: number;
+  pickRate: number;
 }
 
 export interface Recommendation {
@@ -132,7 +142,11 @@ export interface Recommendation {
   gameMode: string;
   runes: RuneRec | null;
   spells: number[];
+  spellStats: PickStats | null;
   skillMax: string[];
+  skillStats: PickStats | null;
+  /** "AD", "AP" or "BOTH"; empty when OP.GG doesn't say. */
+  damageType: string;
   skillOrder: string[];
   starter: ItemSet | null;
   boots: ItemSet | null;
@@ -182,6 +196,8 @@ export interface ChampInfo {
   id: number;
   name: string;
   alias: string;
+  /** Client roles, e.g. ["mage", "assassin"]. */
+  roles: string[];
 }
 
 export interface ItemInfo {
@@ -189,12 +205,22 @@ export interface ItemInfo {
   name: string;
   priceTotal: number;
   iconPath: string;
+  /** Stat lines, e.g. ["100 Ability Power", "600 Mana"]. */
+  stats: string[];
+  /** Passive/active text, one line per paragraph. */
+  desc: string;
+  /** Client shop categories, e.g. ["SpellDamage", "Mana"]. */
+  categories: string[];
 }
 
 export interface PerkInfo {
   id: number;
   name: string;
   iconPath: string;
+  /** One-line summary (runes: shortDesc, spells: description). */
+  desc: string;
+  /** The client's short label for a rune, e.g. "Combo Damage". */
+  tag: string;
 }
 
 export interface StaticData {
@@ -203,6 +229,50 @@ export interface StaticData {
   perks: PerkInfo[];
   styles: PerkInfo[];
   spells: PerkInfo[];
+}
+
+// Patch notes (see src-tauri/src/patch.rs).
+
+export interface PatchInfo {
+  version: string;
+  title: string;
+  url: string;
+  published: string;
+}
+
+export type PatchEffect = 'buff' | 'nerf' | '';
+export type PatchVerdict = 'buff' | 'nerf' | 'adjusted' | 'new' | 'removed' | '';
+
+export interface ChangeLine {
+  label: string;
+  before: string;
+  after: string;
+  text: string;
+  effect: PatchEffect;
+}
+
+export interface ChangeGroup {
+  title: string;
+  lines: ChangeLine[];
+}
+
+export interface PatchEntry {
+  name: string;
+  context: string;
+  verdict: PatchVerdict;
+  groups: ChangeGroup[];
+}
+
+export interface PatchSection {
+  title: string;
+  kind: 'champion' | 'item' | 'rune' | 'other';
+  notes: string[];
+  entries: PatchEntry[];
+}
+
+export interface PatchNotes {
+  info: PatchInfo;
+  sections: PatchSection[];
 }
 
 export interface RunePage {

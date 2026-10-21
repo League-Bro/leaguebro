@@ -24,6 +24,8 @@ pub struct ChampInfo {
     pub id: i64,
     pub name: String,
     pub alias: String,
+    /// Client roles, e.g. ["mage", "assassin"].
+    pub roles: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -33,6 +35,12 @@ pub struct ItemInfo {
     pub name: String,
     pub price_total: i64,
     pub icon_path: String,
+    /// Stat lines from the tooltip, e.g. ["100 Ability Power", "600 Mana"].
+    pub stats: Vec<String>,
+    /// Passive/active text from the tooltip as plain text.
+    pub desc: String,
+    /// Client shop categories, e.g. ["SpellDamage", "Mana"].
+    pub categories: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -41,6 +49,10 @@ pub struct PerkInfo {
     pub id: i64,
     pub name: String,
     pub icon_path: String,
+    /// One-line plain-text summary (runes: shortDesc, spells: description).
+    pub desc: String,
+    /// The client's short label for a rune, e.g. "Combo Damage".
+    pub tag: String,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -156,6 +168,7 @@ pub struct AppState {
     pub config_path: PathBuf,
     pub shared: Mutex<Shared>,
     pub opgg: OpGg,
+    pub patches: crate::patch::PatchNotesClient,
 }
 
 impl AppState {
@@ -311,7 +324,12 @@ async fn load_statics(lcu: &Lcu) -> anyhow::Result<StaticData> {
     let mut champions: Vec<ChampInfo> = arr(&champs)
         .iter()
         .filter(|c| i(c, "id") > 0)
-        .map(|c| ChampInfo { id: i(c, "id"), name: st(c, "name").into(), alias: st(c, "alias").into() })
+        .map(|c| ChampInfo {
+            id: i(c, "id"),
+            name: st(c, "name").into(),
+            alias: st(c, "alias").into(),
+            roles: string_list(c, "roles"),
+        })
         .collect();
     champions.sort_by(|a, b| a.name.cmp(&b.name));
     let mut items: Vec<ItemInfo> = arr(&items)
@@ -324,22 +342,99 @@ async fn load_statics(lcu: &Lcu) -> anyhow::Result<StaticData> {
                 && it.get("inStore").and_then(Value::as_bool).unwrap_or(true)
                 && st(it, "requiredChampion").is_empty()
         })
-        .map(|it| ItemInfo {
-            id: i(it, "id"),
-            name: st(it, "name").into(),
-            price_total: i(it, "priceTotal"),
-            icon_path: st(it, "iconPath").into(),
+        .map(|it| {
+            let (stats, desc) = item_tooltip(st(it, "description"));
+            ItemInfo {
+                id: i(it, "id"),
+                name: st(it, "name").into(),
+                price_total: i(it, "priceTotal"),
+                icon_path: st(it, "iconPath").into(),
+                stats,
+                desc,
+                categories: string_list(it, "categories"),
+            }
         })
         .collect();
     items.sort_by(|a, b| a.name.cmp(&b.name));
-    let perk = |p: &Value| PerkInfo { id: i(p, "id"), name: st(p, "name").into(), icon_path: st(p, "iconPath").into() };
+    let perk = |p: &Value, desc_key: &str| PerkInfo {
+        id: i(p, "id"),
+        name: st(p, "name").into(),
+        icon_path: st(p, "iconPath").into(),
+        desc: plain_text(st(p, desc_key)),
+        tag: st(p, "recommendationDescriptor").into(),
+    };
     Ok(StaticData {
         champions,
         items,
-        perks: arr(&perks).iter().map(perk).collect(),
-        styles: styles.get("styles").map(arr).unwrap_or_default().iter().map(perk).collect(),
-        spells: arr(&spells).iter().map(perk).collect(),
+        perks: arr(&perks).iter().map(|p| perk(p, "shortDesc")).collect(),
+        styles: styles.get("styles").map(arr).unwrap_or_default().iter().map(|p| perk(p, "tooltip")).collect(),
+        spells: arr(&spells).iter().map(|p| perk(p, "description")).collect(),
     })
+}
+
+fn string_list(v: &Value, k: &str) -> Vec<String> {
+    v.get(k)
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+        .unwrap_or_default()
+}
+
+/// Strips the client's tooltip markup (`<br>`, `<magicDamage>`, `@vars@`…) to plain text.
+pub fn plain_text(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut in_tag = false;
+    let mut tag = String::new();
+    for c in html.chars() {
+        match c {
+            '<' => {
+                in_tag = true;
+                tag.clear();
+            }
+            '>' if in_tag => {
+                in_tag = false;
+                let name = tag.trim_start_matches('/').split_whitespace().next().unwrap_or("").to_ascii_lowercase();
+                if matches!(name.as_str(), "br" | "li" | "hr") {
+                    out.push('\n');
+                }
+            }
+            _ if in_tag => tag.push(c),
+            _ => out.push(c),
+        }
+    }
+    // Unfilled numbers like @TotalDamage@ mean nothing outside the client.
+    let mut cleaned = String::with_capacity(out.len());
+    let mut rest = out.as_str();
+    while let Some(at) = rest.find('@') {
+        cleaned.push_str(&rest[..at]);
+        let after = &rest[at + 1..];
+        match after.find('@') {
+            Some(end) if after[..end].chars().all(|c| c.is_ascii_alphanumeric() || "_.*-".contains(c)) => {
+                rest = &after[end + 1..];
+            }
+            _ => {
+                cleaned.push('@');
+                rest = after;
+            }
+        }
+    }
+    cleaned.push_str(rest);
+    let cleaned = cleaned.replace("&nbsp;", " ").replace("&amp;", "&");
+    cleaned
+        .lines()
+        .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Splits an item tooltip into its stat lines and the rest (passives/actives).
+pub fn item_tooltip(html: &str) -> (Vec<String>, String) {
+    let (stats_html, rest) = match (html.find("<stats>"), html.find("</stats>")) {
+        (Some(a), Some(b)) if b > a => (&html[a + 7..b], format!("{}{}", &html[..a], &html[b + 8..])),
+        _ => ("", html.to_string()),
+    };
+    let stats = plain_text(stats_html).lines().map(str::to_string).collect();
+    (stats, plain_text(&rest))
 }
 
 // ---------- overlay window ----------
@@ -932,5 +1027,19 @@ mod tests {
         assert!(v.allies[0].is_me);
         assert!(v.allies[1].puuid.is_none());
         assert_eq!(v.enemies[0].name.as_deref(), Some("A#1"));
+    }
+
+    #[test]
+    fn tooltips_become_plain_text() {
+        let (stats, desc) = item_tooltip(
+            "<mainText><stats><attention> 100</attention> Ability Power<br><attention> 600</attention> Mana</stats><br><br>\
+             <passive>Echo</passive><br>Damaging Abilities deal <magicDamage>bonus magic damage</magicDamage>.<br></mainText>",
+        );
+        assert_eq!(stats, vec!["100 Ability Power", "600 Mana"]);
+        assert_eq!(desc, "Echo\nDamaging Abilities deal bonus magic damage.");
+        assert_eq!(
+            plain_text("Deals <font color='#48C4B7'>@TotalDamage@</font> bonus <b>adaptive</b> damage @ 3s."),
+            "Deals bonus adaptive damage @ 3s."
+        );
     }
 }
