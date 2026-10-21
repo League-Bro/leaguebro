@@ -42,7 +42,6 @@ pub struct OverlayState {
     pub kills: i64,
     pub deaths: i64,
     pub assists: i64,
-    pub cs: i64,
     pub timers: Vec<Timer>,
     pub next_items: Vec<NextItem>,
     pub has_build: bool,
@@ -252,7 +251,6 @@ pub fn overlay_state(
         kills: score("kills"),
         deaths: score("deaths"),
         assists: score("assists"),
-        cs: score("creepScore"),
         timers: compute_timers(data, cfg),
         next_items: build.map(|b| next_items(data, b, items, 2)).unwrap_or_default(),
         has_build: build.map(|b| !b.is_empty()).unwrap_or(false),
@@ -327,7 +325,7 @@ mod tests {
         assert!(!next[0].affordable);
         assert!(next[1].affordable);
         let st = overlay_state(&sample(600.0, json!([])), &TimerConfig::default(), &Guidance::default(), &items);
-        assert_eq!((st.kills, st.cs, st.champion_name.as_str()), (3, 120, "Ahri"));
+        assert_eq!((st.kills, st.champion_name.as_str()), (3, "Ahri"));
         assert!(st.next_skill.is_none());
     }
 

@@ -1,7 +1,7 @@
 // Sample data used when the UI runs in a plain browser (`npm start`)
 // instead of inside the Tauri app, so the layout can be worked on
 // without League running.
-import { ChampSelectView, Config, Profile, RecState, Snapshot, StaticData } from './models';
+import { ChampSelectView, Config, PostGame, PostPlayer, Profile, RecState, Snapshot, StaticData } from './models';
 
 const champs: [number, string][] = [
   [103, 'Ahri'], [64, 'Lee Sin'], [222, 'Jinx'], [412, 'Thresh'], [122, 'Darius'],
@@ -76,7 +76,6 @@ export function demoSnapshot(): Snapshot {
       kills: 3,
       deaths: 1,
       assists: 5,
-      cs: 96,
       timers: [
         { key: 'dragon', label: 'Dragon', spawnAt: 860, side: 'neutral' },
         { key: 'baron', label: 'Baron', spawnAt: 1200, side: 'neutral' },
@@ -92,6 +91,47 @@ export function demoSnapshot(): Snapshot {
       nextSkill: 'Q',
     },
     rec: demoRec(),
+    postGame: null,
+  };
+}
+
+export function demoPostGame(): PostGame {
+  const p = (
+    puuid: string, name: string | null, championId: number, k: number, d: number, a: number,
+    cs: number, gold: number, damage: number, vision: number, items: number[], isMe = false,
+  ): PostPlayer => ({
+    puuid, name, isMe, championId, level: 13 + ((k + a) % 5), kills: k, deaths: d, assists: a, cs, gold, damage, vision,
+    items: [...items, 0, 0, 0, 0, 0, 0].slice(0, 6).concat(3340), spells: [4, 14],
+  });
+  return {
+    gameId: 1,
+    queueId: 420,
+    queueName: 'Ranked Solo/Duo',
+    gameMode: 'CLASSIC',
+    duration: 1834,
+    result: 'win',
+    teams: [
+      {
+        teamId: 100, win: true, isMine: true, kills: 31, gold: 61200, dragons: 3, barons: 1, towers: 9,
+        players: [
+          p('a1', 'TreeHugger#NA1', 516, 2, 4, 9, 198, 10900, 14200, 18, [3020, 1058]),
+          p('a2', 'Gank Plank#0001', 64, 7, 5, 12, 41, 11800, 17600, 39, [3135]),
+          p('me', 'Dom#NA1', 103, 11, 2, 9, 226, 14650, 32400, 22, [3118, 3020, 4645, 3157, 1058], true),
+          p('a4', 'Cannon Minion#7777', 222, 10, 3, 8, 245, 14100, 29800, 14, [3089, 3020]),
+          p('', null, 412, 1, 6, 21, 33, 9750, 6100, 71, [2003]),
+        ],
+      },
+      {
+        teamId: 200, win: false, isMine: false, kills: 20, gold: 52300, dragons: 1, barons: 0, towers: 3,
+        players: [
+          p('e1', 'Noxian Pride#EUW', 122, 6, 7, 3, 201, 11200, 21900, 12, [3020]),
+          p('e2', 'Punch First#NA1', 254, 4, 8, 8, 52, 9900, 15300, 33, []),
+          p('e3', 'Shadow Step#ZED', 238, 7, 6, 4, 188, 11000, 23700, 17, [1058]),
+          p('e4', 'Void Hunter#NA1', 145, 3, 6, 6, 214, 11400, 19800, 11, [3135]),
+          p('e5', 'Hook City#NA1', 555, 0, 4, 11, 29, 8800, 7400, 58, [2003]),
+        ],
+      },
+    ],
   };
 }
 

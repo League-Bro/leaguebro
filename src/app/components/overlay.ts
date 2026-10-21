@@ -11,7 +11,6 @@ const PREVIEW: OverlayState = {
   kills: 3,
   deaths: 1,
   assists: 5,
-  cs: 96,
   timers: [
     { key: 'dragon', label: 'Dragon', spawnAt: 860, side: 'neutral' },
     { key: 'inhib', label: 'Enemy Mid inhib', spawnAt: 1012, side: 'enemy' },
@@ -37,7 +36,7 @@ const PREVIEW: OverlayState = {
         }
         <div class="top">
           <span class="clock">{{ time(o.gameTime) }}</span>
-          <span class="kda">{{ o.kills }}/{{ o.deaths }}/{{ o.assists }} · {{ o.cs }} cs</span>
+          <span class="kda">{{ o.kills }}/{{ o.deaths }}/{{ o.assists }}</span>
           <button #lockBtn class="lock" [class.open]="!locked()" [title]="locked() ? 'Unlock to move' : 'Lock in place'"
             (click)="rift.setOverlayLocked(!locked())">
             <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">

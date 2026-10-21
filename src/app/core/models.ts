@@ -159,7 +159,6 @@ export interface OverlayState {
   kills: number;
   deaths: number;
   assists: number;
-  cs: number;
   timers: Timer[];
   nextItems: NextItem[];
   hasBuild: boolean;
@@ -176,6 +175,50 @@ export interface Snapshot {
   lastImport: ImportEvent | null;
   overlay: OverlayState | null;
   rec: RecState | null;
+  postGame: PostGame | null;
+}
+
+export interface PostPlayer {
+  puuid: string;
+  /** Riot ID, or null for bots and hidden players. */
+  name: string | null;
+  isMe: boolean;
+  championId: number;
+  level: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  cs: number;
+  gold: number;
+  damage: number;
+  vision: number;
+  /** item0..item6; 0 = empty slot, the last one is the trinket. */
+  items: number[];
+  spells: [number, number];
+}
+
+export interface PostTeam {
+  teamId: number;
+  win: boolean;
+  isMine: boolean;
+  kills: number;
+  gold: number;
+  dragons: number;
+  barons: number;
+  towers: number;
+  players: PostPlayer[];
+}
+
+export interface PostGame {
+  gameId: number;
+  queueId: number;
+  queueName: string;
+  gameMode: string;
+  /** Seconds. */
+  duration: number;
+  result: 'win' | 'loss' | 'remake';
+  /** Your team first. */
+  teams: PostTeam[];
 }
 
 export interface ChampInfo {

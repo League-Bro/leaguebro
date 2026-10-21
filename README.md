@@ -41,12 +41,16 @@ Each player card shows rank, LP, win rate, record and KDA over the last 20 games
 
 A small, click-through panel in the top-right corner shows:
 
-- the game clock, your KDA and CS
+- the game clock and your KDA
 - objective timers: dragon (switching to Elder after a soul), Baron, and destroyed inhibitors
 - which ability to max, plus a "Level up Q" hint whenever you have an unspent skill point
 - the next two items to buy, with the price turning green when you can afford it. These come from your saved build for that champion (set on the **Builds** tab), or from OP.GG's build otherwise.
 
 You can change the overlay's position, opacity and the timer values under **Settings**. Use **Preview overlay** to see where it sits.
+
+### Post-game summary
+
+When a game ends, the **Live** tab shows the result, your KDA, CS per minute, damage, gold, vision, kill share and items, plus a scoreboard for both teams. It stays until your next champ select, or until you close it.
 
 ### What it doesn't do
 

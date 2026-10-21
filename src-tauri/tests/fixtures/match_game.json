@@ -1,0 +1,62 @@
+{
+  "endOfGameResult": "GameComplete",
+  "gameCreation": 1792624318183,
+  "gameDuration": 1834,
+  "gameId": 5664600001,
+  "gameMode": "CLASSIC",
+  "gameType": "MATCHED_GAME",
+  "mapId": 11,
+  "queueId": 420,
+  "participantIdentities": [
+    { "participantId": 1, "player": { "gameName": "Me", "tagLine": "NA1", "puuid": "me-puuid" } },
+    { "participantId": 2, "player": { "gameName": "Buddy", "tagLine": "EUW", "puuid": "ally-puuid" } },
+    { "participantId": 6, "player": { "gameName": "Rival", "tagLine": "NA1", "puuid": "enemy-puuid" } },
+    { "participantId": 7, "player": { "gameName": "", "tagLine": "", "puuid": "" } }
+  ],
+  "participants": [
+    {
+      "participantId": 1, "teamId": 100, "championId": 103, "spell1Id": 4, "spell2Id": 14,
+      "stats": {
+        "win": true, "champLevel": 16, "kills": 9, "deaths": 2, "assists": 11,
+        "totalMinionsKilled": 212, "neutralMinionsKilled": 8, "goldEarned": 14250,
+        "totalDamageDealtToChampions": 31200, "visionScore": 24,
+        "item0": 6655, "item1": 3020, "item2": 4645, "item3": 0, "item4": 1058, "item5": 0, "item6": 3340,
+        "gameEndedInEarlySurrender": false
+      }
+    },
+    {
+      "participantId": 2, "teamId": 100, "championId": 64, "spell1Id": 4, "spell2Id": 11,
+      "stats": {
+        "win": true, "champLevel": 15, "kills": 6, "deaths": 4, "assists": 14,
+        "totalMinionsKilled": 38, "neutralMinionsKilled": 160, "goldEarned": 12100,
+        "totalDamageDealtToChampions": 18400, "visionScore": 41,
+        "item0": 6692, "item1": 3111, "item2": 0, "item3": 0, "item4": 0, "item5": 0, "item6": 3364,
+        "gameEndedInEarlySurrender": false
+      }
+    },
+    {
+      "participantId": 6, "teamId": 200, "championId": 157, "spell1Id": 4, "spell2Id": 12,
+      "stats": {
+        "win": false, "champLevel": 14, "kills": 4, "deaths": 7, "assists": 3,
+        "totalMinionsKilled": 190, "neutralMinionsKilled": 0, "goldEarned": 10300,
+        "totalDamageDealtToChampions": 22050, "visionScore": 15,
+        "item0": 6672, "item1": 3006, "item2": 0, "item3": 0, "item4": 0, "item5": 0, "item6": 3340,
+        "gameEndedInEarlySurrender": false
+      }
+    },
+    {
+      "participantId": 7, "teamId": 200, "championId": 412, "spell1Id": 4, "spell2Id": 3,
+      "stats": {
+        "win": false, "champLevel": 12, "kills": 1, "deaths": 8, "assists": 6,
+        "totalMinionsKilled": 30, "neutralMinionsKilled": 0, "goldEarned": 7400,
+        "totalDamageDealtToChampions": 6900, "visionScore": 62,
+        "item0": 3876, "item1": 0, "item2": 0, "item3": 0, "item4": 0, "item5": 0, "item6": 3364,
+        "gameEndedInEarlySurrender": false
+      }
+    }
+  ],
+  "teams": [
+    { "teamId": 100, "win": "Win", "dragonKills": 3, "baronKills": 1, "towerKills": 8 },
+    { "teamId": 200, "win": "Fail", "dragonKills": 1, "baronKills": 0, "towerKills": 2 }
+  ]
+}

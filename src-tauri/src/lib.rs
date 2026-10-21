@@ -3,6 +3,7 @@ mod engine;
 mod lcu;
 mod opgg;
 mod live;
+mod postgame;
 mod runes;
 mod scout;
 

@@ -5,6 +5,7 @@ use crate::config::Config;
 use crate::lcu::{self, Lcu};
 use crate::live::{self, OverlayState};
 use crate::opgg::{self, OpGg, Recommendation};
+use crate::postgame::{self, PostGame};
 use crate::runes;
 use crate::scout::{self, Profile};
 use serde::Serialize;
@@ -149,6 +150,7 @@ pub struct Shared {
     pub last_import: Option<ImportEvent>,
     pub overlay: Option<OverlayState>,
     pub overlay_preview: bool,
+    pub post_game: Option<PostGame>,
 }
 
 pub struct AppState {
@@ -186,6 +188,7 @@ pub struct Snapshot {
     pub last_import: Option<ImportEvent>,
     pub overlay: Option<OverlayState>,
     pub rec: Option<RecState>,
+    pub post_game: Option<PostGame>,
 }
 
 // ---------- parsing helpers ----------
@@ -445,7 +448,24 @@ struct Engine {
     requested: HashSet<String>,
     loading_game_id: Option<i64>,
     overlay_shown: bool,
+    pending_post_game: Option<PendingPostGame>,
     live_http: reqwest::Client,
+}
+
+/// A finished game whose match-history record hasn't been fetched yet. The
+/// client usually has it a few seconds after the game ends.
+struct PendingPostGame {
+    game_id: i64,
+    queue_name: String,
+    since: Instant,
+    last_try: Option<Instant>,
+}
+
+const POST_GAME_RETRY: Duration = Duration::from_secs(3);
+const POST_GAME_GIVE_UP: Duration = Duration::from_secs(180);
+
+fn in_game(phase: &str) -> bool {
+    matches!(phase, "GameStart" | "InProgress" | "Reconnect")
 }
 
 impl Engine {
@@ -537,25 +557,83 @@ impl Engine {
             }
             _ => {}
         }
+        self.poll_post_game(&lcu).await;
+    }
+
+    /// Clears the live game (teams, overlay, recommendation) and starts
+    /// looking for the finished game's match record.
+    async fn end_game(&mut self, lcu: &Lcu) {
+        let session_game_id = match lcu.get("/lol-gameflow/v1/session").await {
+            Ok(Some(s)) => s.pointer("/gameData/gameId").and_then(Value::as_i64).filter(|id| *id > 0),
+            _ => None,
+        };
+        let queue_name = {
+            let state = self.state();
+            let mut sh = state.shared.lock().await;
+            let name = sh.loading.take().map(|l| l.queue_name).unwrap_or_default();
+            sh.my_champion_id = 0;
+            sh.rec = None;
+            sh.post_game = None;
+            name
+        };
+        self.last_rec_key = None;
+        let _ = self.app.emit("loading", Option::<LoadingView>::None);
+        let _ = self.app.emit("recommendation", Option::<RecState>::None);
+        let _ = self.app.emit("post-game", Option::<PostGame>::None);
+        self.hide_overlay().await;
+        self.pending_post_game = self.loading_game_id.take().or(session_game_id).map(|game_id| PendingPostGame {
+            game_id,
+            queue_name,
+            since: Instant::now(),
+            last_try: None,
+        });
+    }
+
+    async fn poll_post_game(&mut self, lcu: &Lcu) {
+        let Some(p) = self.pending_post_game.as_mut() else { return };
+        if p.last_try.is_some_and(|t| t.elapsed() < POST_GAME_RETRY) {
+            return;
+        }
+        if p.since.elapsed() > POST_GAME_GIVE_UP {
+            self.pending_post_game = None;
+            return;
+        }
+        p.last_try = Some(Instant::now());
+        let path = format!("/lol-match-history/v1/games/{}", p.game_id);
+        let Ok(Some(game)) = lcu.get(&path).await else { return };
+        let Some(summary) = postgame::parse(&game, &self.my_puuid, &p.queue_name) else { return };
+        self.pending_post_game = None;
+        self.state().shared.lock().await.post_game = Some(summary.clone());
+        let _ = self.app.emit("post-game", Some(summary));
     }
 
     async fn on_phase_change(&mut self, lcu: &Lcu, phase: &str) {
         let prev = std::mem::replace(&mut self.phase, phase.to_string());
         let summoner = self.state().shared.lock().await.status.summoner.clone();
         self.set_status(true, phase, summoner, "").await;
+        if in_game(&prev) && !in_game(phase) {
+            self.end_game(lcu).await;
+        } else if prev.is_empty() && matches!(phase, "PreEndOfGame" | "EndOfGame") {
+            // Started (or reconnected) on the post-game screen.
+            self.loading_game_id = None;
+            self.end_game(lcu).await;
+        }
         if phase == "ChampSelect" {
             self.last_import_key = None;
             self.last_rec_key = None;
             self.loading_game_id = None;
+            self.pending_post_game = None;
             {
                 let state = self.state();
                 let mut sh = state.shared.lock().await;
                 sh.loading = None;
                 sh.my_champion_id = 0;
                 sh.rec = None;
+                sh.post_game = None;
             }
             let _ = self.app.emit("loading", Option::<LoadingView>::None);
             let _ = self.app.emit("recommendation", Option::<RecState>::None);
+            let _ = self.app.emit("post-game", Option::<PostGame>::None);
             // Map (11 = Summoner's Rift, 12 = ARAM) and queue pick the rune
             // lookup and OP.GG's game mode.
             if let Ok(Some(s)) = lcu.get("/lol-gameflow/v1/session").await {
@@ -757,6 +835,7 @@ impl Engine {
             sh.overlay = None;
             sh.overlay_preview
         };
+        let _ = self.app.emit("overlay", Option::<OverlayState>::None);
         if self.overlay_shown && !preview {
             set_overlay_visible(&self.app, false);
         }
@@ -915,6 +994,7 @@ pub async fn snapshot(app: &AppHandle) -> Snapshot {
         last_import: sh.last_import.clone(),
         overlay: sh.overlay.clone(),
         rec: sh.rec.clone(),
+        post_game: sh.post_game.clone(),
     }
 }
 
@@ -930,6 +1010,7 @@ pub async fn run(app: AppHandle) {
         requested: HashSet::new(),
         loading_game_id: None,
         overlay_shown: false,
+        pending_post_game: None,
         live_http: lcu::localhost_http_client(),
     };
     engine.set_status(false, "", None, "Waiting for the League client").await;
