@@ -137,4 +137,13 @@ export class RiftService {
     this.overlayLocked.set(locked);
     if (!this.demo) await invoke('set_overlay_locked', { locked });
   }
+
+  private lastButtonRect = '';
+  setOverlayButton(rect: [number, number, number, number] | null): void {
+    if (this.demo || this.windowLabel() !== 'overlay') return;
+    const key = JSON.stringify(rect);
+    if (key === this.lastButtonRect) return;
+    this.lastButtonRect = key;
+    invoke('set_overlay_button', { rect }).catch(() => (this.lastButtonRect = ''));
+  }
 }

@@ -8,7 +8,9 @@ A small, ad-free League of Legends companion for Windows. It imports your runes 
 2. Run it. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**. That warning appears because the app isn't code-signed, not because something is wrong with it.
 3. Open League Buddy, then open League. It connects on its own.
 
-In League, set **Settings → Video → Window Mode** to **Borderless** (or Windowed). Otherwise the game covers the overlay.
+In League, set **Settings → Video → Window Mode** to **Borderless** (or Windowed). In Fullscreen the game covers the overlay.
+
+To move the overlay, click the padlock in its top-right corner, drag it where you want it, then click the padlock again. The rest of the overlay ignores the mouse, so clicks go through to the game.
 
 League Buddy updates itself. When a new version is out, a banner at the top of the window offers **Update and restart**. It never installs in the middle of a game unless you click. You can also check under **Settings → About & updates**.
 

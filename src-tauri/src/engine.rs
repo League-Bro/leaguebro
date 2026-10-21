@@ -156,6 +156,18 @@ pub struct AppState {
     pub config_path: PathBuf,
     pub shared: Mutex<Shared>,
     pub opgg: OpGg,
+    pub overlay_input: std::sync::Mutex<OverlayInput>,
+}
+
+/// Mouse handling for the overlay window. While locked the window is
+/// click-through except over its lock button.
+#[derive(Debug, Default)]
+pub struct OverlayInput {
+    pub unlocked: bool,
+    /// Lock button bounds (x, y, width, height) in CSS pixels inside the overlay.
+    pub button: Option<[f64; 4]>,
+    /// What `set_ignore_cursor_events` was last set to.
+    pub passthrough: bool,
 }
 
 impl AppState {
@@ -356,16 +368,68 @@ pub fn set_overlay_visible(app: &AppHandle, visible: bool) {
                 PhysicalPosition::new(m.position().x + m.size().width as i32 - width - (24.0 * scale) as i32, m.position().y + (140.0 * scale) as i32)
             }),
         };
-        if let Some(p) = pos {
-            let _ = w.set_position(p);
+        let already_visible = w.is_visible().unwrap_or(false);
+        if !already_visible {
+            if let Some(p) = pos {
+                let _ = w.set_position(p);
+            }
+            set_overlay_locked(app, true);
         }
-        let _ = w.set_ignore_cursor_events(true);
         let _ = w.set_always_on_top(true);
         let _ = w.show();
-        let _ = app.emit("overlay-locked", true);
     } else {
         let _ = w.hide();
     }
+}
+
+pub fn set_overlay_locked(app: &AppHandle, locked: bool) {
+    let Some(w) = app.get_webview_window("overlay") else { return };
+    let state = app.state::<AppState>();
+    {
+        let mut input = state.overlay_input.lock().unwrap();
+        input.unlocked = !locked;
+        input.passthrough = locked;
+    }
+    let _ = w.set_ignore_cursor_events(locked);
+    let _ = app.emit("overlay-locked", locked);
+}
+
+/// Makes the locked overlay clickable only while the cursor is over its lock
+/// button, so the rest of it never takes clicks away from the game.
+pub async fn watch_overlay_cursor(app: AppHandle) {
+    let mut tick = tokio::time::interval(Duration::from_millis(50));
+    loop {
+        tick.tick().await;
+        let Some(w) = app.get_webview_window("overlay") else { continue };
+        if !w.is_visible().unwrap_or(false) {
+            continue;
+        }
+        let state = app.state::<AppState>();
+        let (unlocked, button, passthrough) = {
+            let i = state.overlay_input.lock().unwrap();
+            (i.unlocked, i.button, i.passthrough)
+        };
+        if unlocked {
+            continue;
+        }
+        let over = match (button, app.cursor_position(), w.inner_position(), w.scale_factor()) {
+            (Some(b), Ok(cursor), Ok(origin), Ok(scale)) => {
+                over_button(b, (cursor.x - origin.x as f64) / scale, (cursor.y - origin.y as f64) / scale)
+            }
+            _ => false,
+        };
+        if over == passthrough {
+            let mut i = state.overlay_input.lock().unwrap();
+            if !i.unlocked && i.passthrough == passthrough {
+                let _ = w.set_ignore_cursor_events(!over);
+                i.passthrough = !over;
+            }
+        }
+    }
+}
+
+fn over_button([x, y, w, h]: [f64; 4], cx: f64, cy: f64) -> bool {
+    cx >= x && cx <= x + w && cy >= y && cy <= y + h
 }
 
 // ---------- the loop ----------
@@ -676,6 +740,13 @@ impl Engine {
             set_overlay_visible(&self.app, true);
         } else if !cfg.overlay_enabled && self.overlay_shown {
             self.hide_overlay().await;
+        } else if self.overlay_shown {
+            // Some games re-claim the topmost z-order while running (e.g. on
+            // objective/kill banners); reassert it every tick so the overlay
+            // doesn't silently drop behind the game in Borderless/Windowed.
+            if let Some(w) = self.app.get_webview_window("overlay") {
+                let _ = w.set_always_on_top(true);
+            }
         }
     }
 

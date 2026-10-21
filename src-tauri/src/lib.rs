@@ -77,9 +77,15 @@ async fn set_overlay_locked(app: AppHandle, state: State<'_, AppState>, locked: 
             save_config(app.clone(), state, cfg)?;
         }
     }
-    let _ = overlay.set_ignore_cursor_events(locked);
-    let _ = app.emit("overlay-locked", locked);
+    engine::set_overlay_locked(&app, locked);
     Ok(())
+}
+
+/// The overlay reports where its lock button is so it stays clickable while
+/// the rest of the overlay is click-through.
+#[tauri::command]
+fn set_overlay_button(state: State<'_, AppState>, rect: Option<[f64; 4]>) {
+    state.overlay_input.lock().unwrap().button = rect;
 }
 
 /// Shows the overlay outside a game so you can check its position.
@@ -116,12 +122,14 @@ pub fn run() {
                 config_path,
                 shared: Mutex::new(Shared::default()),
                 opgg: opgg::OpGg::new(env!("CARGO_PKG_VERSION")),
+                overlay_input: std::sync::Mutex::new(engine::OverlayInput { passthrough: true, ..Default::default() }),
             });
             if let Some(overlay) = app.get_webview_window("overlay") {
                 let _ = overlay.set_ignore_cursor_events(true);
             }
             let handle = app.handle().clone();
-            tauri::async_runtime::spawn(engine::run(handle));
+            tauri::async_runtime::spawn(engine::run(handle.clone()));
+            tauri::async_runtime::spawn(engine::watch_overlay_cursor(handle));
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -140,7 +148,8 @@ pub fn run() {
             import_runes_now,
             save_current_page_for,
             preview_overlay,
-            set_overlay_locked
+            set_overlay_locked,
+            set_overlay_button
         ])
         .run(tauri::generate_context!())
         .expect("error while running League Buddy");

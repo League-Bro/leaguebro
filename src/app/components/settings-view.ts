@@ -16,7 +16,7 @@ type BoolKey = 'scoutInChampSelect' | 'scoutOnLoading' | 'overlayEnabled';
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.overlayEnabled" (change)="setBool('overlayEnabled', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Show the in-game overlay</b><span>Needs League's window mode set to Borderless or Windowed; exclusive fullscreen draws over it.</span></span>
+            <span class="label"><b>Show the in-game overlay</b><span>Set League's window mode to Borderless or Windowed. Fullscreen draws over it.</span></span>
           </label>
           <div class="field">
             <span>Opacity</span>
@@ -34,7 +34,7 @@ type BoolKey = 'scoutInChampSelect' | 'scoutOnLoading' | 'overlayEnabled';
             @if (rift.overlayLocked()) {
               Screen pixels from the top-left. Leave empty for the top-right corner, or unlock the overlay and drag it where you want it.
             } @else {
-              Unlocked: drag the overlay (shown below) to where you want it on screen, then lock it back in.
+              Unlocked: drag the overlay to where you want it, then lock it here or with the padlock on the overlay.
             }
           </p>
           <div class="row">
@@ -182,10 +182,10 @@ export class SettingsView {
   resetPos(): void {
     this.save((c) => ({ ...c, overlayX: null, overlayY: null }));
   }
-  toggleLock(): void {
+  async toggleLock(): Promise<void> {
     const unlocking = this.rift.overlayLocked();
-    if (unlocking && !this.rift.overlayPreview()) this.rift.previewOverlay(true);
-    this.rift.setOverlayLocked(!unlocking);
+    if (unlocking && !this.rift.overlayPreview()) await this.rift.previewOverlay(true);
+    await this.rift.setOverlayLocked(!unlocking);
   }
   setTimer(key: keyof TimerConfig, v: number): void {
     if (!Number.isFinite(v) || v < 0) return;

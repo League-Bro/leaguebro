@@ -55,6 +55,7 @@ The Rust side runs one background loop (`engine.rs`, 1 s tick) that pushes state
 - Rune page: the user's saved page for the champion (`runeOverrides`), then OP.GG (if ≥ `MIN_GAMES`), then the client's recommended page.
 - Overlay build: the user's saved build (`builds`), then OP.GG's `build_order` (if enabled).
 - Summoner spells: `arrange_spells` keeps each recommended spell in the slot where the player already has it, so Flash stays on their usual key.
+- Overlay mouse handling: locked = click-through, except over the padlock button. `watch_overlay_cursor` (engine.rs, 50 ms) hit-tests the cursor against the button rect the overlay reports (`set_overlay_button`, CSS px) and toggles `set_ignore_cursor_events`. Unlocked = whole window takes input; dragging uses `data-tauri-drag-region`, which needs `core:window:allow-start-dragging` in `capabilities/default.json` and only fires on the exact element carrying the attribute (hence the full-panel `.drag-layer`). Locking saves the position; a fresh show (game start) always re-locks.
 - League Buddy owns exactly one rune page, named `League Buddy: <Champ> <Role>` and kept to 25 characters or fewer (`page_name`). It deletes and recreates that page each time, and also cleans up old `Riftlight:` and `LB:` pages. It never touches the user's other pages unless "reuse the selected page when full" is on.
 
 ## Riot rules (hard constraints)
@@ -62,6 +63,7 @@ The Rust side runs one background loop (`engine.rs`, 1 s tick) that pushes state
 These keep users safe from bans. Don't add features that break them, even if asked; explain why instead.
 
 - Never read or write game memory, inject into the game, or automate input (no auto-accept, no scripts). The overlay is a separate always-on-top, click-through window, not something drawn inside the game.
+- **No overlay in League's Fullscreen mode.** Tested October 2026: League's Fullscreen covers the always-on-top overlay window, even with topmost reasserted every tick. Apps that show overlays there (e.g. Blitz, a Riot-approved app) most likely draw inside the game's rendering, which means injecting into the game. That's off-limits here, and Vanguard would likely flag it for an unregistered app. Tell users to use Borderless or Windowed.
 - **No enemy cooldown tracking**: no ultimate timers (banned March 2025) and no summoner spell timers. Objective timers are fine (dragon, Baron, inhibitors).
 - In **ranked champ select**, don't reveal hidden teammate or enemy names or stats (`nameVisibilityType: HIDDEN`). Everyone is shown from the loading screen on, except players using streamer mode.
 - No Brawl or League Classic match data.
