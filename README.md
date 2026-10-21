@@ -1,68 +1,110 @@
 # LeagueBuddy
 
-A small, ad-free League of Legends companion: rune auto-import, player scouting, and an in-game overlay. Built with Tauri 2 (Rust) and Angular 21.
+A small, ad-free League of Legends companion for Windows. It imports your runes automatically, shows who you're playing with and against, and adds a lightweight in-game overlay with objective timers. There are no ads, no accounts and no tracking.
+
+## Install
+
+1. Go to the **[latest release](https://github.com/doliaro/leaguebuddy/releases/latest)** and download `Riftlight_x.y.z_x64-setup.exe`.
+2. Run it. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**. That warning appears because the app isn't code-signed, not because something is wrong with it.
+3. Open Riftlight, then open League. It connects on its own.
+
+In League, set **Settings → Video → Window Mode** to **Borderless** (or Windowed). Otherwise the game covers the overlay.
+
+To uninstall, use Windows **Settings → Apps → Installed apps → Riftlight**.
 
 ## What it does
 
-- **Rune auto-import.** When you lock in a champion, Riftlight creates a page called `Riftlight: <Champion> <Role>` and selects it. It replaces that one page each game. The page comes from the League client's own recommended page for your champion and role. To use your own page for a champion instead, select it in the rune editor and save it on the **Runes** tab.
-- **Scouting.** Shows rank, recent record, KDA and most-played champions.
-  - **In champ select:** only players whose names the client shows (your party, and everyone in normals). Ranked hides the rest until loading, per Riot's rules.
-  - **On the loading screen:** all ten players, except anyone using streamer mode.
-- **Overlay.** Shows the game clock, your KDA and CS, and objective timers (dragon/Elder, Baron, inhibitors). It also shows the next two items from the build you saved for your champion on the **Builds** tab. It is click-through and sits in the top-right corner by default.
+### Rune auto-import
 
-Everything comes from two local APIs on your own PC: the League client API and Riot's Live Client Data API (port 2999). Riftlight doesn't read game memory, needs no Riot API key, and doesn't track enemy cooldowns. Champion and item icons load from CommunityDragon.
+When you lock in a champion, Riftlight creates a rune page called `Riftlight: <Champion> <Role>` and selects it. It reuses that one page every game, so your other pages are never touched.
 
-## Building it on Windows
+- **Default:** the League client's own recommended page for your champion and role.
+- **Your own page:** select it in the client's rune editor, then save it for that champion on the **Runes** tab. From then on Riftlight uses yours.
+- **Options:** turn on "Import while hovering" for blind pick. If all your page slots are full, delete one page, or turn on "Reuse the selected page when slots are full".
 
-You need, once:
+### Scouting
 
-1. **Node.js 22 LTS** (22.12 or newer): <https://nodejs.org>
-2. **Rust**: <https://rustup.rs>. Install with the defaults.
-3. **Microsoft C++ Build Tools**: <https://visualstudio.microsoft.com/visual-cpp-build-tools/>. Pick "Desktop development with C++".
-4. WebView2 already ships with Windows 10/11.
+Each player card shows rank, LP, win rate, record and KDA over the last 20 games, most-played champions, and how often they've played their current pick.
 
-Then, in this folder:
+- **Champ select:** only your party, plus everyone in normal games. Riot hides other players' names in ranked champ select, and Riftlight follows that rule.
+- **Loading screen:** all ten players, except anyone using streamer mode.
+
+### In-game overlay
+
+A small, click-through panel in the top-right corner shows:
+
+- the game clock, your KDA and CS
+- objective timers: dragon (switching to Elder after a soul), Baron, and destroyed inhibitors
+- the next two items from your saved build for that champion, with the price turning green when you can afford it. Set up builds on the **Builds** tab.
+
+You can change the overlay's position, opacity and the timer values under **Settings**. Use **Preview overlay** to see where it sits.
+
+### What it doesn't do
+
+Riftlight doesn't read game memory, use a Riot API key, or track enemy ability or summoner spell cooldowns. It uses only the League client's local API and Riot's official in-game data API (port 2999), and stays within [Riot's third-party app rules](https://developer.riotgames.com/policies/general).
+
+## Troubleshooting
+
+| Problem | Fix |
+| --- | --- |
+| "League client not found" while League is open | Under **Settings**, enter your install folder, usually `C:\Riot Games\League of Legends`. If League runs as administrator, run Riftlight as administrator too. |
+| Overlay doesn't show in game | Set League to **Borderless**, and make sure "Show the in-game overlay" is on in **Settings**. |
+| Rune import fails | Your rune page slots are full. Delete one page, or turn on "Reuse the selected page when slots are full". |
+| Objective timer is off | Riot changes spawn times between seasons. Adjust them under **Settings → Objective timers**. |
+| Champion or item icons missing | Icons load from CommunityDragon and need an internet connection. |
+
+Settings are stored in `%APPDATA%\dev.dom.riftlight\settings.json`. Delete that file to reset everything.
+
+---
+
+## Development
+
+Built with [Tauri 2](https://tauri.app) (Rust) and Angular 21.
+
+### Prerequisites (Windows)
+
+- [Node.js 22 LTS](https://nodejs.org)
+- [Rust](https://rustup.rs), installed with the defaults
+- [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/), with "Desktop development with C++" selected
+- [Git](https://git-scm.com)
+
+### Run and build
 
 ```powershell
 npm install
-npm run tauri dev      # run it with live reload
-npm run tauri build    # make an installer
+npm run tauri dev      # run the app with live reload
+npm run tauri build    # build an installer into src-tauri\target\release\bundle\nsis\
 ```
 
-The installer lands in `src-tauri\target\release\bundle\nsis\`. The first build takes a few minutes; later ones are fast.
+`npm start` runs only the UI at http://localhost:4200, with demo data and no League needed. Add `?scene=champselect` to see champ select, or `?window=overlay` to see the overlay.
 
-**No Rust on your PC?** Push this folder to GitHub and run **Release Windows installer** from the Actions tab. It builds the installer on GitHub's servers and publishes it as a Release. Share `https://github.com/<you>/<repo>/releases/latest` with friends: they download the `-setup.exe`, run it, and they're done. On the first run Windows SmartScreen says "Windows protected your PC" because the app isn't code-signed; click **More info → Run anyway**. Bump `version` in `src-tauri/tauri.conf.json` before each new release.
+Rust tests: `cd src-tauri; cargo test`
 
-**Working on the UI only?** `npm start` opens it at http://localhost:4200 with demo data. Add `?scene=champselect` to see champ select, or `?window=overlay` to see the overlay.
+### Releasing a new version
 
-## Using it
+Installers are built on GitHub's servers by `.github/workflows/build-windows.yml`, so releasing doesn't need Rust installed locally.
 
-- Set League to **Borderless** or **Windowed** (Settings → Video → Window Mode). Exclusive fullscreen draws over the overlay.
-- If Riftlight shows "League client not found" while League is open, enter your install folder under **Settings**. It is usually `C:\Riot Games\League of Legends`.
-- If rune import says your page slots are full, delete one page in the client. Riftlight only ever uses one slot. You can also turn on "Reuse the selected page when slots are full".
-- Settings are saved to `%APPDATA%\dev.dom.riftlight\settings.json`.
+1. Bump `version` in `src-tauri/tauri.conf.json` (and `package.json` to match), e.g. `0.1.0` → `0.1.1`.
+2. Commit and push:
+   ```powershell
+   git add -A
+   git commit -m "Release 0.1.1"
+   git push
+   ```
+3. Go to **Actions → Release Windows installer → Run workflow**. About 10–15 minutes later, a new release appears with the installer attached.
 
-## Project layout
+### Project layout
 
 ```
-src/                       Angular UI (main window + overlay, same bundle)
+src/                       Angular UI (main window and overlay share one bundle)
   app/core/                Tauri bridge (rift.service.ts), models, demo data
-  app/components/          Live, Runes, Builds, Settings, Overlay screens
+  app/components/          Live, Runes, Builds, Settings and Overlay screens
 src-tauri/src/
-  lcu.rs                   finds the League client and talks to it
-  engine.rs                background loop: game phase, champ select, loading, overlay
+  lcu.rs                   finds the League client and talks to its local API
+  engine.rs                background loop: game phase, champ select, loading screen, overlay
   runes.rs                 rune page selection and import
-  scout.rs                 rank + match history lookups
+  scout.rs                 rank and match history lookups
   live.rs                  in-game data, objective timers, next-item reminder
   config.rs                settings file
+.github/workflows/         Windows installer release workflow
 ```
-
-Rust unit tests: `cd src-tauri && cargo test`.
-
-## Things to check on first run
-
-These parts were written against Riot's published API schema but couldn't be tested against a live client:
-
-- Rune recommendation lookup for ARAM/blind pick (no assigned role). The code tries several position values.
-- Inhibitor lane labels in the overlay (`Barracks_T1_L1` read as Top, `C` as Mid, `R` as Bot).
-- Objective timings. These change between seasons, so all of them can be edited under Settings.
