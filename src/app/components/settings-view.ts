@@ -1,5 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { RiftService } from '../core/rift.service';
+import { UpdateService } from '../core/update.service';
 import { Config, TimerConfig } from '../core/models';
 import { clock } from '../core/assets';
 
@@ -71,6 +72,19 @@ type BoolKey = 'scoutInChampSelect' | 'scoutOnLoading' | 'overlayEnabled';
               (change)="setInstall($any($event.target).value)" />
           </div>
         </section>
+        <section class="card stack">
+          <h2>About &amp; updates</h2>
+          <p class="muted small">
+            @if (updates.currentVersion()) { League Buddy {{ updates.currentVersion() }} } @else { League Buddy (dev build) }
+          </p>
+          <p class="faint small">League Buddy checks for updates when it starts and every few hours, then asks before installing.</p>
+          <div class="row">
+            <button [disabled]="updates.checking() || !updates.currentVersion()" (click)="updates.check(true)">
+              {{ updates.checking() ? 'Checking…' : 'Check for updates' }}
+            </button>
+            @if (updates.lastResult()) { <span class="faint small">{{ updates.lastResult() }}</span> }
+          </div>
+        </section>
       </div>
       @if (error()) { <p class="loss">{{ error() }}</p> }
     }
@@ -87,6 +101,7 @@ type BoolKey = 'scoutInChampSelect' | 'scoutOnLoading' | 'overlayEnabled';
 })
 export class SettingsView {
   protected readonly rift = inject(RiftService);
+  protected readonly updates = inject(UpdateService);
   protected readonly error = signal('');
   protected time = clock;
   protected readonly timerFields: { key: keyof TimerConfig; label: string }[] = [

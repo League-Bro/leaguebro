@@ -10,6 +10,8 @@ A small, ad-free League of Legends companion for Windows. It imports your runes 
 
 In League, set **Settings → Video → Window Mode** to **Borderless** (or Windowed). Otherwise the game covers the overlay.
 
+League Buddy updates itself. When a new version is out, a banner at the top of the window offers **Update and restart**. It never installs in the middle of a game unless you click. You can also check under **Settings → About & updates**.
+
 To uninstall, use Windows **Settings → Apps → Installed apps → League Buddy**.
 
 ## What it does
@@ -91,7 +93,22 @@ Installers are built on GitHub's servers by `.github/workflows/build-windows.yml
    git commit -m "Release 0.1.1"
    git push
    ```
-3. Go to **Actions → Release Windows installer → Run workflow**. About 10–15 minutes later, a new release appears with the installer attached.
+3. Go to **Actions → Release Windows installer → Run workflow**. About 10–15 minutes later, a new release appears with the installer attached. Everyone who has League Buddy installed gets the update banner the next time it checks.
+
+### Auto-updates
+
+Installed copies check `releases/latest/download/latest.json` on startup and every 6 hours. Every update is signed, and the app only installs updates signed with the project's private key. The matching public key is in `src-tauri/tauri.conf.json` under `plugins.updater.pubkey`.
+
+The release workflow needs two repository secrets (**Settings → Secrets and variables → Actions**):
+
+| Secret | Value |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | the full contents of the private key file |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | its password |
+
+Keep a backup of the key and password somewhere safe, like a password manager. If you lose them, installed copies can't verify new updates, and everyone has to reinstall manually once you set up a new key.
+
+Dev builds (`npm run tauri dev`) never update themselves.
 
 ### Project layout
 

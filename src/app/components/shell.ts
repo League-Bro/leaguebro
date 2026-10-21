@@ -1,5 +1,6 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RiftService } from '../core/rift.service';
+import { UpdateService } from '../core/update.service';
 import { LiveView } from './live-view';
 import { RunesView } from './runes-view';
 import { BuildsView } from './builds-view';
@@ -47,6 +48,30 @@ const PHASE_LABELS: Record<string, string> = {
     @if (rift.demo) {
       <div class="demo-bar">Demo data: this is the browser preview. Run it with <code>npm run tauri dev</code> to connect to League.</div>
     }
+    @switch (updates.state().kind) {
+      @case ('available') {
+        <div class="update-bar">
+          <span>League Buddy {{ $any(updates.state()).version }} is available.</span>
+          <button class="primary" (click)="updates.install()">Update and restart</button>
+          <button class="ghost" (click)="updates.dismiss()">Later</button>
+        </div>
+      }
+      @case ('downloading') {
+        <div class="update-bar">
+          Downloading {{ $any(updates.state()).version }}…
+          @if ($any(updates.state()).percent !== null) { {{ $any(updates.state()).percent }}% }
+        </div>
+      }
+      @case ('installing') {
+        <div class="update-bar">Installing {{ $any(updates.state()).version }}. League Buddy will restart in a moment.</div>
+      }
+      @case ('error') {
+        <div class="update-bar bad">
+          <span>Update failed: {{ $any(updates.state()).message }}</span>
+          <button class="ghost" (click)="updates.dismiss()">Dismiss</button>
+        </div>
+      }
+    }
     <main>
       @switch (tab()) {
         @case ('live') { <rl-live /> }
@@ -79,11 +104,20 @@ const PHASE_LABELS: Record<string, string> = {
     .status .who { color: var(--text); padding-left: 10px; border-left: 1px solid var(--line-strong); }
     .demo-bar { background: var(--gold-soft); color: var(--gold); font-size: 12.5px; padding: 6px 20px; }
     .demo-bar code { font-family: var(--mono); }
+    .update-bar {
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 20px; font-size: 13px;
+      background: var(--gold-soft); color: var(--text);
+      border-bottom: 1px solid var(--line);
+    }
+    .update-bar span:first-child { flex: 1; }
+    .update-bar.bad { background: rgba(224, 100, 108, 0.14); }
     main { flex: 1; overflow: auto; padding: 20px; }
   `,
 })
-export class Shell {
+export class Shell implements OnInit {
   protected readonly rift = inject(RiftService);
+  protected readonly updates = inject(UpdateService);
   protected readonly tab = signal<Tab>('live');
   protected readonly tabs: { id: Tab; label: string }[] = [
     { id: 'live', label: 'Live' },
@@ -91,6 +125,10 @@ export class Shell {
     { id: 'builds', label: 'Builds' },
     { id: 'settings', label: 'Settings' },
   ];
+  ngOnInit(): void {
+    this.updates.start();
+  }
+
   protected readonly statusText = computed(() => {
     const s = this.rift.status();
     if (!s.connected) return 'League client not found';
