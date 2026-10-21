@@ -1,4 +1,4 @@
-# Riftlight
+# LeagueBuddy
 
 A small, ad-free League of Legends companion: rune auto-import, player scouting, and an in-game overlay. Built with Tauri 2 (Rust) and Angular 21.
 
