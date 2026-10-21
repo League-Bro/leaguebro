@@ -1,0 +1,152 @@
+// Sample data used when the UI runs in a plain browser (`npm start`)
+// instead of inside the Tauri app, so the layout can be worked on
+// without League running.
+import { ChampSelectView, Config, Profile, Snapshot, StaticData } from './models';
+
+const champs: [number, string][] = [
+  [103, 'Ahri'], [64, 'Lee Sin'], [222, 'Jinx'], [412, 'Thresh'], [122, 'Darius'],
+  [238, 'Zed'], [254, 'Vi'], [157, 'Yasuo'], [99, 'Lux'], [145, "Kai'Sa"],
+  [516, 'Ornn'], [89, 'Leona'], [555, 'Pyke'], [1, 'Annie'], [84, 'Akali'],
+];
+
+function profile(puuid: string, tier: string, div: string, lp: number, w: number, l: number, main: number[]): Profile {
+  const games = Array.from({ length: 10 }, (_, i) => ({
+    championId: main[i % main.length],
+    win: (i * 7 + lp) % 3 !== 0,
+    kills: 3 + ((i * 5) % 9),
+    deaths: 2 + ((i * 3) % 6),
+    assists: 4 + ((i * 7) % 10),
+    queueId: 420,
+    created: Date.now() - i * 3_600_000,
+  }));
+  const wins = games.filter((g) => g.win).length;
+  return {
+    puuid,
+    solo: tier ? { tier, division: div, lp, wins: w, losses: l } : null,
+    flex: null,
+    recentGames: games.length,
+    recentWins: wins,
+    avgKills: games.reduce((a, g) => a + g.kills, 0) / games.length,
+    avgDeaths: games.reduce((a, g) => a + g.deaths, 0) / games.length,
+    avgAssists: games.reduce((a, g) => a + g.assists, 0) / games.length,
+    topChamps: main.slice(0, 3).map((c, i) => ({ championId: c, games: 6 - i * 2, wins: 4 - i })),
+    lastGames: games,
+    error: null,
+  };
+}
+
+export function demoSnapshot(): Snapshot {
+  return {
+    status: { connected: true, phase: 'InProgress', summoner: { puuid: 'me', name: 'Dom#NA1' }, message: '' },
+    champSelect: null,
+    loading: {
+      gameId: 1,
+      queueName: 'Ranked Solo/Duo',
+      allies: [
+        { puuid: 'a1', name: 'TreeHugger#NA1', championId: 516, position: 'TOP', isMe: false },
+        { puuid: 'a2', name: 'Gank Plank#0001', championId: 64, position: 'JUNGLE', isMe: false },
+        { puuid: 'me', name: 'Dom#NA1', championId: 103, position: 'MIDDLE', isMe: true },
+        { puuid: 'a4', name: 'Cannon Minion#7777', championId: 222, position: 'BOTTOM', isMe: false },
+        { puuid: null, name: null, championId: 412, position: 'UTILITY', isMe: false },
+      ],
+      enemies: [
+        { puuid: 'e1', name: 'Noxian Pride#EUW', championId: 122, position: 'TOP', isMe: false },
+        { puuid: 'e2', name: 'Punch First#NA1', championId: 254, position: 'JUNGLE', isMe: false },
+        { puuid: 'e3', name: 'Shadow Step#ZED', championId: 238, position: 'MIDDLE', isMe: false },
+        { puuid: 'e4', name: 'Void Hunter#NA1', championId: 145, position: 'BOTTOM', isMe: false },
+        { puuid: 'e5', name: 'Hook City#NA1', championId: 555, position: 'UTILITY', isMe: false },
+      ],
+    },
+    profiles: [
+      profile('a1', 'GOLD', 'I', 64, 48, 41, [516, 122]),
+      profile('a2', 'PLATINUM', 'IV', 12, 70, 66, [64, 254, 157]),
+      profile('a4', 'GOLD', 'III', 0, 22, 25, [222, 145]),
+      profile('e1', 'EMERALD', 'IV', 33, 101, 90, [122]),
+      profile('e2', 'PLATINUM', 'II', 77, 55, 47, [254, 64]),
+      profile('e3', 'GOLD', 'II', 20, 12, 9, [238, 84, 157]),
+      profile('e4', '', '', 0, 0, 0, [145, 222]),
+      profile('e5', 'SILVER', 'I', 91, 30, 37, [555, 412]),
+    ],
+    lastImport: { ok: true, championId: 103, message: 'Set "Riftlight: Ahri Mid" (client recommendation)' },
+    overlay: {
+      gameTime: 742,
+      gameMode: 'CLASSIC',
+      championName: 'Ahri',
+      gold: 1310,
+      kills: 3,
+      deaths: 1,
+      assists: 5,
+      cs: 96,
+      timers: [
+        { key: 'dragon', label: 'Dragon', spawnAt: 860, side: 'neutral' },
+        { key: 'baron', label: 'Baron', spawnAt: 1200, side: 'neutral' },
+        { key: 'inhib', label: 'Enemy Mid inhib', spawnAt: 1012, side: 'enemy' },
+      ],
+      nextItems: [
+        { id: 6655, name: "Luden's Companion", price: 2850, affordable: false },
+        { id: 1058, name: 'Needlessly Large Rod', price: 1200, affordable: true },
+      ],
+      hasBuild: true,
+    },
+  };
+}
+
+export function demoStatic(): StaticData {
+  return {
+    champions: champs.map(([id, name]) => ({ id, name, alias: name.replace(/[^A-Za-z]/g, '') })),
+    items: [
+      { id: 3020, name: "Sorcerer's Shoes", priceTotal: 1100, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/3020_Mage_T2_SorcererShoes.png' },
+      { id: 6655, name: "Luden's Companion", priceTotal: 2850, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/6655_Mage_T4_LudensCompanion.png' },
+      { id: 1058, name: 'Needlessly Large Rod', priceTotal: 1200, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/1058_Mage_T1_NeedlesslyLargeRod.png' },
+      { id: 3089, name: "Rabadon's Deathcap", priceTotal: 3600, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/3089_Mage_T3_RabadonsDeathcap.png' },
+      { id: 3157, name: "Zhonya's Hourglass", priceTotal: 3250, iconPath: '/lol-game-data/assets/ASSETS/Items/Icons2D/3157_Mage_T3_ZhonyasHourglass.png' },
+    ],
+    perks: [],
+    styles: [
+      { id: 8100, name: 'Domination', iconPath: '' },
+      { id: 8200, name: 'Sorcery', iconPath: '' },
+    ],
+  };
+}
+
+export function demoConfig(): Config {
+  return {
+    autoImportRunes: true,
+    importOnHover: false,
+    reuseCurrentPageWhenFull: false,
+    runeOverrides: {
+      '103': { name: 'Electrocute Ahri', primaryStyleId: 8100, subStyleId: 8200, selectedPerkIds: [8112, 8139, 8138, 8135, 8226, 8237, 5008, 5008, 5001] },
+    },
+    builds: { '103': [3020, 6655, 3089, 3157] },
+    scoutInChampSelect: true,
+    scoutOnLoading: true,
+    overlayEnabled: true,
+    overlayX: null,
+    overlayY: null,
+    overlayOpacity: 0.9,
+    timers: { firstDragon: 300, firstBaron: 1200, dragonRespawn: 300, elderRespawn: 360, baronRespawn: 360, inhibRespawn: 300 },
+    installDir: null,
+  };
+}
+
+export function demoChampSelect(): ChampSelectView {
+  const hidden = (cellId: number, pos: string, champ = 0) => ({
+    cellId, championId: champ, pickIntent: 0, position: pos, isMe: false, visible: false, name: null, puuid: null,
+  });
+  return {
+    queueId: 420,
+    myChampionId: 103,
+    myPosition: 'middle',
+    locked: true,
+    allies: [
+      hidden(0, 'top', 516),
+      { cellId: 1, championId: 0, pickIntent: 64, position: 'jungle', isMe: false, visible: true, name: 'Gank Plank#0001', puuid: 'a2' },
+      { cellId: 2, championId: 103, pickIntent: 0, position: 'middle', isMe: true, visible: true, name: 'Dom#NA1', puuid: 'me' },
+      hidden(3, 'bottom'),
+      hidden(4, 'utility'),
+    ],
+    enemies: [5, 6, 7, 8, 9].map((c, i) => ({ ...hidden(c, ''), championId: [122, 238, 0, 0, 0][i] })),
+    bans: [157, 555, 84, 99],
+    timerPhase: 'BAN_PICK',
+  };
+}

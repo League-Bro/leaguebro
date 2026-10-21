@@ -1,0 +1,42 @@
+# Builds the Windows installer on GitHub's servers and publishes it as a
+# GitHub Release, so nobody needs Rust or Visual Studio installed.
+#
+# To make a release: Actions tab -> "Release Windows installer" -> Run workflow.
+# The version comes from src-tauri/tauri.conf.json; bump it there for each new release.
+# The installer (.exe) is attached to the release at /releases/latest.
+name: Release Windows installer
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: Riftlight v__VERSION__
+          releaseBody: |
+            Download **Riftlight_x.y.z_x64-setup.exe** below and run it.
+            If Windows shows "Windows protected your PC", click **More info → Run anyway** (the app isn't code-signed).
+            Set League to Borderless or Windowed so the overlay shows.
+          releaseDraft: false
+          prerelease: false

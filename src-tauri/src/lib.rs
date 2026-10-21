@@ -1,0 +1,124 @@
+mod config;
+mod engine;
+mod lcu;
+mod live;
+mod runes;
+mod scout;
+
+use config::{Config, RunePage};
+use engine::{AppState, Shared, Snapshot, StaticData};
+use tauri::{AppHandle, Emitter, Manager, State};
+use tokio::sync::Mutex;
+
+#[tauri::command]
+async fn get_snapshot(app: AppHandle) -> Snapshot {
+    engine::snapshot(&app).await
+}
+
+#[tauri::command]
+async fn get_static(state: State<'_, AppState>) -> Result<Option<StaticData>, String> {
+    Ok(state.shared.lock().await.statics.clone())
+}
+
+#[tauri::command]
+fn get_config(state: State<'_, AppState>) -> Config {
+    state.config()
+}
+
+#[tauri::command]
+fn save_config(app: AppHandle, state: State<'_, AppState>, config: Config) -> Result<(), String> {
+    config.save(&state.config_path).map_err(|e| format!("Couldn't save settings: {e:#}"))?;
+    *state.config.write().unwrap() = config.clone();
+    let _ = app.emit("config", config);
+    Ok(())
+}
+
+#[tauri::command]
+async fn import_runes_now(app: AppHandle) -> Result<String, String> {
+    let (champion, position) = {
+        let state = app.state::<AppState>();
+        let sh = state.shared.lock().await;
+        let cs = sh.champ_select.as_ref().ok_or("You're not in champ select")?;
+        (cs.my_champion_id, cs.my_position.clone())
+    };
+    if champion == 0 {
+        return Err("Hover or lock a champion first".into());
+    }
+    engine::import_for(&app, champion, &position).await
+}
+
+/// Saves the rune page currently selected in the client as your own page for
+/// this champion; it is used instead of the client recommendation from then on.
+#[tauri::command]
+async fn save_current_page_for(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    champion_id: i64,
+) -> Result<RunePage, String> {
+    let lcu = state.shared.lock().await.lcu.clone().ok_or("Not connected to the League client")?;
+    let page = runes::current_page(&lcu).await.map_err(|e| format!("{e:#}"))?;
+    let mut cfg = state.config();
+    cfg.rune_overrides.insert(champion_id.to_string(), page.clone());
+    save_config(app, state, cfg)?;
+    Ok(page)
+}
+
+/// Shows the overlay outside a game so you can check its position.
+#[tauri::command]
+async fn preview_overlay(app: AppHandle, show: bool) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let in_game = {
+        let mut sh = state.shared.lock().await;
+        sh.overlay_preview = show;
+        sh.overlay.is_some()
+    };
+    if show {
+        engine::set_overlay_visible(&app, true);
+        let _ = app.emit("overlay-preview", true);
+    } else {
+        let _ = app.emit("overlay-preview", false);
+        if !in_game {
+            engine::set_overlay_visible(&app, false);
+        }
+    }
+    Ok(())
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .setup(|app| {
+            let config_path = app.path().app_config_dir()?.join("settings.json");
+            let config = Config::load(&config_path);
+            app.manage(AppState {
+                config: std::sync::RwLock::new(config),
+                config_path,
+                shared: Mutex::new(Shared::default()),
+            });
+            if let Some(overlay) = app.get_webview_window("overlay") {
+                let _ = overlay.set_ignore_cursor_events(true);
+            }
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(engine::run(handle));
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Closing the main window quits the app (the overlay is hidden, not a real window to close).
+            if window.label() == "main" {
+                if let tauri::WindowEvent::CloseRequested { .. } = event {
+                    window.app_handle().exit(0);
+                }
+            }
+        })
+        .invoke_handler(tauri::generate_handler![
+            get_snapshot,
+            get_static,
+            get_config,
+            save_config,
+            import_runes_now,
+            save_current_page_for,
+            preview_overlay
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running Riftlight");
+}
