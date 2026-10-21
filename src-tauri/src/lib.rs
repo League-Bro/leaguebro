@@ -64,6 +64,24 @@ async fn save_current_page_for(
     Ok(page)
 }
 
+/// Unlocks the overlay so it accepts mouse input and can be dragged to a new
+/// spot; locking it again saves the position and makes it click-through.
+#[tauri::command]
+async fn set_overlay_locked(app: AppHandle, state: State<'_, AppState>, locked: bool) -> Result<(), String> {
+    let Some(overlay) = app.get_webview_window("overlay") else { return Ok(()) };
+    if locked {
+        if let Ok(pos) = overlay.outer_position() {
+            let mut cfg = state.config();
+            cfg.overlay_x = Some(pos.x);
+            cfg.overlay_y = Some(pos.y);
+            save_config(app.clone(), state, cfg)?;
+        }
+    }
+    let _ = overlay.set_ignore_cursor_events(locked);
+    let _ = app.emit("overlay-locked", locked);
+    Ok(())
+}
+
 /// Shows the overlay outside a game so you can check its position.
 #[tauri::command]
 async fn preview_overlay(app: AppHandle, show: bool) -> Result<(), String> {
@@ -121,7 +139,8 @@ pub fn run() {
             save_config,
             import_runes_now,
             save_current_page_for,
-            preview_overlay
+            preview_overlay,
+            set_overlay_locked
         ])
         .run(tauri::generate_context!())
         .expect("error while running League Buddy");

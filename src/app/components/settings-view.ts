@@ -30,10 +30,19 @@ type BoolKey = 'scoutInChampSelect' | 'scoutOnLoading' | 'overlayEnabled';
             <input type="number" placeholder="auto" [value]="cfg.overlayY ?? ''" (change)="setPos('overlayY', $any($event.target).value)" />
             <button class="ghost" (click)="resetPos()">Reset</button>
           </div>
-          <p class="faint small">Screen pixels from the top-left. Leave empty for the top-right corner. The overlay ignores the mouse, so it can't be dragged.</p>
-          <div>
+          <p class="faint small">
+            @if (rift.overlayLocked()) {
+              Screen pixels from the top-left. Leave empty for the top-right corner, or unlock the overlay and drag it where you want it.
+            } @else {
+              Unlocked: drag the overlay (shown below) to where you want it on screen, then lock it back in.
+            }
+          </p>
+          <div class="row">
             <button (click)="rift.previewOverlay(!rift.overlayPreview())">
               {{ rift.overlayPreview() ? 'Hide preview' : 'Preview overlay' }}
+            </button>
+            <button [class.ghost]="rift.overlayLocked()" (click)="toggleLock()">
+              {{ rift.overlayLocked() ? 'Unlock to move' : 'Lock in place' }}
             </button>
           </div>
         </section>
@@ -172,6 +181,11 @@ export class SettingsView {
   }
   resetPos(): void {
     this.save((c) => ({ ...c, overlayX: null, overlayY: null }));
+  }
+  toggleLock(): void {
+    const unlocking = this.rift.overlayLocked();
+    if (unlocking && !this.rift.overlayPreview()) this.rift.previewOverlay(true);
+    this.rift.setOverlayLocked(!unlocking);
   }
   setTimer(key: keyof TimerConfig, v: number): void {
     if (!Number.isFinite(v) || v < 0) return;

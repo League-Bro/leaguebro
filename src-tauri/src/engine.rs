@@ -362,6 +362,7 @@ pub fn set_overlay_visible(app: &AppHandle, visible: bool) {
         let _ = w.set_ignore_cursor_events(true);
         let _ = w.set_always_on_top(true);
         let _ = w.show();
+        let _ = app.emit("overlay-locked", true);
     } else {
         let _ = w.hide();
     }

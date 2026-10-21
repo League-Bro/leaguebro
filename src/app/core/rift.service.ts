@@ -31,6 +31,7 @@ export class RiftService {
   readonly overlay = signal<OverlayState | null>(null);
   readonly rec = signal<RecState | null>(null);
   readonly overlayPreview = signal(false);
+  readonly overlayLocked = signal(true);
   readonly config = signal<Config | null>(null);
   readonly statics = signal<StaticData | null>(null);
   /** Window label: "main" or "overlay". */
@@ -76,6 +77,7 @@ export class RiftService {
       listen<OverlayState | null>('overlay', (e) => this.overlay.set(e.payload)),
       listen<RecState | null>('recommendation', (e) => this.rec.set(e.payload)),
       listen<boolean>('overlay-preview', (e) => this.overlayPreview.set(e.payload)),
+      listen<boolean>('overlay-locked', (e) => this.overlayLocked.set(e.payload)),
       listen<Config>('config', (e) => this.config.set(e.payload)),
       listen<StaticData>('static', (e) => this.statics.set(e.payload)),
     ]);
@@ -129,5 +131,10 @@ export class RiftService {
   async previewOverlay(show: boolean): Promise<void> {
     this.overlayPreview.set(show);
     if (!this.demo) await invoke('preview_overlay', { show });
+  }
+
+  async setOverlayLocked(locked: boolean): Promise<void> {
+    this.overlayLocked.set(locked);
+    if (!this.demo) await invoke('set_overlay_locked', { locked });
   }
 }

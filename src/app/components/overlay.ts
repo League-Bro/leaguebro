@@ -31,7 +31,10 @@ const PREVIEW: OverlayState = {
   selector: 'rl-overlay',
   template: `
     @if (state(); as o) {
-      <div class="panel" [style.opacity]="opacity()">
+      <div class="panel" [class.unlocked]="!locked()" [attr.data-tauri-drag-region]="locked() ? null : ''" [style.opacity]="opacity()">
+        @if (!locked()) {
+          <div class="unlock-hint" data-tauri-drag-region>Drag to move · Lock in Settings</div>
+        }
         <div class="top">
           <span class="clock">{{ time(o.gameTime) }}</span>
           <span class="kda">{{ o.kills }}/{{ o.deaths }}/{{ o.assists }} · {{ o.cs }} cs</span>
@@ -88,6 +91,12 @@ const PREVIEW: OverlayState = {
       font-size: 13px;
       text-shadow: 0 1px 2px #000;
     }
+    .panel.unlocked { border: 1px dashed var(--gold); cursor: move; }
+    .unlock-hint {
+      margin: -10px -12px 8px; padding: 4px 12px; text-align: center;
+      font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
+      background: rgba(217, 173, 85, 0.22); color: var(--gold); cursor: move;
+    }
     .top { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
     .clock { font: 600 18px var(--mono); color: var(--gold); }
     .kda { font: 12px var(--mono); color: var(--text-dim); }
@@ -122,6 +131,7 @@ export class Overlay {
   protected readonly preview = this.rift.overlayPreview;
   protected readonly state = computed(() => this.rift.overlay() ?? (this.preview() ? PREVIEW : null));
   protected readonly opacity = computed(() => this.rift.config()?.overlayOpacity ?? 0.9);
+  protected readonly locked = this.rift.overlayLocked;
   protected time = clock;
 
   itemIcon(id: number): string {
