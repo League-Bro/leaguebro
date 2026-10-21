@@ -65,7 +65,7 @@ type BoolKey = 'scoutInChampSelect' | 'scoutOnLoading' | 'overlayEnabled';
 
         <section class="card stack">
           <h2>League install folder</h2>
-          <p class="faint small">Only needed if Riftlight never connects. It normally finds the client on its own.</p>
+          <p class="faint small">Only needed if League Buddy never connects. It normally finds the client on its own.</p>
           <div class="field">
             <input type="text" class="wide" placeholder="C:\\Riot Games\\League of Legends" [value]="cfg.installDir ?? ''"
               (change)="setInstall($any($event.target).value)" />

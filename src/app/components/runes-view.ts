@@ -15,7 +15,7 @@ import { RunePage } from '../core/models';
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.autoImportRunes" (change)="set('autoImportRunes', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Import runes in champ select</b><span>Creates one page called "Riftlight: …" and replaces it each game.</span></span>
+            <span class="label"><b>Import runes in champ select</b><span>Creates one page called "League Buddy: …" and replaces it each game.</span></span>
           </label>
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.importOnHover" (change)="set('importOnHover', $any($event.target).checked)" />
@@ -25,7 +25,7 @@ import { RunePage } from '../core/models';
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.reuseCurrentPageWhenFull" (change)="set('reuseCurrentPageWhenFull', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Reuse the selected page when slots are full</b><span>Overwrites whichever editable page is selected. Leave off if you'd rather keep one slot free for Riftlight.</span></span>
+            <span class="label"><b>Reuse the selected page when slots are full</b><span>Overwrites whichever editable page is selected. Leave off if you'd rather keep one slot free for League Buddy.</span></span>
           </label>
           @if (rift.lastImport(); as li) {
             <p class="last" [class.loss]="!li.ok">
@@ -37,7 +37,7 @@ import { RunePage } from '../core/models';
         <section class="card stack">
           <h2>Where pages come from</h2>
           <p class="muted">
-            By default Riftlight uses the League client's own recommended page for your champion and role. To use your own page
+            By default League Buddy uses the League client's own recommended page for your champion and role. To use your own page
             for a champion instead, select that page in the client's rune editor, then save it here.
           </p>
           <div class="row">

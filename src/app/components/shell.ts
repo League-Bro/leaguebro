@@ -28,7 +28,7 @@ const PHASE_LABELS: Record<string, string> = {
     <header>
       <div class="brand">
         <img src="favicon.png" alt="" />
-        <span>Riftlight</span>
+        <span>League Buddy</span>
       </div>
       <nav>
         @for (t of tabs; track t.id) {

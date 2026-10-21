@@ -120,5 +120,5 @@ pub fn run() {
             preview_overlay
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Riftlight");
+        .expect("error while running League Buddy");
 }

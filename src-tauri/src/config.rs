@@ -1,5 +1,5 @@
 //! User settings, stored as JSON in the app's config folder
-//! (on Windows: %APPDATA%\dev.dom.riftlight\settings.json).
+//! (on Windows: %APPDATA%\dev.dom.leaguebuddy\settings.json).
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn round_trip() {
-        let dir = std::env::temp_dir().join(format!("riftlight-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("leaguebuddy-test-{}", std::process::id()));
         let path = dir.join("settings.json");
         let mut c = Config::default();
         c.builds.insert("103".into(), vec![3020, 6655]);

@@ -2,15 +2,36 @@
 //!
 //! The page comes from your own saved page for that champion if you have
 //! one, otherwise from the League client's built-in recommended pages
-//! (the same ones shown in the client's rune editor). Riftlight keeps a
-//! single page named "Riftlight: ..." and replaces it each time.
+//! (the same ones shown in the client's rune editor). League Buddy keeps a
+//! single page named "League Buddy: ..." and replaces it each time.
 
 use crate::config::{Config, RunePage};
 use crate::lcu::Lcu;
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
 
-pub const PAGE_PREFIX: &str = "Riftlight";
+pub const PAGE_PREFIX: &str = "League Buddy";
+/// Pages made by earlier versions (when the app was called Riftlight) are
+/// cleaned up too.
+const OLD_PREFIXES: &[&str] = &["Riftlight"];
+/// Keep page names short enough for the client's rune page name field.
+const MAX_NAME_CHARS: usize = 25;
+
+pub fn page_name(champion_name: &str, label: &str) -> String {
+    let full = format!("{PAGE_PREFIX}: {champion_name} {label}").trim_end().to_string();
+    if full.chars().count() <= MAX_NAME_CHARS {
+        return full;
+    }
+    let short = format!("{PAGE_PREFIX}: {champion_name}");
+    if short.chars().count() <= MAX_NAME_CHARS {
+        return short;
+    }
+    format!("LB: {champion_name} {label}").trim_end().chars().take(MAX_NAME_CHARS).collect()
+}
+
+fn is_ours(name: &str) -> bool {
+    name.starts_with(PAGE_PREFIX) || name.starts_with("LB: ") || OLD_PREFIXES.iter().any(|p| name.starts_with(p))
+}
 
 /// Turns champ select / live client position names into what the perks
 /// endpoint expects.
@@ -98,7 +119,7 @@ pub struct ImportResult {
     pub source: &'static str,
 }
 
-/// Creates (or replaces) the Riftlight rune page and makes it current.
+/// Creates (or replaces) the League Buddy rune page and makes it current.
 pub async fn import(
     lcu: &Lcu,
     config: &Config,
@@ -112,11 +133,7 @@ pub async fn import(
         None => (recommended_page(lcu, champion_id, position, map_id).await?, "client recommendation"),
     };
     let label = position_label(position);
-    page.name = if label.is_empty() {
-        format!("{PAGE_PREFIX}: {champion_name}")
-    } else {
-        format!("{PAGE_PREFIX}: {champion_name} {label}")
-    };
+    page.name = page_name(champion_name, label);
     let body = json!({
         "name": page.name,
         "primaryStyleId": page.primary_style_id,
@@ -128,11 +145,11 @@ pub async fn import(
     let pages = lcu.get_req("/lol-perks/v1/pages").await?;
     let pages = pages.as_array().cloned().unwrap_or_default();
 
-    // Remove the page Riftlight made last time.
+    // Remove the page League Buddy made last time.
     for p in &pages {
         let name = p.get("name").and_then(Value::as_str).unwrap_or("");
         let deletable = p.get("isDeletable").and_then(Value::as_bool).unwrap_or(true);
-        if name.starts_with(PAGE_PREFIX) && deletable {
+        if is_ours(name) && deletable {
             if let Some(id) = p.get("id").and_then(Value::as_i64) {
                 lcu.delete(&format!("/lol-perks/v1/pages/{id}")).await?;
             }
@@ -162,7 +179,7 @@ pub async fn import(
         Err(e) => {
             return Err(e.context(
                 "couldn't create a rune page; if all your page slots are full, delete one \
-                 (Riftlight reuses a single slot) or turn on \"Reuse current page when full\"",
+                 (League Buddy reuses a single slot) or turn on \"Reuse current page when full\"",
             ))
         }
     }
@@ -216,6 +233,16 @@ mod tests {
         let bad = json!({"position": "top", "primaryPerkStyleId": 8000, "secondaryPerkStyleId": 8100, "perks": []});
         let pages = json!([bad, page("bottom", false, 8200)]);
         assert_eq!(pick_recommended(&pages, "top").unwrap().primary_style_id, 8200);
+    }
+
+    #[test]
+    fn page_names_fit() {
+        assert_eq!(page_name("Ahri", "Mid"), "League Buddy: Ahri Mid");
+        assert_eq!(page_name("Ahri", ""), "League Buddy: Ahri");
+        assert_eq!(page_name("Kha'Zix", "Jungle"), "League Buddy: Kha'Zix");
+        assert_eq!(page_name("Aurelion Sol", "Mid"), "LB: Aurelion Sol Mid");
+        assert!(page_name("Twisted Fate Extended", "Support").chars().count() <= 25);
+        assert!(is_ours("Riftlight: Ahri Mid") && is_ours("LB: Jinx Bot") && !is_ours("My Ahri page"));
     }
 
     #[test]

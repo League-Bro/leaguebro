@@ -6,7 +6,7 @@
   },
   "newProjectRoot": "projects",
   "projects": {
-    "riftlight": {
+    "leaguebuddy": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:class": {
@@ -81,10 +81,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "riftlight:build:production"
+              "buildTarget": "leaguebuddy:build:production"
             },
             "development": {
-              "buildTarget": "riftlight:build:development"
+              "buildTarget": "leaguebuddy:build:development"
             }
           },
           "defaultConfiguration": "development"

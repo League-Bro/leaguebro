@@ -1,32 +1,32 @@
-# LeagueBuddy
+# League Buddy
 
 A small, ad-free League of Legends companion for Windows. It imports your runes automatically, shows who you're playing with and against, and adds a lightweight in-game overlay with objective timers. There are no ads, no accounts and no tracking.
 
 ## Install
 
-1. Go to the **[latest release](https://github.com/doliaro/leaguebuddy/releases/latest)** and download `Riftlight_x.y.z_x64-setup.exe`.
+1. Go to the **[latest release](https://github.com/doliaro/leaguebuddy/releases/latest)** and download `League.Buddy_x.y.z_x64-setup.exe`.
 2. Run it. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**. That warning appears because the app isn't code-signed, not because something is wrong with it.
-3. Open Riftlight, then open League. It connects on its own.
+3. Open League Buddy, then open League. It connects on its own.
 
 In League, set **Settings → Video → Window Mode** to **Borderless** (or Windowed). Otherwise the game covers the overlay.
 
-To uninstall, use Windows **Settings → Apps → Installed apps → Riftlight**.
+To uninstall, use Windows **Settings → Apps → Installed apps → League Buddy**.
 
 ## What it does
 
 ### Rune auto-import
 
-When you lock in a champion, Riftlight creates a rune page called `Riftlight: <Champion> <Role>` and selects it. It reuses that one page every game, so your other pages are never touched.
+When you lock in a champion, League Buddy creates a rune page called `League Buddy: <Champion> <Role>` and selects it. It reuses that one page every game, so your other pages are never touched.
 
 - **Default:** the League client's own recommended page for your champion and role.
-- **Your own page:** select it in the client's rune editor, then save it for that champion on the **Runes** tab. From then on Riftlight uses yours.
+- **Your own page:** select it in the client's rune editor, then save it for that champion on the **Runes** tab. From then on League Buddy uses yours.
 - **Options:** turn on "Import while hovering" for blind pick. If all your page slots are full, delete one page, or turn on "Reuse the selected page when slots are full".
 
 ### Scouting
 
 Each player card shows rank, LP, win rate, record and KDA over the last 20 games, most-played champions, and how often they've played their current pick.
 
-- **Champ select:** only your party, plus everyone in normal games. Riot hides other players' names in ranked champ select, and Riftlight follows that rule.
+- **Champ select:** only your party, plus everyone in normal games. Riot hides other players' names in ranked champ select, and League Buddy follows that rule.
 - **Loading screen:** all ten players, except anyone using streamer mode.
 
 ### In-game overlay
@@ -41,19 +41,19 @@ You can change the overlay's position, opacity and the timer values under **Sett
 
 ### What it doesn't do
 
-Riftlight doesn't read game memory, use a Riot API key, or track enemy ability or summoner spell cooldowns. It uses only the League client's local API and Riot's official in-game data API (port 2999), and stays within [Riot's third-party app rules](https://developer.riotgames.com/policies/general).
+League Buddy doesn't read game memory, use a Riot API key, or track enemy ability or summoner spell cooldowns. It uses only the League client's local API and Riot's official in-game data API (port 2999), and stays within [Riot's third-party app rules](https://developer.riotgames.com/policies/general).
 
 ## Troubleshooting
 
 | Problem | Fix |
 | --- | --- |
-| "League client not found" while League is open | Under **Settings**, enter your install folder, usually `C:\Riot Games\League of Legends`. If League runs as administrator, run Riftlight as administrator too. |
+| "League client not found" while League is open | Under **Settings**, enter your install folder, usually `C:\Riot Games\League of Legends`. If League runs as administrator, run League Buddy as administrator too. |
 | Overlay doesn't show in game | Set League to **Borderless**, and make sure "Show the in-game overlay" is on in **Settings**. |
 | Rune import fails | Your rune page slots are full. Delete one page, or turn on "Reuse the selected page when slots are full". |
 | Objective timer is off | Riot changes spawn times between seasons. Adjust them under **Settings → Objective timers**. |
 | Champion or item icons missing | Icons load from CommunityDragon and need an internet connection. |
 
-Settings are stored in `%APPDATA%\dev.dom.riftlight\settings.json`. Delete that file to reset everything.
+Settings are stored in `%APPDATA%\dev.dom.leaguebuddy\settings.json`. Delete that file to reset everything.
 
 ---
 

@@ -33,9 +33,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v__VERSION__
-          releaseName: Riftlight v__VERSION__
+          releaseName: League Buddy v__VERSION__
           releaseBody: |
-            Download **Riftlight_x.y.z_x64-setup.exe** below and run it.
+            Download **League.Buddy_x.y.z_x64-setup.exe** below and run it.
             If Windows shows "Windows protected your PC", click **More info → Run anyway** (the app isn't code-signed).
             Set League to Borderless or Windowed so the overlay shows.
           releaseDraft: false

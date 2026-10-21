@@ -111,7 +111,7 @@ export class RiftService {
   }
 
   importRunesNow(): Promise<string> {
-    if (this.demo) return Promise.resolve('Set "Riftlight: Ahri Mid" (client recommendation)');
+    if (this.demo) return Promise.resolve('Set "League Buddy: Ahri Mid" (client recommendation)');
     return invoke<string>('import_runes_now');
   }
 

@@ -1,19 +1,19 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Riftlight",
-  "version": "0.1.0",
-  "identifier": "dev.dom.riftlight",
+  "productName": "League Buddy",
+  "version": "0.1.1",
+  "identifier": "dev.dom.leaguebuddy",
   "build": {
     "beforeDevCommand": "npm run start",
     "devUrl": "http://localhost:4200",
     "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist/riftlight/browser"
+    "frontendDist": "../dist/leaguebuddy/browser"
   },
   "app": {
     "windows": [
       {
         "label": "main",
-        "title": "Riftlight",
+        "title": "League Buddy",
         "width": 1080,
         "height": 760,
         "minWidth": 860,
@@ -22,7 +22,7 @@
       },
       {
         "label": "overlay",
-        "title": "Riftlight Overlay",
+        "title": "League Buddy Overlay",
         "width": 270,
         "height": 360,
         "visible": false,

@@ -67,7 +67,7 @@ export function demoSnapshot(): Snapshot {
       profile('e4', '', '', 0, 0, 0, [145, 222]),
       profile('e5', 'SILVER', 'I', 91, 30, 37, [555, 412]),
     ],
-    lastImport: { ok: true, championId: 103, message: 'Set "Riftlight: Ahri Mid" (client recommendation)' },
+    lastImport: { ok: true, championId: 103, message: 'Set "League Buddy: Ahri Mid" (client recommendation)' },
     overlay: {
       gameTime: 742,
       gameMode: 'CLASSIC',
