@@ -135,7 +135,7 @@ export class RiftService {
   }
 
   importRunesNow(): Promise<string> {
-    if (this.demo) return Promise.resolve('Set "League Buddy: Ahri Mid" (OP.GG) · Flash + Ignite');
+    if (this.demo) return Promise.resolve('Set "League Bro: Ahri Mid" (OP.GG) · Flash + Ignite');
     return invoke<string>('import_runes_now');
   }
 

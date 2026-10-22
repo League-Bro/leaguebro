@@ -30,7 +30,7 @@ const PHASE_LABELS: Record<string, string> = {
     <header>
       <div class="brand">
         <img src="favicon.png" alt="" />
-        <span>League Buddy</span>
+        <span>League Bro</span>
       </div>
       <nav>
         @for (t of tabs; track t.id) {
@@ -52,7 +52,7 @@ const PHASE_LABELS: Record<string, string> = {
     @switch (updates.state().kind) {
       @case ('available') {
         <div class="update-bar">
-          <span>League Buddy {{ $any(updates.state()).version }} is available.</span>
+          <span>League Bro {{ $any(updates.state()).version }} is available.</span>
           <button class="primary" (click)="updates.install()">Update and restart</button>
           <button class="ghost" (click)="updates.dismiss()">Later</button>
         </div>
@@ -64,7 +64,7 @@ const PHASE_LABELS: Record<string, string> = {
         </div>
       }
       @case ('installing') {
-        <div class="update-bar">Installing {{ $any(updates.state()).version }}. League Buddy will restart in a moment.</div>
+        <div class="update-bar">Installing {{ $any(updates.state()).version }}. League Bro will restart in a moment.</div>
       }
       @case ('error') {
         <div class="update-bar bad">

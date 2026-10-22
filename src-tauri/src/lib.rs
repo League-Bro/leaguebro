@@ -169,6 +169,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let config_path = app.path().app_config_dir()?.join("settings.json");
+            Config::migrate_old_settings(&config_path);
             let config = Config::load(&config_path);
             app.manage(AppState {
                 config: std::sync::RwLock::new(config),
@@ -216,5 +217,5 @@ pub fn run() {
             set_overlay_button
         ])
         .run(tauri::generate_context!())
-        .expect("error while running League Buddy");
+        .expect("error while running League Bro");
 }

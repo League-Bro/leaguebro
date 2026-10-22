@@ -28,7 +28,7 @@ async function rpc(method, params, notify = false) {
   try { return JSON.parse(data); } catch { return { raw: text.slice(0, 2000), status: res.status }; }
 }
 
-await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'leaguebuddy-probe', version: '0.1.0' } });
+await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'leaguebro-probe', version: '0.1.0' } });
 await rpc('notifications/initialized', undefined, true);
 
 const results = {};

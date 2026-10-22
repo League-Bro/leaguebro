@@ -14,7 +14,7 @@
 //! `parse_compact` turns that into ordinary JSON objects using the `class`
 //! headers to name each positional argument.
 //!
-//! Answers are saved on disk (`%LOCALAPPDATA%\dev.dom.leaguebuddy\opgg`), one
+//! Answers are saved on disk (`%LOCALAPPDATA%\dev.dom.leaguebro\opgg`), one
 //! file per champion + position + mode, and expire on the patch cycle
 //! (`expires_at`): a day at a time for the week after each patch's notes come
 //! out, then a week at a time, and always when the next notes are due.
@@ -31,7 +31,7 @@ use tokio::sync::Mutex;
 
 pub const ENDPOINT: &str = "https://mcp-api.op.gg/mcp";
 /// Below this many games OP.GG's numbers are mostly noise (e.g. an off-role
-/// pick), so League Buddy falls back to the client's own recommendation.
+/// pick), so League Bro falls back to the client's own recommendation.
 pub const MIN_GAMES: i64 = 20;
 /// 4th–6th item options seen in fewer games than this are skipped.
 const MIN_LATE_ITEM_GAMES: i64 = 10;
@@ -502,7 +502,7 @@ impl OpGg {
     pub fn new(version: &str, cache_dir: Option<PathBuf>) -> OpGg {
         OpGg {
             http: reqwest::Client::builder()
-                .user_agent(format!("LeagueBuddy/{version} (+https://github.com/doliaro/leaguebuddy)"))
+                .user_agent(format!("LeagueBro/{version} (+https://github.com/doliaro/leaguebuddy)"))
                 .timeout(Duration::from_secs(12))
                 .build()
                 .expect("http client"),
@@ -557,7 +557,7 @@ impl OpGg {
             .post(
                 json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
                     "protocolVersion": "2025-06-18", "capabilities": {},
-                    "clientInfo": {"name": "League Buddy", "version": env!("CARGO_PKG_VERSION")}
+                    "clientInfo": {"name": "League Bro", "version": env!("CARGO_PKG_VERSION")}
                 }}),
                 None,
             )

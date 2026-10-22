@@ -1,6 +1,6 @@
 //! Saved downloads on disk, shared by patch notes (`patch.rs`) and OP.GG
 //! recommendations (`opgg.rs`). Each uses its own folder under the app's
-//! cache dir (`%LOCALAPPDATA%\dev.dom.leaguebuddy`), and Settings can show
+//! cache dir (`%LOCALAPPDATA%\dev.dom.leaguebro`), and Settings can show
 //! and clear each one.
 
 use anyhow::{Context, Result};

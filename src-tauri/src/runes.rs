@@ -2,8 +2,8 @@
 //!
 //! The page comes from, in order: your own saved page for that champion,
 //! OP.GG's most popular page (when there's enough data), or the League
-//! client's built-in recommended pages (the ones in the client's rune editor). League Buddy keeps a
-//! single page named "League Buddy: ..." and replaces it each time.
+//! client's built-in recommended pages (the ones in the client's rune editor). League Bro keeps a
+//! single page named "League Bro: ..." and replaces it each time.
 
 use crate::config::{Config, RunePage};
 use crate::lcu::Lcu;
@@ -11,10 +11,10 @@ use crate::opgg::{RuneRec, MIN_GAMES};
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
 
-pub const PAGE_PREFIX: &str = "League Buddy";
-/// Pages made by earlier versions (when the app was called Riftlight) are
-/// cleaned up too.
-const OLD_PREFIXES: &[&str] = &["Riftlight"];
+pub const PAGE_PREFIX: &str = "League Bro";
+/// Pages made by earlier versions (when the app was called Riftlight, then
+/// League Buddy) are cleaned up too.
+const OLD_PREFIXES: &[&str] = &["Riftlight", "League Buddy"];
 /// Keep page names short enough for the client's rune page name field.
 const MAX_NAME_CHARS: usize = 25;
 
@@ -31,7 +31,9 @@ pub fn page_name(champion_name: &str, label: &str) -> String {
 }
 
 fn is_ours(name: &str) -> bool {
-    name.starts_with(PAGE_PREFIX) || name.starts_with("LB: ") || OLD_PREFIXES.iter().any(|p| name.starts_with(p))
+    // Match "<prefix>:" so a page of the user's like "League Brownie" is left alone.
+    let has_prefix = |p: &str| name.strip_prefix(p).is_some_and(|rest| rest.starts_with(':'));
+    has_prefix(PAGE_PREFIX) || has_prefix("LB") || OLD_PREFIXES.iter().any(|p| has_prefix(p))
 }
 
 /// Turns champ select / live client position names into what the perks
@@ -120,7 +122,7 @@ pub struct ImportResult {
     pub source: &'static str,
 }
 
-/// Creates (or replaces) the League Buddy rune page and makes it current.
+/// Creates (or replaces) the League Bro rune page and makes it current.
 pub async fn import(
     lcu: &Lcu,
     config: &Config,
@@ -154,7 +156,7 @@ pub async fn import(
     let pages = lcu.get_req("/lol-perks/v1/pages").await?;
     let pages = pages.as_array().cloned().unwrap_or_default();
 
-    // Remove the page League Buddy made last time.
+    // Remove the page League Bro made last time.
     for p in &pages {
         let name = p.get("name").and_then(Value::as_str).unwrap_or("");
         let deletable = p.get("isDeletable").and_then(Value::as_bool).unwrap_or(true);
@@ -188,7 +190,7 @@ pub async fn import(
         Err(e) => {
             return Err(e.context(
                 "couldn't create a rune page; if all your page slots are full, delete one \
-                 (League Buddy reuses a single slot) or turn on \"Reuse current page when full\"",
+                 (League Bro reuses a single slot) or turn on \"Reuse current page when full\"",
             ))
         }
     }
@@ -246,12 +248,14 @@ mod tests {
 
     #[test]
     fn page_names_fit() {
-        assert_eq!(page_name("Ahri", "Mid"), "League Buddy: Ahri Mid");
-        assert_eq!(page_name("Ahri", ""), "League Buddy: Ahri");
-        assert_eq!(page_name("Kha'Zix", "Jungle"), "League Buddy: Kha'Zix");
-        assert_eq!(page_name("Aurelion Sol", "Mid"), "LB: Aurelion Sol Mid");
+        assert_eq!(page_name("Ahri", "Mid"), "League Bro: Ahri Mid");
+        assert_eq!(page_name("Ahri", ""), "League Bro: Ahri");
+        assert_eq!(page_name("Kha'Zix", "Jungle"), "League Bro: Kha'Zix");
+        assert_eq!(page_name("Aurelion Sol", "Mid"), "League Bro: Aurelion Sol");
+        assert_eq!(page_name("Twisted Fate Extended", "Mid"), "LB: Twisted Fate Extended");
         assert!(page_name("Twisted Fate Extended", "Support").chars().count() <= 25);
         assert!(is_ours("Riftlight: Ahri Mid") && is_ours("LB: Jinx Bot") && !is_ours("My Ahri page"));
+        assert!(is_ours("League Bro: Ahri") && is_ours("League Buddy: Ahri Mid") && !is_ours("League Brownie"));
     }
 
     #[test]

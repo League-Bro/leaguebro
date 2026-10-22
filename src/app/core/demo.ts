@@ -80,7 +80,7 @@ export function demoSnapshot(): Snapshot {
       profile('e4', '', '', 0, 0, 0, [145, 222]),
       profile('e5', 'SILVER', 'I', 91, 30, 37, [555, 412]),
     ],
-    lastImport: { ok: true, championId: 103, message: 'Set "League Buddy: Ahri Mid" (OP.GG) · Flash + Ignite' },
+    lastImport: { ok: true, championId: 103, message: 'Set "League Bro: Ahri Mid" (OP.GG) · Flash + Ignite' },
     overlay: {
       gameTime: 742,
       gameMode: 'CLASSIC',
@@ -244,7 +244,7 @@ export function demoChampSelect(): ChampSelectView {
   };
 }
 
-/** Real OP.GG answer for Ahri mid (from the probe), as League Buddy shows it. */
+/** Real OP.GG answer for Ahri mid (from the probe), as League Bro shows it. */
 export function demoRec(): RecState {
   const total = 10962;
   const set = (ids: number[], names: string[], games: number, wins: number) => ({ ids, names, games, winRate: wins / games, pickRate: games / total });
