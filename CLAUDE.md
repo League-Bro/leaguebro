@@ -111,13 +111,14 @@ site/index.html                       download website: one static page, no buil
                                       reads releases/latest from GitHub's API in the browser and picks the
                                       *-setup.exe asset, falling back to the releases page
 scripts/setup-dev.ps1 (+ .cmd)        dev environment setup
+scripts/bump-version.ps1 (+ .cmd)     sets the version in all five files before a release
 ```
 
 Adding a setting: add it to `config.rs` (with a default; `#[serde(default)]` keeps old settings files loading) **and** to `Config` in `models.ts` and `demoConfig()`.
 
 ## Releases and auto-updates
 
-- Version lives in `src-tauri/tauri.conf.json`, `package.json` and `src-tauri/Cargo.toml`. Bump all three together.
+- Version lives in `src-tauri/tauri.conf.json`, `package.json` and `src-tauri/Cargo.toml`, mirrored in `package-lock.json` (twice) and `Cargo.lock` (the `leaguebro` entry). Bump with `scripts\bump-version.cmd <x.y.z>`: it edits just those six spots (no find-and-replace; the lock files hold unrelated packages at the same version numbers), refuses a version not higher than the current one or the newest local `v*` tag, and writes nothing unless every spot matched.
 - Dom pushes, then runs **Actions → Release Windows installer → Run workflow**. That publishes `League.Bro_x.y.z_x64-setup.exe`, the `.sig`, and `latest.json`.
 - Installed copies check `releases/latest/download/latest.json` on startup and every 6 h, then show an "Update and restart" banner. Dev builds never self-update (`isDevMode()`).
 - Updates are signed. The private key and password are the repo secrets `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; the public key is in `tauri.conf.json`. Never change the pubkey unless Dom has lost the key, because that breaks updates for everyone already installed.

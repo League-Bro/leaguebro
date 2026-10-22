@@ -163,11 +163,15 @@ One-time setup: in the repo's **Settings → Pages**, set **Source** to **GitHub
 
 Installers are built on GitHub's servers by `.github/workflows/build-windows.yml`, so releasing doesn't need Rust installed locally.
 
-1. Bump `version` in `src-tauri/tauri.conf.json` (and `package.json` to match), e.g. `0.1.0` → `0.1.1`.
+1. Bump the version, e.g. `0.1.6` → `0.1.7`. Installed copies only update to a higher version, so it has to go up:
+   ```powershell
+   scripts\bump-version.cmd 0.1.7
+   ```
+   That updates all five files that hold it (`src-tauri/tauri.conf.json`, `package.json`, `src-tauri/Cargo.toml`, `package-lock.json`, `src-tauri/Cargo.lock`), and refuses a version that isn't higher than the current one or the newest release tag.
 2. Commit and push:
    ```powershell
    git add -A
-   git commit -m "Release 0.1.1"
+   git commit -m "Release 0.1.7"
    git push
    ```
 3. Go to **Actions → Release Windows installer → Run workflow**. About 10–15 minutes later, a new release appears with the installer attached. Everyone who has League Bro installed gets the update banner the next time it checks.
