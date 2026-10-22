@@ -12,7 +12,7 @@ mod runes;
 mod scout;
 mod tierlist;
 
-use config::{Config, RunePage};
+use config::Config;
 use engine::{AppState, Shared, Snapshot, StaticData};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex;
@@ -97,22 +97,6 @@ async fn lookup_rec(
         champ.alias.clone()
     };
     state.opgg.recommend(champion_id, &alias, &position, &game_mode).await.map_err(|e| format!("{e:#}"))
-}
-
-/// Saves the rune page currently selected in the client as your own page for
-/// this champion; it is used instead of the client recommendation from then on.
-#[tauri::command]
-async fn save_current_page_for(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    champion_id: i64,
-) -> Result<RunePage, String> {
-    let lcu = state.shared.lock().await.lcu.clone().ok_or("Not connected to the League client")?;
-    let page = runes::current_page(&lcu).await.map_err(|e| format!("{e:#}"))?;
-    let mut cfg = state.config();
-    cfg.rune_overrides.insert(champion_id.to_string(), page.clone());
-    save_config(app, state, cfg)?;
-    Ok(page)
 }
 
 /// Unlocks the overlay so it accepts mouse input and can be dragged to a new
@@ -270,7 +254,6 @@ pub fn run() {
             get_config,
             save_config,
             import_runes_now,
-            save_current_page_for,
             lookup_rec,
             get_my_profile,
             get_match,

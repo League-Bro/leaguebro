@@ -73,7 +73,7 @@ type BoolKey =
           </div>
           <p class="faint small">
             @if (cfg.recSource === 'opgg') {
-              Runes, summoner spells, skill order and items come from OP.GG's ranked stats for your champion and role. Your own saved rune pages and builds always come first.
+              Runes, summoner spells, skill order and items come from OP.GG's ranked stats for your champion and role.
             } @else {
               Runes come from the League client's built-in suggestions. No spells, skill order or item builds.
             }
@@ -92,7 +92,7 @@ type BoolKey =
             <label class="toggle">
               <input type="checkbox" [checked]="cfg.useRecommendedBuilds" (change)="setRec('useRecommendedBuilds', $any($event.target).checked)" />
               <span class="track"></span>
-              <span class="label"><b>Use OP.GG builds in the overlay</b><span>For champions you haven't saved a build for on the Champions tab.</span></span>
+              <span class="label"><b>Use OP.GG builds in the overlay</b><span>Shows the next two items to buy.</span></span>
             </label>
             <label class="toggle">
               <input type="checkbox" [checked]="cfg.showSkillHint" (change)="setRec('showSkillHint', $any($event.target).checked)" />
@@ -206,7 +206,7 @@ export class SettingsView {
   protected readonly clearing = signal<CacheName | null>(null);
   protected readonly cacheRows: { key: CacheName; label: string; hint: string }[] = [
     { key: 'patchNotes', label: 'Patch notes', hint: 'The patch list and every patch you opened.' },
-    { key: 'runes', label: 'Rune pages', hint: "OP.GG runes, spells, skill order and builds. Your own saved pages aren't touched." },
+    { key: 'runes', label: 'Rune pages', hint: 'OP.GG runes, spells, skill order and builds.' },
   ];
 
   constructor() {

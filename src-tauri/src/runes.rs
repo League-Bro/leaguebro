@@ -1,15 +1,23 @@
 //! Rune page import.
 //!
-//! The page comes from, in order: your own saved page for that champion,
-//! OP.GG's most popular page (when there's enough data), or the League
-//! client's built-in recommended pages (the ones in the client's rune editor). League Bro keeps a
-//! single page named "League Bro: ..." and replaces it each time.
+//! The page comes from OP.GG's most popular page (when there's enough data),
+//! or else the League client's built-in recommended pages (the ones in the
+//! client's rune editor). League Bro keeps a single page named
+//! "League Bro: ..." and replaces it each time.
 
-use crate::config::{Config, RunePage};
+use crate::config::Config;
 use crate::lcu::Lcu;
 use crate::opgg::{RuneRec, MIN_GAMES};
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RunePage {
+    pub name: String,
+    pub primary_style_id: i64,
+    pub sub_style_id: i64,
+    pub selected_perk_ids: Vec<i64>,
+}
 
 pub const PAGE_PREFIX: &str = "League Bro";
 /// Pages made by earlier versions (when the app was called Riftlight) are
@@ -138,10 +146,9 @@ pub async fn import(
         sub_style_id: r.sub_style_id,
         selected_perk_ids: r.perk_ids.clone(),
     });
-    let (mut page, source) = match (config.rune_overrides.get(&champion_id.to_string()), from_rec) {
-        (Some(p), _) => (p.clone(), "your saved page"),
-        (None, Some(p)) => (p, "OP.GG"),
-        (None, None) => (recommended_page(lcu, champion_id, position, map_id).await?, "client recommendation"),
+    let (mut page, source) = match from_rec {
+        Some(p) => (p, "OP.GG"),
+        None => (recommended_page(lcu, champion_id, position, map_id).await?, "client recommendation"),
     };
     let label = position_label(position);
     page.name = page_name(champion_name, label);
@@ -195,28 +202,6 @@ pub async fn import(
         }
     }
     Ok(ImportResult { page_name: page.name, source })
-}
-
-/// Reads the page currently selected in the client, to save as your own
-/// default for a champion.
-pub async fn current_page(lcu: &Lcu) -> Result<RunePage> {
-    let v = lcu.get_req("/lol-perks/v1/currentpage").await?;
-    let ids: Vec<i64> = v
-        .get("selectedPerkIds")
-        .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(Value::as_i64).collect())
-        .unwrap_or_default();
-    let primary = v.get("primaryStyleId").and_then(Value::as_i64).unwrap_or(0);
-    let sub = v.get("subStyleId").and_then(Value::as_i64).unwrap_or(0);
-    if ids.len() < 6 || primary == 0 {
-        return Err(anyhow!("the selected rune page looks incomplete"));
-    }
-    Ok(RunePage {
-        name: v.get("name").and_then(Value::as_str).unwrap_or("").to_string(),
-        primary_style_id: primary,
-        sub_style_id: sub,
-        selected_perk_ids: ids,
-    })
 }
 
 #[cfg(test)]

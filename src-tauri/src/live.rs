@@ -45,8 +45,6 @@ pub struct OverlayState {
     pub timers: Vec<Timer>,
     pub next_items: Vec<NextItem>,
     pub has_build: bool,
-    /// "saved" (your build) or "OP.GG".
-    pub build_source: String,
     /// Ability max order, e.g. ["Q", "W", "E"]; empty when the hint is off.
     pub skill_max: Vec<String>,
     /// Ability to put your next point in, when you have one unspent.
@@ -104,8 +102,8 @@ pub fn lane_diff(data: &Value, items: &HashMap<i64, (String, i64)>) -> Option<La
 /// What the overlay should suggest beyond timers.
 #[derive(Default)]
 pub struct Guidance<'a> {
+    /// OP.GG's build order.
     pub build: Option<&'a [i64]>,
-    pub build_source: &'a str,
     pub skill_max: &'a [String],
     pub skill_order: &'a [String],
 }
@@ -251,7 +249,7 @@ pub fn compute_timers(data: &Value, cfg: &TimerConfig) -> Vec<Timer> {
     timers
 }
 
-/// Your next items from the build you saved for this champion.
+/// Your next items from the recommended build.
 pub fn next_items(
     data: &Value,
     build: &[i64],
@@ -302,7 +300,6 @@ pub fn overlay_state(
         timers: compute_timers(data, cfg),
         next_items: build.map(|b| next_items(data, b, items, 2)).unwrap_or_default(),
         has_build: build.map(|b| !b.is_empty()).unwrap_or(false),
-        build_source: if build.is_some() { guide.build_source.to_string() } else { String::new() },
         skill_max: guide.skill_max.to_vec(),
         next_skill: next_skill(data, guide.skill_order),
         lane: lane_diff(data, items),

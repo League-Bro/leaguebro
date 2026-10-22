@@ -2,17 +2,7 @@
 //! (on Windows: %APPDATA%\dev.dom.leaguebro\settings.json).
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct RunePage {
-    pub name: String,
-    pub primary_style_id: i64,
-    pub sub_style_id: i64,
-    pub selected_perk_ids: Vec<i64>,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
@@ -53,11 +43,6 @@ pub struct Config {
     /// editable page instead of failing. Off by default because it
     /// replaces one of your own pages.
     pub reuse_current_page_when_full: bool,
-    /// Your own rune pages per champion id, used instead of the client's
-    /// recommended page.
-    pub rune_overrides: HashMap<String, RunePage>,
-    /// Item build order per champion id, shown as "next item" in the overlay.
-    pub builds: HashMap<String, Vec<i64>>,
     /// Where rune/spell/item/skill recommendations come from:
     /// "opgg" (OP.GG meta stats) or "client" (League's own rune suggestions only).
     pub rec_source: String,
@@ -65,8 +50,7 @@ pub struct Config {
     pub set_summoner_spells: bool,
     /// Add the recommended build to the in-game shop as an item set when you lock in.
     pub set_item_sets: bool,
-    /// Use the recommended item build in the overlay for champions you
-    /// haven't saved a build for.
+    /// Show the recommended item build's next items in the overlay.
     pub use_recommended_builds: bool,
     /// Show the skill max order and "level up" hint in the overlay.
     pub show_skill_hint: bool,
@@ -88,8 +72,6 @@ impl Default for Config {
             auto_import_runes: true,
             import_on_hover: false,
             reuse_current_page_when_full: false,
-            rune_overrides: HashMap::new(),
-            builds: HashMap::new(),
             rec_source: "opgg".into(),
             set_summoner_spells: true,
             set_item_sets: true,
@@ -148,7 +130,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("leaguebro-test-{}", std::process::id()));
         let path = dir.join("settings.json");
         let mut c = Config::default();
-        c.builds.insert("103".into(), vec![3020, 6655]);
+        c.overlay_x = Some(1200);
         c.save(&path).unwrap();
         assert_eq!(Config::load(&path), c);
         let _ = std::fs::remove_dir_all(dir);

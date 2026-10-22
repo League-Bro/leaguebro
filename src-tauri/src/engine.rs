@@ -890,22 +890,16 @@ impl Engine {
                 fetch_rec = Some((champ, pos, mode));
             }
             let rec = sh.rec.as_ref().filter(|r| r.champion_id == champ).and_then(|r| r.rec.clone());
-            let saved = cfg.builds.get(&champ.to_string()).filter(|b| !b.is_empty());
-            let recommended = rec
+            let build = rec
                 .as_ref()
                 .filter(|r| cfg.use_recommended_builds && r.games >= opgg::MIN_GAMES && !r.build_order.is_empty())
                 .map(|r| r.build_order.as_slice());
-            let (build, build_source) = match (saved, recommended) {
-                (Some(b), _) => (Some(b.as_slice()), "saved"),
-                (None, Some(b)) => (Some(b), "OP.GG"),
-                _ => (None, ""),
-            };
             let empty: Vec<String> = Vec::new();
             let (skill_max, skill_order) = match rec.as_ref().filter(|_| cfg.show_skill_hint) {
                 Some(r) => (r.skill_max.as_slice(), r.skill_order.as_slice()),
                 None => (empty.as_slice(), empty.as_slice()),
             };
-            let guide = live::Guidance { build, build_source, skill_max, skill_order };
+            let guide = live::Guidance { build, skill_max, skill_order };
             let st = live::overlay_state(&data, &cfg.timers, &guide, &items);
             sh.overlay = Some(st.clone());
             st

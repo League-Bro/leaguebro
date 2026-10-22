@@ -28,6 +28,7 @@ const champs: [number, string][] = [
   [103, 'Ahri'], [64, 'Lee Sin'], [222, 'Jinx'], [412, 'Thresh'], [122, 'Darius'],
   [238, 'Zed'], [254, 'Vi'], [157, 'Yasuo'], [99, 'Lux'], [145, "Kai'Sa"],
   [516, 'Ornn'], [89, 'Leona'], [555, 'Pyke'], [1, 'Annie'], [84, 'Akali'],
+  [7, 'LeBlanc'], [91, 'Talon'], [134, 'Syndra'],
 ];
 
 function profile(puuid: string, tier: string, div: string, lp: number, w: number, l: number, main: number[]): Profile {
@@ -107,7 +108,6 @@ export function demoSnapshot(): Snapshot {
         { id: 3157, name: "Zhonya's Hourglass", price: 3250, affordable: false },
       ],
       hasBuild: true,
-      buildSource: 'OP.GG',
       skillMax: ['Q', 'W', 'E'],
       nextSkill: 'Q',
       lane: { opponent: 'Zed', mine: 5350, theirs: 3967 },
@@ -118,37 +118,62 @@ export function demoSnapshot(): Snapshot {
 }
 
 export function demoProfile(): MyProfile {
-  const rows: [number, number, MatchLine['result'], number, number, number, number, number][] = [
-    // queue, champion, result, K, D, A, CS, minutes
-    [420, 103, 'win', 11, 2, 9, 226, 31], [420, 103, 'win', 7, 3, 8, 201, 28], [420, 238, 'loss', 4, 7, 3, 174, 33],
-    [400, 103, 'win', 9, 4, 11, 189, 27], [480, 157, 'remake', 0, 0, 0, 8, 3], [420, 103, 'loss', 3, 5, 6, 198, 30],
-    [420, 238, 'win', 13, 4, 5, 211, 29], [480, 157, 'win', 8, 6, 4, 176, 22], [400, 99, 'loss', 2, 6, 14, 41, 34],
-    [420, 103, 'win', 6, 1, 10, 233, 26], [450, 84, 'win', 14, 9, 22, 61, 19], [420, 238, 'loss', 5, 8, 2, 162, 32],
+  const rows: [number, number, MatchLine['result'], number, number, number, number, number, number | null][] = [
+    // queue, champion, result, K, D, A, CS, minutes, lane opponent
+    [420, 103, 'win', 11, 2, 9, 226, 31, 91], [420, 103, 'win', 7, 3, 8, 201, 28, 238], [420, 238, 'loss', 4, 7, 3, 174, 33, 238],
+    [400, 103, 'win', 9, 4, 11, 189, 27, 91], [480, 157, 'remake', 0, 0, 0, 8, 3, null], [420, 103, 'loss', 3, 5, 6, 198, 30, 238],
+    [420, 238, 'win', 13, 4, 5, 211, 29, 7], [480, 157, 'win', 8, 6, 4, 176, 22, 238], [400, 99, 'loss', 2, 6, 14, 41, 34, 555],
+    [420, 103, 'win', 6, 1, 10, 233, 26, 134], [450, 84, 'win', 14, 9, 22, 61, 19, null], [420, 238, 'loss', 5, 8, 2, 162, 32, 7],
   ];
   const builds: Record<number, number[]> = { 103: [3118, 3020, 4645, 3157], 238: [3020, 3135], 157: [3020, 1058], 99: [3089], 84: [3157, 3020] };
-  const matches: MatchLine[] = rows.map(([queueId, championId, result, kills, deaths, assists, cs, min], i) => ({
+  // Pyke (555) shows up in most of the losses.
+  const pool = [122, 64, 222, 412, 254, 516, 145, 89];
+  const enemies = (i: number, lane: number | null): number[] => {
+    const rest = [0, 1, 2, 3, 4].map((k) => pool[(i + k) % pool.length]);
+    if ([0, 2, 5, 11].includes(i)) rest[0] = 555;
+    return (lane ? [lane, ...rest] : rest).slice(0, 5);
+  };
+  const matches: MatchLine[] = rows.map(([queueId, championId, result, kills, deaths, assists, cs, min, lane], i) => ({
     gameId: 1000 + i, queueId, gameMode: queueId === 450 ? 'ARAM' : queueId === 480 ? 'SWIFTPLAY' : 'CLASSIC',
     created: Date.now() - (i * 5 + 1) * 3_600_000, duration: min * 60, result, championId, kills, deaths, assists, cs,
     gold: min * 420, damage: min * 850 + kills * 600, vision: Math.round(min * 0.8),
     items: [...(builds[championId] ?? []), 0, 0, 0, 0, 0, 0].slice(0, 6).concat(3340), spells: [4, 14],
+    laneOpponent: lane, enemies: enemies(i, lane),
   }));
+  const queueIds = [...new Set(matches.map((m) => m.queueId))];
+  const modes = queueIds
+    .map((queueId) => ({ queueId, insights: demoInsights(matches.filter((m) => m.queueId === queueId)) }))
+    .sort((a, b) => b.insights.games - a.insights.games);
   return {
     puuid: 'me', name: 'Dom#NA1', iconId: 938, level: 214,
     solo: { tier: 'GOLD', division: 'II', lp: 47, wins: 38, losses: 31 }, flex: null,
-    matches, insights: demoInsights(matches), error: null,
+    matches, insights: demoInsights(matches), modes, currentQueueId: 420, error: null,
   };
+}
+
+function demoToughest(stats: Map<number, ChampStat>): ChampStat[] {
+  const net = (c: ChampStat) => c.games - 2 * c.wins;
+  return [...stats.values()].filter((c) => c.games >= 2 && net(c) > 0).sort((a, b) => net(b) - net(a) || b.games - a.games).slice(0, 5);
 }
 
 function demoInsights(matches: MatchLine[]): Insights {
   const counted = matches.filter((m) => m.result !== 'remake');
   const sum = (f: (m: MatchLine) => number) => counted.reduce((a, m) => a + f(m), 0);
-  const minutes = sum((m) => m.duration / 60);
+  const minutes = sum((m) => m.duration / 60) || 1;
   const champs = new Map<number, ChampStat>();
   const queues = new Map<number, QueueStat>();
+  const lanes = new Map<number, ChampStat>();
+  const enemies = new Map<number, ChampStat>();
+  const add = (stats: Map<number, ChampStat>, championId: number, m: MatchLine) => {
+    const c = stats.get(championId) ?? { championId, games: 0, wins: 0, kills: 0, deaths: 0, assists: 0 };
+    const win = m.result === 'win' ? 1 : 0;
+    stats.set(championId, { ...c, games: c.games + 1, wins: c.wins + win, kills: c.kills + m.kills, deaths: c.deaths + m.deaths, assists: c.assists + m.assists });
+  };
   for (const m of counted) {
     const win = m.result === 'win' ? 1 : 0;
-    const c = champs.get(m.championId) ?? { championId: m.championId, games: 0, wins: 0, kills: 0, deaths: 0, assists: 0 };
-    champs.set(m.championId, { ...c, games: c.games + 1, wins: c.wins + win, kills: c.kills + m.kills, deaths: c.deaths + m.deaths, assists: c.assists + m.assists });
+    add(champs, m.championId, m);
+    if (m.laneOpponent) add(lanes, m.laneOpponent, m);
+    for (const e of m.enemies) add(enemies, e, m);
     const q = queues.get(m.queueId) ?? { queueId: m.queueId, games: 0, wins: 0 };
     queues.set(m.queueId, { ...q, games: q.games + 1, wins: q.wins + win });
   }
@@ -159,10 +184,12 @@ function demoInsights(matches: MatchLine[]): Insights {
     games: counted.length, wins: counted.filter((m) => m.result === 'win').length,
     kills: sum((m) => m.kills), deaths: sum((m) => m.deaths), assists: sum((m) => m.assists),
     csPerMin: sum((m) => m.cs) / minutes, damagePerMin: sum((m) => m.damage) / minutes, goldPerMin: sum((m) => m.gold) / minutes,
-    visionPerGame: sum((m) => m.vision) / counted.length,
+    visionPerGame: sum((m) => m.vision) / (counted.length || 1),
     streak: first === 'win' ? len : -len,
     champions: [...champs.values()].sort((a, b) => b.games - a.games || b.wins - a.wins),
     queues: [...queues.values()].sort((a, b) => b.games - a.games),
+    toughestLanes: demoToughest(lanes),
+    toughestEnemies: demoToughest(enemies),
   };
 }
 
@@ -267,10 +294,6 @@ export function demoConfig(): Config {
     autoImportRunes: true,
     importOnHover: false,
     reuseCurrentPageWhenFull: false,
-    runeOverrides: {
-      '103': { name: 'Electrocute Ahri', primaryStyleId: 8100, subStyleId: 8200, selectedPerkIds: [8112, 8139, 8138, 8135, 8226, 8237, 5008, 5008, 5001] },
-    },
-    builds: {},
     recSource: 'opgg',
     setSummonerSpells: true,
     setItemSets: true,

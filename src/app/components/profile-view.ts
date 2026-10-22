@@ -1,5 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
+import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { assetUrl, championIcon, formatTier, profileIcon, queueLabel, tierClass } from '../core/assets';
 import { MatchLine, MyProfile, PostGame, RankLine } from '../core/models';
@@ -10,7 +10,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
 /** Your rank, insights from recent games, and match history. */
 @Component({
   selector: 'rl-profile',
-  imports: [DecimalPipe, PostGameView],
+  imports: [DecimalPipe, NgTemplateOutlet, PostGameView],
   template: `
     @if (loading() && !profile()) {
       <section class="card empty"><p class="muted">Loading your profile from the League client…</p></section>
@@ -44,8 +44,20 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
       </section>
       @if (p.error) { <p class="loss small note">Some data didn't load: {{ p.error }}</p> }
 
-      @if (p.insights.games > 0) {
-        @let ins = p.insights;
+      @if (p.modes.length > 1) {
+        <div class="seg modes">
+          <button [class.on]="mode() === 'all'" (click)="pick('all')">All <span class="mono count">{{ p.insights.games }}</span></button>
+          @for (q of p.modes; track q.queueId) {
+            <button [class.on]="mode() === q.queueId" (click)="pick(q.queueId)" [title]="q.queueId === p.currentQueueId ? 'In this queue now' : ''">
+              @if (q.queueId === p.currentQueueId) { <span class="now"></span> }
+              {{ queue(q.queueId, modeName(p, q.queueId)) }} <span class="mono count">{{ q.insights.games }}</span>
+            </button>
+          }
+        </div>
+      }
+
+      @if (ins(); as ins) {
+      @if (ins.games > 0) {
         <div class="tiles">
           <div class="tile">
             <div class="big" [class.win]="winRate() >= 55" [class.loss]="winRate() < 45">{{ winRate() }}%</div>
@@ -78,36 +90,81 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
               </div>
             }
           </section>
-          <section class="card stack">
-            <h3>Queues</h3>
-            @for (q of ins.queues; track q.queueId) {
-              <div class="qrow">
-                <span class="grow">{{ queue(q.queueId) }}</span>
-                <span class="mono faint">{{ q.wins }}W {{ q.games - q.wins }}L</span>
-                <span class="bar"><span [style.width.%]="pct(q.wins, q.games)"></span></span>
-                <span class="mono wr">{{ pct(q.wins, q.games) }}%</span>
-              </div>
-            }
-          </section>
+          @if (mode() === 'all') {
+            <section class="card stack">
+              <h3>Queues</h3>
+              @for (q of ins.queues; track q.queueId) {
+                <button class="qrow" (click)="pick(q.queueId)">
+                  <span class="grow">{{ queue(q.queueId, modeName(p, q.queueId)) }}</span>
+                  <span class="mono faint">{{ q.wins }}W {{ q.games - q.wins }}L</span>
+                  <span class="bar"><span [style.width.%]="pct(q.wins, q.games)"></span></span>
+                  <span class="mono wr">{{ pct(q.wins, q.games) }}%</span>
+                </button>
+              }
+            </section>
+          }
+          @if (hasLanes()) {
+            <section class="card stack">
+              <h3>Toughest lane opponents</h3>
+              @for (c of ins.toughestLanes; track c.championId) {
+                <ng-container *ngTemplateOutlet="vsRow; context: { $implicit: c }" />
+              } @empty {
+                <p class="faint small">No lane opponent has beaten you more often than not in 2+ games.</p>
+              }
+              <p class="faint small foot">Your lane opponent is a best guess from the client's lane data, Smite and CS.</p>
+            </section>
+          }
+          @if (hasEnemies()) {
+            <section class="card stack">
+              <h3>Toughest enemy champions</h3>
+              @for (c of ins.toughestEnemies; track c.championId) {
+                <ng-container *ngTemplateOutlet="vsRow; context: { $implicit: c }" />
+              } @empty {
+                <p class="faint small">No enemy champion has beaten you more often than not in 2+ games.</p>
+              }
+              <p class="faint small foot">Anywhere on the enemy team. Your K/D/A in those games.</p>
+            </section>
+          }
         </div>
       }
+      }
+
+      <ng-template #vsRow let-c>
+        <div class="crow">
+          <img class="champ-icon sm" [src]="champIcon(c.championId)" alt="" />
+          <span class="grow">{{ rift.champName(c.championId) }}</span>
+          <span class="mono faint">{{ c.wins }}W {{ c.games - c.wins }}L</span>
+          <span class="mono wr loss">{{ pct(c.wins, c.games) }}%</span>
+          <span class="mono muted kda">{{ ratio(c.kills, c.deaths, c.assists) }} KDA</span>
+        </div>
+      </ng-template>
 
       <div class="row history-head">
         <h3>Match history</h3>
         <span class="faint small">
-          Your last {{ p.matches.length }} games in the League client. Custom and practice games aren't included, and neither are Brawl or League Classic.
+          @if (mode() === 'all') {
+            Your last {{ p.matches.length }} games in the League client.
+          } @else {
+            {{ matches().length }} {{ modeLabel() }} {{ matches().length === 1 ? 'game' : 'games' }} of your last {{ p.matches.length }} in the League client.
+          }
+          Custom and practice games aren't included, and neither are Brawl or League Classic.
         </span>
       </div>
-      @if (p.matches.length === 0) {
+      @if (matches().length === 0) {
         <p class="faint">No games yet.</p>
       }
       <div class="matches">
-        @for (m of p.matches; track m.gameId) {
+        @for (m of matches(); track m.gameId) {
           <button class="match" [class]="m.result" [class.open]="openId() === m.gameId" (click)="toggle(m)">
             <img class="champ-icon" [src]="champIcon(m.championId)" [title]="rift.champName(m.championId)" alt="" />
             <div class="what">
               <div class="res">{{ resultLabel(m) }}</div>
-              <div class="faint small">{{ queue(m.queueId, m.gameMode) }} · {{ ago(m.created) }} · {{ mins(m.duration) }}</div>
+              <div class="faint small">
+                {{ queue(m.queueId, m.gameMode) }} · {{ ago(m.created) }} · {{ mins(m.duration) }}
+                @if (m.laneOpponent; as opp) {
+                  · vs <img class="vs" [src]="champIcon(opp)" alt="" /> {{ rift.champName(opp) }}
+                }
+              </div>
             </div>
             <div class="kda-col">
               <div class="mono">{{ m.kills }} / {{ m.deaths }} / {{ m.assists }}</div>
@@ -156,10 +213,17 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; margin-top: 16px; }
     .tile { background: var(--glass), var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
     .big { font: 800 22px var(--display); }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; align-items: start; }
+    .modes { margin-top: 16px; flex-wrap: wrap; border-radius: 18px; }
+    .modes .count { opacity: 0.6; margin-left: 4px; }
+    .now { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--win); margin-right: 5px; vertical-align: 1px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-top: 16px; align-items: start; }
     .card.stack { gap: 6px; }
     h3 { margin: 0; }
     .crow, .qrow { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+    .qrow { width: 100%; padding: 2px 0; background: none; border: none; border-radius: 6px; color: var(--text); text-align: left; }
+    .qrow:hover:not(:disabled) { background: var(--bg-hover); }
+    .foot { margin-top: 4px; }
+    .vs { width: 16px; height: 16px; border-radius: 4px; vertical-align: -3px; }
     .grow { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .wr { width: 40px; text-align: right; }
     .kda { width: 70px; text-align: right; }
@@ -185,7 +249,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .slot img { display: block; width: 100%; height: 100%; }
     .slot:last-child { border-radius: 50%; margin-left: 3px; }
     .detail { padding: 4px 0 12px; }
-    @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } .match { grid-template-columns: 44px 1fr 96px 80px; } .match .items, .match .stat-col:last-of-type { display: none; } }
+    @media (max-width: 1000px) { .match { grid-template-columns: 44px 1fr 96px 80px; } .match .items, .match .stat-col:last-of-type { display: none; } }
   `,
 })
 export class ProfileView {
@@ -197,8 +261,30 @@ export class ProfileView {
   protected readonly detail = signal<PostGame | null>(null);
   protected readonly detailError = signal<string | null>(null);
 
+  /** 'all' or a queue id. */
+  protected readonly mode = signal<number | 'all'>('all');
+  /** Set once you pick a mode, so a refresh doesn't switch it back. */
+  private picked = false;
+
+  protected readonly ins = computed(() => {
+    const p = this.profile();
+    const m = this.mode();
+    return m === 'all' ? p?.insights : p?.modes.find((q) => q.queueId === m)?.insights;
+  });
+  protected readonly matches = computed(() => {
+    const all = this.profile()?.matches ?? [];
+    const m = this.mode();
+    return m === 'all' ? all : all.filter((x) => x.queueId === m);
+  });
+  protected readonly modeLabel = computed(() => {
+    const p = this.profile();
+    const m = this.mode();
+    return p && m !== 'all' ? this.queue(m, this.modeName(p, m)) : '';
+  });
+  protected readonly hasLanes = computed(() => this.matches().some((m) => m.laneOpponent));
+  protected readonly hasEnemies = computed(() => this.matches().some((m) => m.enemies.length > 0));
   protected readonly winRate = computed(() => {
-    const i = this.profile()?.insights;
+    const i = this.ins();
     return i ? this.pct(i.wins, i.games) : 0;
   });
 
@@ -215,8 +301,17 @@ export class ProfileView {
   async load(): Promise<void> {
     this.loading.set(true);
     try {
-      this.profile.set(await this.rift.getMyProfile());
+      const p = await this.rift.getMyProfile();
+      this.profile.set(p);
       this.loadError.set(null);
+      // Start on the queue you're in, if you've played it recently.
+      const m = this.mode();
+      if (!this.picked) {
+        const now = p.modes.find((q) => q.queueId === p.currentQueueId);
+        this.mode.set(now ? now.queueId : 'all');
+      } else if (m !== 'all' && !p.modes.some((q) => q.queueId === m)) {
+        this.mode.set('all');
+      }
     } catch (e) {
       if (!this.profile()) this.loadError.set(String(e));
     } finally {
@@ -240,6 +335,15 @@ export class ProfileView {
     }
   }
 
+  pick(mode: number | 'all'): void {
+    this.picked = true;
+    this.mode.set(mode);
+    this.openId.set(null);
+  }
+  /** A game mode for the queue, for queues without a label. */
+  modeName(p: MyProfile, queueId: number): string {
+    return p.matches.find((m) => m.queueId === queueId)?.gameMode ?? '';
+  }
   ranks(p: MyProfile): { label: string; line: RankLine | null }[] {
     return [
       { label: 'Solo/Duo', line: p.solo },

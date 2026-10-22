@@ -22,7 +22,6 @@ const PREVIEW: OverlayState = {
     { id: 1058, name: 'Needlessly Large Rod', price: 1200, affordable: true },
   ],
   hasBuild: true,
-  buildSource: 'OP.GG',
   skillMax: ['Q', 'W', 'E'],
   nextSkill: 'Q',
   lane: { opponent: 'Zed', mine: 5350, theirs: 3967 },
@@ -76,7 +75,7 @@ const PREVIEW: OverlayState = {
         }
         @if (o.nextItems.length) {
           <div class="build">
-            <div class="cap">Next{{ o.buildSource === 'OP.GG' ? ' · OP.GG build' : '' }}</div>
+            <div class="cap">Next · OP.GG build</div>
             @for (it of o.nextItems; track it.id) {
               <div class="item" [class.ready]="it.affordable">
                 @if (itemIcon(it.id); as url) { <img [src]="url" alt="" /> }

@@ -102,7 +102,7 @@ const MIN_GAMES = 20;
                     @if (!last) { <span class="faint arrow">›</span> }
                   }
                 </div>
-                @if (!hasSavedBuild(s.championId) && rift.config()?.useRecommendedBuilds) {
+                @if (rift.config()?.useRecommendedBuilds) {
                   <div class="faint small">The overlay will remind you of this build in game.</div>
                 }
               }
@@ -289,8 +289,5 @@ export class RecCard {
       if (set && i >= 0 && set.names[i]) return set.names[i];
     }
     return `Item ${id}`;
-  }
-  hasSavedBuild(champ: number): boolean {
-    return (this.rift.config()?.builds[String(champ)] ?? []).length > 0;
   }
 }

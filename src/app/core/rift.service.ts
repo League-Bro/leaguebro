@@ -17,7 +17,6 @@ import {
   Profile,
   RecState,
   Recommendation,
-  RunePage,
   Snapshot,
   StaticData,
   Status,
@@ -179,12 +178,6 @@ export class RiftService {
       return { ...rec, championId, position, gameMode };
     }
     return invoke<Recommendation>('lookup_rec', { championId, position, gameMode });
-  }
-
-  async saveCurrentPageFor(championId: number): Promise<RunePage> {
-    if (this.demo) throw 'Not connected (demo mode)';
-    const page = await invoke<RunePage>('save_current_page_for', { championId });
-    return page;
   }
 
   async previewOverlay(show: boolean): Promise<void> {

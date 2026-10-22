@@ -1,8 +1,8 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { RecCard } from './rec-card';
-import { assetUrl, championIcon } from '../core/assets';
-import { ItemInfo, RecState, RunePage } from '../core/models';
+import { championIcon } from '../core/assets';
+import { RecState } from '../core/models';
 import { rolesLabel } from '../core/why';
 
 const ROLES = [
@@ -13,7 +13,7 @@ const ROLES = [
   { id: 'utility', label: 'Support' },
 ];
 
-/** Look up any champion's OP.GG build, and set your own rune page and item order for them. */
+/** Look up any champion's OP.GG build. */
 @Component({
   selector: 'rl-champions',
   imports: [RecCard],
@@ -30,8 +30,6 @@ const ROLES = [
             <button class="champ" [class.active]="c.id === pick()?.championId" (click)="select(c.id)">
               <img class="champ-icon sm" [src]="icon(c.id)" alt="" />
               <span class="cname">{{ c.name }}</span>
-              @if (hasPage(c.id)) { <span class="mark" title="Your own rune page is saved">R</span> }
-              @if (hasBuild(c.id)) { <span class="mark" title="Your own build is saved">B</span> }
             </button>
           } @empty {
             <p class="faint small">{{ rift.statics() ? 'No champion matches.' : 'Champions load once the League client is open.' }}</p>
@@ -75,85 +73,14 @@ const ROLES = [
             </section>
           } @else {
           @if (rift.config()?.recSource !== 'opgg') {
-            <p class="faint small note">OP.GG recommendations are off (Settings → Recommendations), so only your own page and build are used.</p>
+            <p class="faint small note">OP.GG recommendations are off (Settings → Recommendations).</p>
           }
           <rl-rec-card [lookup]="recState()" />
-
-          <div class="grid">
-            <section class="card stack">
-              <h3>Your rune page</h3>
-              @if (savedPage(); as page) {
-                <p class="muted small">Used instead of OP.GG's page whenever you lock in {{ rift.champName(p.championId) }}.</p>
-                <div class="row saved">
-                  <div class="grow">
-                    <div class="strong">{{ page.name || 'Untitled page' }}</div>
-                    <div class="faint small">{{ styleName(page.primaryStyleId) }} / {{ styleName(page.subStyleId) }}</div>
-                    <div class="perks">
-                      @for (id of page.selectedPerkIds; track $index) {
-                        @if (perkIcon(id); as url) { <img [src]="url" [title]="perkName(id)" alt="" /> }
-                      }
-                    </div>
-                  </div>
-                  <button class="ghost" (click)="removePage(p.championId)">Remove</button>
-                </div>
-              } @else {
-                <p class="muted small">None saved, so League Bro imports OP.GG's page. To use your own, select it in the client's rune editor, then save it here.</p>
-              }
-              <div>
-                <button [disabled]="!rift.status().connected" (click)="savePage(p.championId)">
-                  {{ savedPage() ? 'Replace with the selected page' : 'Save the page selected in the client' }}
-                </button>
-              </div>
-              @if (pageMsg(); as m) { <p class="small" [class.loss]="m.bad" [class.win]="!m.bad">{{ m.text }}</p> }
-            </section>
-
-            <section class="card stack">
-              <h3>Your build</h3>
-              <p class="muted small">
-                @if (build().length) {
-                  The overlay shows the next two items from this list instead of OP.GG's build.
-                } @else {
-                  None saved, so the overlay uses OP.GG's build. Add items to use your own order.
-                }
-              </p>
-              <ol class="items">
-                @for (id of build(); track $index; let i = $index; let last = $last) {
-                  <li>
-                    <span class="idx mono faint">{{ i + 1 }}</span>
-                    @if (item(id); as it) {
-                      <img [src]="itemIcon(it)" alt="" />
-                      <span class="grow">{{ it.name }}</span>
-                      <span class="mono faint">{{ it.priceTotal }}g</span>
-                    } @else {
-                      <span class="grow faint">Item {{ id }}</span>
-                    }
-                    <button class="ghost" [disabled]="i === 0" (click)="move(i, -1)" title="Move up">▲</button>
-                    <button class="ghost" [disabled]="last" (click)="move(i, 1)" title="Move down">▼</button>
-                    <button class="ghost" (click)="removeAt(i)" title="Remove">✕</button>
-                  </li>
-                }
-              </ol>
-              <div class="add">
-                <input type="text" placeholder="Add an item…" [value]="itemQuery()" (input)="itemQuery.set($any($event.target).value)" />
-                @if (matches().length) {
-                  <div class="results">
-                    @for (it of matches(); track it.id) {
-                      <button (click)="add(it.id)">
-                        <img [src]="itemIcon(it)" alt="" />
-                        <span class="grow">{{ it.name }}</span>
-                        <span class="mono faint">{{ it.priceTotal }}g</span>
-                      </button>
-                    }
-                  </div>
-                }
-              </div>
-            </section>
-          </div>
           }
         } @else {
           <section class="card empty">
             <h2>Pick a champion</h2>
-            <p class="muted">See OP.GG's runes, spells, skill order and build for any champion and role, without being in champ select. You can also save your own rune page and item order for them here.</p>
+            <p class="muted">See OP.GG's runes, spells, skill order and build for any champion and role, without being in champ select.</p>
           </section>
         }
       </div>
@@ -176,7 +103,6 @@ const ROLES = [
     .champ:hover { background: var(--bg-sunken); }
     .champ.active { background: var(--accent-soft); border-color: transparent; color: var(--accent); font-weight: 600; }
     .cname { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .mark { font-size: 10px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 0 6px; }
     .main { min-width: 0; }
     .head { position: relative; display: flex; align-items: center; gap: 18px; padding: 22px; }
     .head > :not(.splash) { position: relative; }
@@ -186,33 +112,15 @@ const ROLES = [
     .head .grow { gap: 8px; }
     .controls { gap: 12px; flex-wrap: wrap; }
     .note { margin: 10px 0 0; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; align-items: start; }
-    .card.stack { gap: 8px; }
-    h3 { margin: 0; }
     .small { font-size: 12.5px; margin: 0; }
-    .strong { font-weight: 600; }
-    .saved { align-items: flex-start; }
-    .perks { display: flex; gap: 3px; margin-top: 6px; flex-wrap: wrap; }
-    .perks img { width: 22px; height: 22px; }
-    .items { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
-    .items li { display: flex; align-items: center; gap: 10px; padding: 5px 8px; background: var(--bg-sunken); border-radius: 10px; }
-    .items img, .results img { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--line-strong); }
-    .idx { width: 16px; text-align: right; }
-    .add input { width: 100%; }
-    .results { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; max-height: 260px; overflow: auto; }
-    .results button { display: flex; align-items: center; gap: 10px; text-align: left; background: none; border-color: transparent; }
-    .results button:hover { background: var(--bg-sunken); }
     .empty { max-width: 560px; margin: 40px auto; text-align: center; }
-    @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
   `,
 })
 export class ChampionsView {
   protected readonly rift = inject(RiftService);
   protected readonly roles_ = ROLES;
   protected readonly query = signal('');
-  protected readonly itemQuery = signal('');
   protected readonly recState = signal<RecState | null>(null);
-  protected readonly pageMsg = signal<{ text: string; bad: boolean } | null>(null);
   protected readonly pick = this.rift.championsPick;
   private lookupSeq = 0;
 
@@ -229,24 +137,11 @@ export class ChampionsView {
     const id = this.pick()?.championId;
     return this.rift.statics()?.champions.find((c) => c.id === id)?.classic ?? false;
   });
-  /** Separate from config() so saving a page or build doesn't refetch. */
+  /** Separate from config() so changing another setting doesn't refetch. */
   private readonly opggOn = computed(() => this.rift.config()?.recSource === 'opgg');
   protected readonly roles = computed(() => {
     const id = this.pick()?.championId;
     return rolesLabel(this.rift.statics()?.champions.find((c) => c.id === id));
-  });
-  protected readonly savedPage = computed<RunePage | null>(() => {
-    const id = this.pick()?.championId;
-    return (id && this.rift.config()?.runeOverrides[String(id)]) || null;
-  });
-  protected readonly build = computed(() => {
-    const id = this.pick()?.championId;
-    return (id && this.rift.config()?.builds[String(id)]) || [];
-  });
-  protected readonly matches = computed(() => {
-    const q = this.itemQuery().trim().toLowerCase();
-    if (q.length < 2) return [];
-    return (this.rift.statics()?.items ?? []).filter((i) => i.name.toLowerCase().includes(q)).slice(0, 12);
   });
 
   protected icon = championIcon;
@@ -279,8 +174,6 @@ export class ChampionsView {
     if (classic !== undefined) this.game.set(classic ? 'classic' : 'league');
     const prev = this.pick();
     this.pick.set({ championId, position: prev?.position ?? 'middle', mode: prev?.mode ?? 'ranked' });
-    this.itemQuery.set('');
-    this.pageMsg.set(null);
   }
   setRole(position: string): void {
     const p = this.pick();
@@ -289,68 +182,5 @@ export class ChampionsView {
   setMode(mode: 'ranked' | 'aram'): void {
     const p = this.pick();
     if (p) this.pick.set({ ...p, mode });
-  }
-
-  hasPage(id: number): boolean {
-    return !!this.rift.config()?.runeOverrides[String(id)];
-  }
-  hasBuild(id: number): boolean {
-    return (this.rift.config()?.builds[String(id)] ?? []).length > 0;
-  }
-  styleName(id: number): string {
-    return this.rift.styleById().get(id)?.name ?? `#${id}`;
-  }
-  perkName(id: number): string {
-    return this.rift.perkById().get(id)?.name ?? '';
-  }
-  perkIcon(id: number): string {
-    return assetUrl(this.rift.perkById().get(id)?.iconPath);
-  }
-  item(id: number): ItemInfo | undefined {
-    return this.rift.itemById().get(id);
-  }
-  itemIcon(it: ItemInfo): string {
-    return assetUrl(it.iconPath);
-  }
-
-  async savePage(championId: number): Promise<void> {
-    try {
-      const page = await this.rift.saveCurrentPageFor(championId);
-      this.pageMsg.set({ text: `Saved "${page.name}" for ${this.rift.champName(championId)}.`, bad: false });
-    } catch (e) {
-      this.pageMsg.set({ text: String(e), bad: true });
-    }
-  }
-  removePage(championId: number): void {
-    this.pageMsg.set(null);
-    this.rift.updateConfig((c) => {
-      delete c.runeOverrides[String(championId)];
-      return c;
-    });
-  }
-
-  private editBuild(fn: (b: number[]) => number[]): void {
-    const id = this.pick()?.championId;
-    if (!id) return;
-    this.rift.updateConfig((c) => {
-      const next = fn([...(c.builds[String(id)] ?? [])]);
-      if (next.length) c.builds[String(id)] = next;
-      else delete c.builds[String(id)];
-      return c;
-    });
-  }
-  add(itemId: number): void {
-    this.editBuild((b) => [...b, itemId]);
-    this.itemQuery.set('');
-  }
-  removeAt(i: number): void {
-    this.editBuild((b) => b.filter((_, j) => j !== i));
-  }
-  move(i: number, d: number): void {
-    this.editBuild((b) => {
-      const j = i + d;
-      [b[i], b[j]] = [b[j], b[i]];
-      return b;
-    });
   }
 }

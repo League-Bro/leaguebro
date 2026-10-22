@@ -26,7 +26,7 @@ If you installed the app before it was renamed to League Bro, updating installs 
 
 When you hover or lock a champion, League Bro pulls OP.GG's ranked stats for that champion and role and shows the most popular rune page, summoner spells, skill order, starting items and build path, with game counts and win rate.
 
-To look up any champion outside champ select, use the **Champions** tab: pick a champion, then Ranked (with a role) or ARAM. That's also where you save your own rune page or item order for a champion.
+To look up any champion outside champ select, use the **Champions** tab: pick a champion, then Ranked (with a role) or ARAM.
 
 ### Rune, summoner spell and shop build auto-import
 
@@ -34,8 +34,7 @@ When you lock in, League Bro creates a rune page called `League Bro: <Champion> 
 
 It also adds OP.GG's build to the in-game shop as an item set with the same name: starter items, boots, core build and options for items 4 to 6, with win rates. In the shop, find it under item sets. Like the rune page, it's one set that gets replaced each game, and your own item sets aren't touched.
 
-- **Where the page comes from:** your own saved page for that champion if you have one, otherwise OP.GG's most popular page. For rare picks with too few games on OP.GG, it uses the League client's own suggestion.
-- **Your own page:** select it in the client's rune editor, then save it on that champion's page in the **Champions** tab.
+- **Where the page comes from:** OP.GG's most popular page. For rare picks with too few games on OP.GG, it uses the League client's own suggestion.
 - **Options:** under **Settings → Recommendations** you can switch to League client suggestions only, or turn off summoner spells or the shop build. Turn on "Import while hovering" for blind pick. If all your page slots are full, delete one page, or turn on "Reuse the selected page when slots are full".
 
 ### Scouting
@@ -52,7 +51,7 @@ A small, click-through panel in the top-right corner shows:
 - how your items compare with your lane opponent's: the total cost of each of your items, and the difference (green when you're ahead). The game doesn't share enemy gold, so this is item value, like Blitz shows. Not shown in modes without roles, like ARAM.
 - objective timers: dragon (switching to Elder after a soul), Baron, and destroyed inhibitors
 - which ability to max, plus a "Level up Q" hint whenever you have an unspent skill point
-- the next two items to buy, with the price turning green when you can afford it. These come from your saved build for that champion (set in the **Champions** tab), or from OP.GG's build otherwise.
+- the next two items to buy, with the price turning green when you can afford it. These come from OP.GG's build.
 
 You can change the overlay's position, opacity and the timer values under **Settings**. Use **Preview overlay** to see where it sits.
 

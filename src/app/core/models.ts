@@ -78,8 +78,13 @@ export interface MatchLine {
   /** item0..item6; the last one is the trinket. */
   items: number[];
   spells: [number, number];
+  /** The enemy in your position, when the client's lane data makes that clear (Summoner's Rift only). */
+  laneOpponent: number | null;
+  /** Enemy champion ids; empty if the game's full record didn't load. */
+  enemies: number[];
 }
 
+/** Games and your wins/KDA with a champion, or against one. */
 export interface ChampStat {
   championId: number;
   games: number;
@@ -110,6 +115,15 @@ export interface Insights {
   streak: number;
   champions: ChampStat[];
   queues: QueueStat[];
+  /** Lane opponents you've lost to more often than beaten (2+ games), worst 5 first. */
+  toughestLanes: ChampStat[];
+  /** The same for any enemy champion. */
+  toughestEnemies: ChampStat[];
+}
+
+export interface ModeInsights {
+  queueId: number;
+  insights: Insights;
 }
 
 export interface MyProfile {
@@ -121,7 +135,12 @@ export interface MyProfile {
   flex: RankLine | null;
   /** Newest first. */
   matches: MatchLine[];
+  /** All queues together. */
   insights: Insights;
+  /** Per queue, most played first. */
+  modes: ModeInsights[];
+  /** The queue of the lobby, champ select or game you're in. */
+  currentQueueId: number | null;
   error: string | null;
 }
 
@@ -251,7 +270,6 @@ export interface OverlayState {
   timers: Timer[];
   nextItems: NextItem[];
   hasBuild: boolean;
-  buildSource: string;
   skillMax: string[];
   nextSkill: string | null;
   /** Your item value vs your lane opponent's; null without roles (ARAM etc.). */
@@ -414,13 +432,6 @@ export interface PatchNotes {
   sections: PatchSection[];
 }
 
-export interface RunePage {
-  name: string;
-  primaryStyleId: number;
-  subStyleId: number;
-  selectedPerkIds: number[];
-}
-
 export interface TimerConfig {
   firstDragon: number;
   firstBaron: number;
@@ -434,8 +445,6 @@ export interface Config {
   autoImportRunes: boolean;
   importOnHover: boolean;
   reuseCurrentPageWhenFull: boolean;
-  runeOverrides: Record<string, RunePage>;
-  builds: Record<string, number[]>;
   recSource: 'opgg' | 'client';
   setSummonerSpells: boolean;
   setItemSets: boolean;
