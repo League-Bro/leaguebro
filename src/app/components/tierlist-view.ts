@@ -89,8 +89,10 @@ let autoLane: string | null = null;
                     </span>
                   </span>
                   <span class="label" [class]="'label t-' + e.tier">{{ labelText(e) }}</span>
-                  @if (e.rankChange) {
-                    <span class="move" [class.win]="e.rankChange > 0" [class.loss]="e.rankChange < 0">{{ e.rankChange > 0 ? '▲' : '▼' }}{{ abs(e.rankChange) }}</span>
+                  @if (hasMoves()) {
+                    <span class="move" [class.win]="(e.rankChange ?? 0) > 0" [class.loss]="(e.rankChange ?? 0) < 0">
+                      @if (e.rankChange) { {{ e.rankChange > 0 ? '▲' : '▼' }}{{ abs(e.rankChange) }} }
+                    </span>
                   }
                 </button>
               }
@@ -133,7 +135,7 @@ let autoLane: string | null = null;
     .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
     .stats { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
     .label { font-size: 11px; font-weight: 700; color: var(--tc); border: 1px solid var(--tc); border-radius: 999px; padding: 0 6px; min-width: 24px; text-align: center; }
-    .move { font-size: 10px; width: 24px; }
+    .move { flex: none; font-size: 10px; width: 26px; text-align: left; white-space: nowrap; }
     .win { color: var(--win); }
     .loss { color: var(--loss); }
   `,
@@ -157,6 +159,8 @@ export class TierListView {
     const entries = this.list()?.entries ?? [];
     return ROWS.map((tier) => ({ tier, entries: entries.filter((e) => e.tier === tier) })).filter((r) => r.entries.length);
   });
+  /** Reserve the ▲/▼ column on every entry when any has one, so the tier labels line up. */
+  protected readonly hasMoves = computed(() => (this.list()?.entries ?? []).some((e) => e.rankChange));
   protected readonly newPatch = computed(() => {
     const l = this.list();
     const min = RANKS.find((r) => r.id === l?.rank)?.newPatchGames;
