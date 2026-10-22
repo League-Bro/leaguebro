@@ -98,6 +98,7 @@ src-tauri/src/
   postgame.rs   post-game summary from the match-history record
   profile.rs    your profile: rank, recent matches, insights; the Brawl/League Classic filter
   config.rs     settings (%APPDATA%\dev.dom.leaguebro\settings.json), serde defaults for new fields
+  util.rs       shared JSON accessors (int/text/list…, a key or a /pointer), web client + get_json, error text
 src-tauri/tauri.conf.json   windows (main + transparent overlay), CSP, updater pubkey + endpoint, version
 src/app/core/   rift.service.ts (events/commands), update.service.ts (auto-update), models.ts, demo.ts, assets.ts, why.ts (recommendation explanations)
 src/app/components/  shell, live-view, post-game, champions-view, profile-view, rec-card, player-card, patch-view, settings-view, feedback-view, overlay

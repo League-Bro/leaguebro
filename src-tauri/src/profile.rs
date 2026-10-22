@@ -9,6 +9,8 @@
 //! fetched once per game and kept in memory.
 
 use crate::lcu::Lcu;
+use crate::postgame::{self, PlayerLine};
+use crate::util::{int, list, riot_name, text};
 use crate::scout::{self, RankLine};
 use serde::Serialize;
 use serde_json::Value;
@@ -27,16 +29,8 @@ pub struct MatchLine {
     pub duration: i64,
     /// "win", "loss" or "remake".
     pub result: String,
-    pub champion_id: i64,
-    pub kills: i64,
-    pub deaths: i64,
-    pub assists: i64,
-    pub cs: i64,
-    pub gold: i64,
-    pub damage: i64,
-    pub vision: i64,
-    pub items: Vec<i64>,
-    pub spells: [i64; 2],
+    #[serde(flatten)]
+    pub line: PlayerLine,
     /// Champion id of the enemy in your position, when the client's lane data
     /// makes that clear (Summoner's Rift 5v5 only).
     pub lane_opponent: Option<i64>,
@@ -119,51 +113,31 @@ pub struct MyProfile {
 /// Games League Bro may show match data for. Brawl's markers (mode `BRAWL`,
 /// queue 2400) haven't been seen in a real response yet.
 pub fn allowed(game: &Value, champion_id: i64) -> bool {
-    let mode = game.get("gameMode").and_then(Value::as_str).unwrap_or("");
-    let queue = game.get("queueId").and_then(Value::as_i64).unwrap_or(0);
+    let mode = text(game, "gameMode");
+    let queue = int(game, "queueId");
     let brawl = mode.eq_ignore_ascii_case("BRAWL") || queue == 2400;
     let league_classic = champion_id >= 60000;
     !brawl && !league_classic
 }
 
-fn is_custom(game: &Value) -> bool {
-    game.get("gameType").and_then(Value::as_str) == Some("CUSTOM_GAME")
-}
-
-/// Your line from each game in a match-history response, newest first.
+/// Your line from each game in a match-history response (the player's own
+/// history, or anyone's when scouting), newest first.
 pub fn parse_matches(history: &Value) -> Vec<MatchLine> {
-    let games = history.pointer("/games/games").and_then(Value::as_array).cloned().unwrap_or_default();
-    let n = |v: &Value, k: &str| v.get(k).and_then(Value::as_i64).unwrap_or(0);
-    let mut out: Vec<MatchLine> = games
+    let mut out: Vec<MatchLine> = list(history, "/games/games")
         .iter()
-        .filter(|g| !is_custom(g))
+        .filter(|g| text(g, "gameType") != "CUSTOM_GAME")
         .filter_map(|g| {
             // This endpoint returns only the requested player in each game.
-            let p = g.get("participants")?.as_array()?.first()?;
-            let champion_id = n(p, "championId");
-            if !allowed(g, champion_id) {
-                return None;
-            }
-            let s = p.get("stats").cloned().unwrap_or(Value::Null);
-            let remake = s.get("gameEndedInEarlySurrender").and_then(Value::as_bool).unwrap_or(false);
-            let win = s.get("win").and_then(Value::as_bool).unwrap_or(false);
-            Some(MatchLine {
-                game_id: n(g, "gameId"),
-                queue_id: n(g, "queueId"),
-                game_mode: g.get("gameMode").and_then(Value::as_str).unwrap_or("").to_string(),
-                created: n(g, "gameCreation"),
-                duration: n(g, "gameDuration"),
-                result: (if remake { "remake" } else if win { "win" } else { "loss" }).to_string(),
-                champion_id,
-                kills: n(&s, "kills"),
-                deaths: n(&s, "deaths"),
-                assists: n(&s, "assists"),
-                cs: n(&s, "totalMinionsKilled") + n(&s, "neutralMinionsKilled"),
-                gold: n(&s, "goldEarned"),
-                damage: n(&s, "totalDamageDealtToChampions"),
-                vision: n(&s, "visionScore"),
-                items: (0..=6).map(|i| n(&s, &format!("item{i}"))).collect(),
-                spells: [n(p, "spell1Id"), n(p, "spell2Id")],
+            let p = list(g, "participants").first()?;
+            let line = PlayerLine::parse(p);
+            allowed(g, line.champion_id).then(|| MatchLine {
+                game_id: int(g, "gameId"),
+                queue_id: int(g, "queueId"),
+                game_mode: text(g, "gameMode").to_string(),
+                created: int(g, "gameCreation"),
+                duration: int(g, "gameDuration"),
+                result: postgame::result(p).to_string(),
+                line,
                 lane_opponent: None,
                 enemies: Vec::new(),
             })
@@ -183,33 +157,32 @@ pub struct Opponents {
 /// Your lane opponent and the enemy team from a game's full record. None if
 /// you aren't in it.
 pub fn opponents(game: &Value, my_puuid: &str) -> Option<Opponents> {
-    let n = |v: &Value, k: &str| v.get(k).and_then(Value::as_i64).unwrap_or(0);
     let parts = game.get("participants")?.as_array()?;
     let my_pid = game
         .get("participantIdentities")?
         .as_array()?
         .iter()
         .find(|i| i.pointer("/player/puuid").and_then(Value::as_str) == Some(my_puuid))
-        .map(|i| n(i, "participantId"))?;
-    let me = parts.iter().find(|p| n(p, "participantId") == my_pid)?;
-    let my_team_id = n(me, "teamId");
-    let (mine, theirs): (Vec<&Value>, Vec<&Value>) = parts.iter().partition(|p| n(p, "teamId") == my_team_id);
+        .map(|i| int(i, "participantId"))?;
+    let me = parts.iter().find(|p| int(p, "participantId") == my_pid)?;
+    let my_team_id = int(me, "teamId");
+    let (mine, theirs): (Vec<&Value>, Vec<&Value>) = parts.iter().partition(|p| int(p, "teamId") == my_team_id);
     // Arena (map 30) pairs players into subteams inside teamId 100/200, so
     // teamId doesn't say who was against you there.
-    let enemies = if n(game, "mapId") == 30 { Vec::new() } else { theirs.iter().map(|p| n(p, "championId")).collect() };
+    let enemies = if int(game, "mapId") == 30 { Vec::new() } else { theirs.iter().map(|p| int(p, "championId")).collect() };
     // Lanes only mean something in a 5v5 on Summoner's Rift.
-    let lane = (n(game, "mapId") == 11 && mine.len() == 5 && theirs.len() == 5)
+    let lane = (int(game, "mapId") == 11 && mine.len() == 5 && theirs.len() == 5)
         .then(|| {
             let my_pos = positions(&mine);
             let their_pos = positions(&theirs);
-            let me_at = mine.iter().position(|p| n(p, "participantId") == my_pid)?;
+            let me_at = mine.iter().position(|p| int(p, "participantId") == my_pid)?;
             let pos = my_pos[me_at]?;
             let only = |list: &[Option<&str>]| list.iter().filter(|p| **p == Some(pos)).count() == 1;
             if !only(&my_pos) || !only(&their_pos) {
                 return None;
             }
             let at = their_pos.iter().position(|p| *p == Some(pos))?;
-            Some(n(theirs[at], "championId"))
+            Some(int(theirs[at], "championId"))
         })
         .flatten();
     Some(Opponents { lane, enemies })
@@ -219,12 +192,11 @@ pub fn opponents(game: &Value, my_puuid: &str) -> Option<Opponents> {
 /// is often wrong, so Smite decides jungle, and in bot lane the one with less
 /// CS is the support when the roles aren't given. None where it's unclear.
 fn positions(team: &[&Value]) -> Vec<Option<&'static str>> {
-    let n = |v: &Value, k: &str| v.get(k).and_then(Value::as_i64).unwrap_or(0);
     let text = |v: &Value, k: &str| v.pointer(k).and_then(Value::as_str).unwrap_or("").to_string();
     let mut pos: Vec<Option<&'static str>> = team
         .iter()
         .map(|p| {
-            if n(p, "spell1Id") == 11 || n(p, "spell2Id") == 11 {
+            if int(p, "spell1Id") == 11 || int(p, "spell2Id") == 11 {
                 return Some("jungle");
             }
             match (text(p, "/timeline/lane").as_str(), text(p, "/timeline/role").as_str()) {
@@ -312,9 +284,9 @@ fn add(stats: &mut HashMap<i64, ChampStat>, champion_id: i64, m: &MatchLine) {
     let c = stats.entry(champion_id).or_insert_with(|| ChampStat { champion_id, ..Default::default() });
     c.games += 1;
     c.wins += (m.result == "win") as i64;
-    c.kills += m.kills;
-    c.deaths += m.deaths;
-    c.assists += m.assists;
+    c.kills += m.line.kills;
+    c.deaths += m.line.deaths;
+    c.assists += m.line.assists;
 }
 
 /// Insights for each queue in `matches`, most played first.
@@ -342,10 +314,10 @@ pub fn insights<'a>(matches: impl IntoIterator<Item = &'a MatchLine>) -> Insight
     for m in &counted {
         let win = m.result == "win";
         ins.wins += win as i64;
-        ins.kills += m.kills;
-        ins.deaths += m.deaths;
-        ins.assists += m.assists;
-        add(&mut champs, m.champion_id, m);
+        ins.kills += m.line.kills;
+        ins.deaths += m.line.deaths;
+        ins.assists += m.line.assists;
+        add(&mut champs, m.line.champion_id, m);
         if let Some(id) = m.lane_opponent {
             add(&mut lanes, id, m);
         }
@@ -358,12 +330,12 @@ pub fn insights<'a>(matches: impl IntoIterator<Item = &'a MatchLine>) -> Insight
     }
     if minutes > 0.0 {
         let per_min = |f: fn(&MatchLine) -> i64| counted.iter().map(|m| f(m)).sum::<i64>() as f64 / minutes;
-        ins.cs_per_min = per_min(|m| m.cs);
-        ins.damage_per_min = per_min(|m| m.damage);
-        ins.gold_per_min = per_min(|m| m.gold);
+        ins.cs_per_min = per_min(|m| m.line.cs);
+        ins.damage_per_min = per_min(|m| m.line.damage);
+        ins.gold_per_min = per_min(|m| m.line.gold);
     }
     if !counted.is_empty() {
-        ins.vision_per_game = counted.iter().map(|m| m.vision).sum::<i64>() as f64 / counted.len() as f64;
+        ins.vision_per_game = counted.iter().map(|m| m.line.vision).sum::<i64>() as f64 / counted.len() as f64;
         let first = counted[0].result == "win";
         let len = counted.iter().take_while(|m| (m.result == "win") == first).count() as i64;
         ins.streak = if first { len } else { -len };
@@ -379,11 +351,11 @@ pub fn insights<'a>(matches: impl IntoIterator<Item = &'a MatchLine>) -> Insight
 
 pub async fn load(lcu: &Lcu) -> anyhow::Result<MyProfile> {
     let me = lcu.get_req("/lol-summoner/v1/current-summoner").await?;
-    let puuid = me.get("puuid").and_then(Value::as_str).unwrap_or("").to_string();
+    let puuid = text(&me, "puuid").to_string();
     let mut p = MyProfile {
-        name: crate::engine::riot_name(&me).unwrap_or_default(),
-        icon_id: me.get("profileIconId").and_then(Value::as_i64).unwrap_or(0),
-        level: me.get("summonerLevel").and_then(Value::as_i64).unwrap_or(0),
+        name: riot_name(&me).unwrap_or_default(),
+        icon_id: int(&me, "profileIconId"),
+        level: int(&me, "summonerLevel"),
         puuid: puuid.clone(),
         ..Default::default()
     };
@@ -451,7 +423,7 @@ mod tests {
         let m = parse_matches(&history());
         assert_eq!(m.iter().map(|m| m.game_id).collect::<Vec<_>>(), vec![4, 2, 3, 1]);
         assert_eq!(m[0].result, "remake");
-        assert_eq!((m[1].cs, m[1].items.len(), m[1].spells), (210, 7, [4, 14]));
+        assert_eq!((m[1].line.cs, m[1].line.items.len(), m[1].line.spells), (210, 7, [4, 14]));
     }
 
     #[test]

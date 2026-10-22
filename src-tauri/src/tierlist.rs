@@ -24,6 +24,7 @@
 //! `FRESH_SECS` (and never past the next patch notes); they're one small
 //! request, so they aren't saved to disk.
 
+use crate::util::{get_json, int, web_client};
 use anyhow::{bail, Context, Result};
 use crate::cache::now_secs;
 use crate::engine::is_league_classic;
@@ -32,7 +33,6 @@ use crate::patch::notes_releases_around;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::time::Duration;
 use tokio::sync::Mutex;
 
 const LOLALYTICS: &str = "https://a1.lolalytics.com/mega/";
@@ -156,12 +156,12 @@ pub fn parse_lolalytics(body: &Value, position: &str, rank: &str, names: &HashMa
                 name: champion_name(names, id),
                 tier: label[..1].to_string(),
                 label: label.to_string(),
-                rank: c.get("rank").and_then(Value::as_i64).unwrap_or(0),
+                rank: int(c, "rank"),
                 rank_change: None,
                 win_rate: f(c, "wr"),
                 pick_rate: f(c, "pr"),
                 ban_rate: f(c, "br"),
-                games: c.get("games").and_then(Value::as_i64).unwrap_or(0),
+                games: int(c, "games"),
             })
         })
         .collect();
@@ -201,7 +201,7 @@ pub fn parse_opgg(body: &Value, rank: &str, names: &HashMap<i64, String>) -> Res
                     // 0 is OP.GG's "OP" tier, above tier 1 (seen in Challenger,
                     // October 2026); it goes in the S row with tier 1.
                     let row = ["S", "S", "A", "B", "C", "D"].get(usize::try_from(tier).ok()?)?;
-                    let rank = tier_data.get("rank").and_then(Value::as_i64).unwrap_or(0);
+                    let rank = int(tier_data, "rank");
                     Some(TierEntry {
                         champion_id: id,
                         name: champion_name(names, id),
@@ -212,7 +212,7 @@ pub fn parse_opgg(body: &Value, rank: &str, names: &HashMap<i64, String>) -> Res
                         win_rate: f(stats, "win_rate") * 100.0,
                         pick_rate: f(stats, "pick_rate") * 100.0,
                         ban_rate: f(stats, "ban_rate") * 100.0,
-                        games: stats.get("play").and_then(Value::as_i64).unwrap_or(0),
+                        games: int(stats, "play"),
                     })
                 })
                 .collect();
@@ -256,13 +256,9 @@ pub struct TierLists {
 }
 
 impl TierLists {
-    pub fn new(version: &str) -> TierLists {
+    pub fn new() -> TierLists {
         TierLists {
-            http: reqwest::Client::builder()
-                .user_agent(format!("LeagueBro/{version} (+https://github.com/doliaro/leaguebro)"))
-                .timeout(Duration::from_secs(15))
-                .build()
-                .expect("http client"),
+            http: web_client(15),
             lists: Mutex::new(HashMap::new()),
             champions: Mutex::new(None),
         }
@@ -330,16 +326,7 @@ impl TierLists {
         if let Some(c) = guard.as_ref() {
             return Ok(c.clone());
         }
-        let body: Value = self
-            .http
-            .get(CHAMPION_SUMMARY)
-            .send()
-            .await
-            .context("couldn't reach CommunityDragon for champion names")?
-            .error_for_status()?
-            .json()
-            .await
-            .context("couldn't read CommunityDragon's champion list")?;
+        let body = get_json(self.http.get(CHAMPION_SUMMARY), "CommunityDragon").await?;
         let names: Vec<(i64, String)> = body
             .as_array()
             .into_iter()
@@ -355,32 +342,12 @@ impl TierLists {
 
     /// `lane` is Lolalytics' name for `position`.
     async fn fetch_lolalytics(&self, lane: &str, position: &str, rank: &str, names: &HashMap<i64, String>) -> Result<TierList> {
-        let body: Value = self
-            .http
-            .get(LOLALYTICS)
-            .query(&[("ep", "list"), ("v", "1"), ("cid", "0"), ("lane", lane), ("tier", rank), ("queue", "ranked"), ("region", "all")])
-            .send()
-            .await
-            .context("couldn't reach Lolalytics")?
-            .error_for_status()?
-            .json()
-            .await
-            .context("couldn't read Lolalytics' answer")?;
+        let body = get_json(self.http.get(LOLALYTICS).query(&[("ep", "list"), ("v", "1"), ("cid", "0"), ("lane", lane), ("tier", rank), ("queue", "ranked"), ("region", "all")]), "Lolalytics").await?;
         parse_lolalytics(&body, position, rank, names)
     }
 
     async fn fetch_opgg(&self, rank: &str, names: &HashMap<i64, String>) -> Result<Vec<TierList>> {
-        let body: Value = self
-            .http
-            .get(OPGG)
-            .query(&[("tier", rank)])
-            .send()
-            .await
-            .context("couldn't reach OP.GG")?
-            .error_for_status()?
-            .json()
-            .await
-            .context("couldn't read OP.GG's answer")?;
+        let body = get_json(self.http.get(OPGG).query(&[("tier", rank)]), "OP.GG").await?;
         parse_opgg(&body, rank, names)
     }
 }
@@ -456,7 +423,7 @@ mod tests {
     #[ignore]
     fn live_tier_lists() {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let tiers = TierLists::new("test");
+        let tiers = TierLists::new();
         for (source, rank) in [
             (Source::Lolalytics, "emerald_plus"),
             (Source::Lolalytics, "silver"),

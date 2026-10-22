@@ -1,6 +1,8 @@
 //! Player lookups (rank + recent games) through the local League client.
 //! No Riot API key is needed: the client exposes these for any player.
 
+use crate::profile::{parse_matches, MatchLine};
+use crate::util::{int, text};
 use crate::lcu::Lcu;
 use serde::Serialize;
 use serde_json::Value;
@@ -60,63 +62,32 @@ pub fn parse_rank(stats: &Value, queue: &str) -> Option<RankLine> {
             .iter()
             .find(|q| q.get("queueType").and_then(Value::as_str) == Some(queue))
     })?;
-    let tier = q.get("tier").and_then(Value::as_str).unwrap_or("");
+    let tier = text(q, "tier");
     if tier.is_empty() || tier.eq_ignore_ascii_case("NONE") {
         return None;
     }
-    let division = q.get("division").and_then(Value::as_str).unwrap_or("");
+    let division = text(q, "division");
     Some(RankLine {
         tier: tier.to_string(),
         division: if division == "NA" { String::new() } else { division.to_string() },
-        lp: q.get("leaguePoints").and_then(Value::as_i64).unwrap_or(0),
-        wins: q.get("wins").and_then(Value::as_i64).unwrap_or(0),
-        losses: q.get("losses").and_then(Value::as_i64).unwrap_or(0),
+        lp: int(q, "leaguePoints"),
+        wins: int(q, "wins"),
+        losses: int(q, "losses"),
     })
 }
 
-/// Extracts this player's line from each game in a match-history response.
-pub fn parse_history(history: &Value, puuid: &str) -> Vec<GameLine> {
-    let games = history
-        .get("games")
-        .and_then(|g| g.get("games"))
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let mut out = Vec::new();
-    for g in &games {
-        let idents = g.get("participantIdentities").and_then(Value::as_array);
-        let parts = g.get("participants").and_then(Value::as_array);
-        let (Some(idents), Some(parts)) = (idents, parts) else { continue };
-        let pid = idents
-            .iter()
-            .find(|i| i.pointer("/player/puuid").and_then(Value::as_str) == Some(puuid))
-            .or_else(|| if idents.len() == 1 { idents.first() } else { None })
-            .and_then(|i| i.get("participantId"))
-            .and_then(Value::as_i64);
-        let part = match pid {
-            Some(pid) => parts.iter().find(|p| p.get("participantId").and_then(Value::as_i64) == Some(pid)),
-            None if parts.len() == 1 => parts.first(),
-            None => None,
-        };
-        let Some(p) = part else { continue };
-        if !crate::profile::allowed(g, p.get("championId").and_then(Value::as_i64).unwrap_or(0)) {
-            continue;
-        }
-        let s = p.get("stats").cloned().unwrap_or(Value::Null);
-        let n = |k: &str| s.get(k).and_then(Value::as_i64).unwrap_or(0);
-        out.push(GameLine {
-            champion_id: p.get("championId").and_then(Value::as_i64).unwrap_or(0),
-            win: s.get("win").and_then(Value::as_bool).unwrap_or(false),
-            kills: n("kills"),
-            deaths: n("deaths"),
-            assists: n("assists"),
-            queue_id: g.get("queueId").and_then(Value::as_i64).unwrap_or(0),
-            created: g.get("gameCreation").and_then(Value::as_i64).unwrap_or(0),
-        });
-    }
-    // Newest first.
-    out.sort_by(|a, b| b.created.cmp(&a.created));
-    out
+/// Short lines for a match-history response, newest first.
+pub fn parse_history(history: &Value) -> Vec<GameLine> {
+    let line = |m: MatchLine| GameLine {
+        champion_id: m.line.champion_id,
+        win: m.result == "win",
+        kills: m.line.kills,
+        deaths: m.line.deaths,
+        assists: m.line.assists,
+        queue_id: m.queue_id,
+        created: m.created,
+    };
+    parse_matches(history).into_iter().map(line).collect()
 }
 
 pub fn summarize(puuid: &str, stats: Option<&Value>, games: Vec<GameLine>) -> Profile {
@@ -165,7 +136,7 @@ pub async fn lookup(lcu: &Lcu, puuid: &str) -> Profile {
         }
     };
     let games = match history {
-        Ok(Some(h)) => parse_history(&h, puuid),
+        Ok(Some(h)) => parse_history(&h),
         Ok(None) => Vec::new(),
         Err(e) => {
             errors.push(format!("history: {e}"));
@@ -204,7 +175,7 @@ mod tests {
                        "stats": {"win": win, "kills": k, "deaths": 2, "assists": 4}}]})
         };
         let h = json!({"games": {"games": [game(1, 103, true, 6, 10), game(2, 103, false, 2, 30), game(3, 1, true, 10, 20)]}});
-        let games = parse_history(&h, "abc");
+        let games = parse_history(&h);
         assert_eq!(games.len(), 3);
         assert_eq!(games[0].created, 30);
         let p = summarize("abc", None, games);

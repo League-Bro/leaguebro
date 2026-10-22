@@ -1,4 +1,5 @@
 mod config;
+mod util;
 mod cache;
 mod engine;
 mod itemsets;
@@ -12,6 +13,7 @@ mod runes;
 mod scout;
 mod tierlist;
 
+use crate::util::{msg, text};
 use config::Config;
 use engine::{AppState, Shared, Snapshot, StaticData};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -63,19 +65,19 @@ async fn import_swiftplay_now(app: AppHandle) -> Result<Vec<engine::ImportEvent>
 #[tauri::command]
 async fn get_my_profile(state: State<'_, AppState>) -> Result<profile::MyProfile, String> {
     let lcu = state.shared.lock().await.lcu.clone().ok_or("Open the League client to see your profile")?;
-    profile::load(&lcu).await.map_err(|e| format!("{e:#}"))
+    profile::load(&lcu).await.map_err(msg)
 }
 
 /// The full scoreboard of one of your past games.
 #[tauri::command]
 async fn get_match(state: State<'_, AppState>, game_id: i64, queue_name: String) -> Result<postgame::PostGame, String> {
     let lcu = state.shared.lock().await.lcu.clone().ok_or("Open the League client to see this game")?;
-    let me = lcu.get_req("/lol-summoner/v1/current-summoner").await.map_err(|e| format!("{e:#}"))?;
-    let puuid = me.get("puuid").and_then(|v| v.as_str()).unwrap_or("");
+    let me = lcu.get_req("/lol-summoner/v1/current-summoner").await.map_err(msg)?;
+    let puuid = text(&me, "puuid");
     let game = lcu
         .get(&format!("/lol-match-history/v1/games/{game_id}"))
         .await
-        .map_err(|e| format!("{e:#}"))?
+        .map_err(msg)?
         .ok_or("The League client doesn't have this game anymore")?;
     postgame::parse(&game, puuid, &queue_name).ok_or_else(|| "Couldn't read this game".to_string())
 }
@@ -101,7 +103,7 @@ async fn lookup_rec(
         }
         (champ.alias.clone(), sh.lcu.clone())
     };
-    state.opgg.recommend(champion_id, &alias, &position, &game_mode, lcu.as_ref()).await.map_err(|e| format!("{e:#}"))
+    state.opgg.recommend(champion_id, &alias, &position, &game_mode, lcu.as_ref()).await.map_err(msg)
 }
 
 /// Unlocks the overlay so it accepts mouse input and can be dragged to a new
@@ -124,13 +126,13 @@ async fn set_overlay_locked(app: AppHandle, state: State<'_, AppState>, locked: 
 /// Recent patch notes articles on leagueoflegends.com, newest first.
 #[tauri::command]
 async fn list_patches(state: State<'_, AppState>) -> Result<Vec<patch::PatchInfo>, String> {
-    state.patches.list().await.map_err(|e| format!("{e:#}"))
+    state.patches.list().await.map_err(msg)
 }
 
 /// One patch's changes, sorted into buffs, nerfs and adjustments.
 #[tauri::command]
 async fn get_patch(state: State<'_, AppState>, url: String) -> Result<patch::PatchNotes, String> {
-    state.patches.notes(&url).await.map_err(|e| format!("{e:#}"))
+    state.patches.notes(&url).await.map_err(msg)
 }
 
 /// One lane's tier list from Lolalytics or OP.GG (the Tier List tab).
@@ -145,7 +147,7 @@ async fn get_tier_list(
     let champions = state.shared.lock().await.statics.as_ref().map(|s| {
         s.champions.iter().filter(|c| !c.classic).map(|c| (c.id, c.name.clone())).collect()
     });
-    state.tiers.get(source, &position, &rank, champions).await.map_err(|e| format!("{e:#}"))
+    state.tiers.get(source, &position, &rank, champions).await.map_err(msg)
 }
 
 #[derive(serde::Serialize)]
@@ -182,7 +184,7 @@ async fn clear_cache(state: State<'_, AppState>, which: CacheName) -> Result<Cac
         CacheName::PatchNotes => state.patches.clear().await,
         CacheName::Runes => state.opgg.clear().await,
     }
-    .map_err(|e| format!("{e:#}"))?;
+    .map_err(msg)?;
     Ok(cache_usage(&state).await)
 }
 
@@ -248,14 +250,12 @@ pub fn run() {
                 config_path,
                 shared: Mutex::new(Shared::default()),
                 opgg: opgg::OpGg::new(
-                    env!("CARGO_PKG_VERSION"),
                     app.path().app_cache_dir().ok().map(|d| d.join("opgg")),
                 ),
                 patches: patch::PatchNotesClient::new(
-                    env!("CARGO_PKG_VERSION"),
                     app.path().app_cache_dir().ok().map(|d| d.join("patch-notes")),
                 ),
-                tiers: tierlist::TierLists::new(env!("CARGO_PKG_VERSION")),
+                tiers: tierlist::TierLists::new(),
                 overlay_input: std::sync::Mutex::new(engine::OverlayInput { passthrough: true, ..Default::default() }),
             });
             if let Some(overlay) = app.get_webview_window("overlay") {

@@ -70,3 +70,13 @@ export function clock(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
+
+/** Win rate as a whole percent. */
+export function winPct(wins: number, games: number): number {
+  return games > 0 ? Math.round((wins / games) * 100) : 0;
+}
+
+/** (Kills + assists) / deaths, e.g. "3.2", or "Perfect" without deaths. */
+export function kdaRatio(k: number, d: number, a: number): string {
+  return d === 0 ? (k + a > 0 ? 'Perfect' : '0.0') : ((k + a) / d).toFixed(1);
+}

@@ -1,6 +1,7 @@
 //! The background loop: watches the League client, reacts to champ select
 //! and loading, and feeds the overlay while a game is running.
 
+use crate::util::{flag, int, ints, list, msg, riot_name, strings, text};
 use crate::config::Config;
 use crate::itemsets;
 use crate::lcu::{self, Lcu};
@@ -183,6 +184,31 @@ pub struct Shared {
     pub swiftplay: Vec<SwiftplaySlot>,
 }
 
+impl Shared {
+    /// The map you're on; Summoner's Rift (11) until known.
+    fn map(&self) -> i64 {
+        if self.map_id == 0 { 11 } else { self.map_id }
+    }
+
+    pub fn champion(&self, id: i64) -> Option<&ChampInfo> {
+        self.statics.as_ref()?.champions.iter().find(|c| c.id == id)
+    }
+
+    /// The champion's alias for OP.GG, which has no League Classic stats.
+    pub fn opgg_alias(&self, id: i64) -> Option<String> {
+        self.champion(id).filter(|c| !c.classic).map(|c| c.alias.clone())
+    }
+
+    /// "Flash + Ignite"
+    fn spell_names(&self, a: i64, b: i64) -> String {
+        let name = |id: i64| {
+            let spell = self.statics.as_ref().and_then(|s| s.spells.iter().find(|p| p.id == id));
+            spell.map_or_else(|| format!("spell {id}"), |p| p.name.clone())
+        };
+        format!("{} + {}", name(a), name(b))
+    }
+}
+
 pub struct AppState {
     pub config: RwLock<Config>,
     pub config_path: PathBuf,
@@ -226,48 +252,24 @@ pub struct Snapshot {
 
 // ---------- parsing helpers ----------
 
-fn i(v: &Value, k: &str) -> i64 {
-    v.get(k).and_then(Value::as_i64).unwrap_or(0)
-}
-fn st<'a>(v: &'a Value, k: &str) -> &'a str {
-    v.get(k).and_then(Value::as_str).unwrap_or("")
-}
-
-pub fn riot_name(v: &Value) -> Option<String> {
-    let game = st(v, "gameName");
-    let tag = st(v, "tagLine");
-    if !game.is_empty() {
-        return Some(if tag.is_empty() { game.to_string() } else { format!("{game}#{tag}") });
-    }
-    for k in ["riotIdGameName", "summonerName", "internalName"] {
-        let n = st(v, k);
-        if !n.is_empty() {
-            return Some(n.to_string());
-        }
-    }
-    None
-}
-
 pub fn parse_champ_select(session: &Value) -> ChampSelectView {
-    let me_cell = i(session, "localPlayerCellId");
+    let me_cell = int(session, "localPlayerCellId");
     let player = |p: &Value| {
-        let hidden = st(p, "nameVisibilityType").eq_ignore_ascii_case("HIDDEN");
-        let puuid = st(p, "puuid");
+        let hidden = text(p, "nameVisibilityType").eq_ignore_ascii_case("HIDDEN");
+        let puuid = text(p, "puuid");
         let visible = !hidden && !puuid.is_empty();
         CsPlayer {
-            cell_id: i(p, "cellId"),
-            champion_id: i(p, "championId"),
-            pick_intent: i(p, "championPickIntent"),
-            position: st(p, "assignedPosition").to_string(),
-            is_me: i(p, "cellId") == me_cell,
+            cell_id: int(p, "cellId"),
+            champion_id: int(p, "championId"),
+            pick_intent: int(p, "championPickIntent"),
+            position: text(p, "assignedPosition").to_string(),
+            is_me: int(p, "cellId") == me_cell,
             visible,
             name: if visible { riot_name(p) } else { None },
             puuid: if visible { Some(puuid.to_string()) } else { None },
         }
     };
-    let team = |k: &str| -> Vec<CsPlayer> {
-        session.get(k).and_then(Value::as_array).map(|a| a.iter().map(player).collect()).unwrap_or_default()
-    };
+    let team = |k: &str| -> Vec<CsPlayer> { list(session, k).iter().map(player).collect() };
     let allies = team("myTeam");
     let mut enemies = team("theirTeam");
     // Never show anything about opponents beyond their visible picks.
@@ -280,60 +282,42 @@ pub fn parse_champ_select(session: &Value) -> ChampSelectView {
     let my_champion_id = if me.champion_id != 0 { me.champion_id } else { me.pick_intent };
 
     // Locked in = my pick action is completed.
-    let locked = session
-        .get("actions")
-        .and_then(Value::as_array)
-        .map(|groups| {
-            groups.iter().filter_map(Value::as_array).flatten().any(|a| {
-                i(a, "actorCellId") == me_cell
-                    && st(a, "type") == "pick"
-                    && a.get("completed").and_then(Value::as_bool).unwrap_or(false)
-            })
-        })
-        .unwrap_or(false)
+    let actions = list(session, "actions");
+    let locked = actions.iter().filter_map(Value::as_array).flatten().any(|a| {
+        int(a, "actorCellId") == me_cell && text(a, "type") == "pick" && flag(a, "completed")
+    })
         // Modes without pick actions (ARAM) assign the champion directly.
-        || (me.champion_id != 0 && session.get("actions").and_then(Value::as_array).map_or(true, |a| a.is_empty()));
+        || (me.champion_id != 0 && actions.is_empty());
 
-    let mut bans = Vec::new();
-    if let Some(b) = session.get("bans") {
-        for k in ["myTeamBans", "theirTeamBans"] {
-            if let Some(a) = b.get(k).and_then(Value::as_array) {
-                bans.extend(a.iter().filter_map(Value::as_i64).filter(|&x| x > 0));
-            }
-        }
-    }
+    let bans = ["/bans/myTeamBans", "/bans/theirTeamBans"].iter().flat_map(|k| ints(session, k)).filter(|&x| x > 0).collect();
     ChampSelectView {
-        queue_id: i(session, "queueId"),
+        queue_id: int(session, "queueId"),
         my_champion_id,
         my_position: me.position.clone(),
         locked,
         allies,
         enemies,
         bans,
-        timer_phase: session.pointer("/timer/phase").and_then(Value::as_str).unwrap_or("").to_string(),
+        timer_phase: text(session, "/timer/phase").to_string(),
     }
 }
 
 pub fn parse_loading(session: &Value, my_puuid: &str) -> Option<LoadingView> {
     let gd = session.get("gameData")?;
     let team = |k: &str| -> Vec<LoadPlayer> {
-        gd.get(k)
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .map(|p| {
-                        let puuid = st(p, "puuid");
-                        LoadPlayer {
-                            puuid: if puuid.is_empty() { None } else { Some(puuid.to_string()) },
-                            name: riot_name(p),
-                            champion_id: i(p, "championId"),
-                            position: st(p, "selectedPosition").to_string(),
-                            is_me: !my_puuid.is_empty() && puuid == my_puuid,
-                        }
-                    })
-                    .collect()
+        list(gd, k)
+            .iter()
+            .map(|p| {
+                let puuid = text(p, "puuid");
+                LoadPlayer {
+                    puuid: Some(puuid.to_string()).filter(|p| !p.is_empty()),
+                    name: riot_name(p),
+                    champion_id: int(p, "championId"),
+                    position: text(p, "selectedPosition").to_string(),
+                    is_me: !my_puuid.is_empty() && puuid == my_puuid,
+                }
             })
-            .unwrap_or_default()
+            .collect()
     };
     let one = team("teamOne");
     let two = team("teamTwo");
@@ -342,8 +326,8 @@ pub fn parse_loading(session: &Value, my_puuid: &str) -> Option<LoadingView> {
     }
     let (allies, enemies) = if two.iter().any(|p| p.is_me) { (two, one) } else { (one, two) };
     Some(LoadingView {
-        game_id: i(gd, "gameId"),
-        queue_name: gd.pointer("/queue/description").and_then(Value::as_str).unwrap_or("").to_string(),
+        game_id: int(gd, "gameId"),
+        queue_name: text(gd, "/queue/description").to_string(),
         allies,
         enemies,
     })
@@ -355,60 +339,56 @@ async fn load_statics(lcu: &Lcu) -> anyhow::Result<StaticData> {
     let perks = lcu.get("/lol-game-data/assets/v1/perks.json").await.ok().flatten().unwrap_or(Value::Null);
     let styles = lcu.get("/lol-game-data/assets/v1/perkstyles.json").await.ok().flatten().unwrap_or(Value::Null);
     let spells = lcu.get("/lol-game-data/assets/v1/summoner-spells.json").await.ok().flatten().unwrap_or(Value::Null);
-    let arr = |v: &Value| v.as_array().cloned().unwrap_or_default();
-    let mut champions: Vec<ChampInfo> = arr(&champs)
-        .iter()
-        .filter(|c| i(c, "id") > 0)
+    let mut champions: Vec<ChampInfo> = champs
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| int(c, "id") > 0)
         .map(|c| ChampInfo {
-            id: i(c, "id"),
-            name: st(c, "name").into(),
-            alias: st(c, "alias").into(),
-            roles: string_list(c, "roles"),
-            classic: is_league_classic(i(c, "id"), st(c, "alias")),
+            id: int(c, "id"),
+            name: text(c, "name").into(),
+            alias: text(c, "alias").into(),
+            roles: strings(c, "roles"),
+            classic: is_league_classic(int(c, "id"), text(c, "alias")),
         })
         .collect();
     champions.sort_by(|a, b| a.name.cmp(&b.name));
     // Every item, not just what the shop sells: upgrades (Muramana, Seraph's),
     // champion-only items and mode copies (ids ≥ 10000) still show up in
     // builds, match history and the scoreboard, and need names and icons.
-    let mut items: Vec<ItemInfo> = arr(&items)
-        .iter()
-        .filter(|it| i(it, "id") > 0 && !st(it, "name").is_empty())
+    let mut items: Vec<ItemInfo> = items
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|it| int(it, "id") > 0 && !text(it, "name").is_empty())
         .map(|it| {
-            let (stats, desc) = item_tooltip(st(it, "description"));
+            let (stats, desc) = item_tooltip(text(it, "description"));
             ItemInfo {
-                id: i(it, "id"),
-                name: st(it, "name").into(),
-                price_total: i(it, "priceTotal"),
-                icon_path: st(it, "iconPath").into(),
+                id: int(it, "id"),
+                name: text(it, "name").into(),
+                price_total: int(it, "priceTotal"),
+                icon_path: text(it, "iconPath").into(),
                 stats,
                 desc,
-                categories: string_list(it, "categories"),
+                categories: strings(it, "categories"),
             }
         })
         .collect();
     items.sort_by(|a, b| a.name.cmp(&b.name));
     let perk = |p: &Value, desc_key: &str| PerkInfo {
-        id: i(p, "id"),
-        name: st(p, "name").into(),
-        icon_path: st(p, "iconPath").into(),
-        desc: plain_text(st(p, desc_key)),
-        tag: st(p, "recommendationDescriptor").into(),
+        id: int(p, "id"),
+        name: text(p, "name").into(),
+        icon_path: text(p, "iconPath").into(),
+        desc: plain_text(text(p, desc_key)),
+        tag: text(p, "recommendationDescriptor").into(),
     };
     Ok(StaticData {
         champions,
         items,
-        perks: arr(&perks).iter().map(|p| perk(p, "shortDesc")).collect(),
-        styles: styles.get("styles").map(arr).unwrap_or_default().iter().map(|p| perk(p, "tooltip")).collect(),
-        spells: arr(&spells).iter().map(|p| perk(p, "description")).collect(),
+        perks: perks.as_array().into_iter().flatten().map(|p| perk(p, "shortDesc")).collect(),
+        styles: list(&styles, "styles").iter().map(|p| perk(p, "tooltip")).collect(),
+        spells: spells.as_array().into_iter().flatten().map(|p| perk(p, "description")).collect(),
     })
-}
-
-fn string_list(v: &Value, k: &str) -> Vec<String> {
-    v.get(k)
-        .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
-        .unwrap_or_default()
 }
 
 /// Strips the client's tooltip markup (`<br>`, `<magicDamage>`, `@vars@`…) to plain text.
@@ -610,7 +590,7 @@ impl Engine {
             Ok(v) => v,
             Err(_) => return, // client still starting up
         };
-        let summoner = Summoner { puuid: st(&me, "puuid").into(), name: riot_name(&me).unwrap_or_default() };
+        let summoner = Summoner { puuid: text(&me, "puuid").into(), name: riot_name(&me).unwrap_or_default() };
         self.my_puuid = summoner.puuid.clone();
         let statics = load_statics(&client).await.ok();
         {
@@ -680,22 +660,10 @@ impl Engine {
     /// looking for the finished game's match record.
     async fn end_game(&mut self, lcu: &Lcu) {
         let session_game_id = match lcu.get("/lol-gameflow/v1/session").await {
-            Ok(Some(s)) => s.pointer("/gameData/gameId").and_then(Value::as_i64).filter(|id| *id > 0),
+            Ok(Some(s)) => Some(int(&s, "/gameData/gameId")).filter(|id| *id > 0),
             _ => None,
         };
-        let queue_name = {
-            let state = self.state();
-            let mut sh = state.shared.lock().await;
-            let name = sh.loading.take().map(|l| l.queue_name).unwrap_or_default();
-            sh.my_champion_id = 0;
-            sh.rec = None;
-            sh.post_game = None;
-            name
-        };
-        self.last_rec_key = None;
-        let _ = self.app.emit("loading", Option::<LoadingView>::None);
-        let _ = self.app.emit("recommendation", Option::<RecState>::None);
-        let _ = self.app.emit("post-game", Option::<PostGame>::None);
+        let queue_name = self.clear_game().await.map(|l| l.queue_name).unwrap_or_default();
         self.hide_overlay().await;
         self.pending_post_game = self.loading_game_id.take().or(session_game_id).map(|game_id| PendingPostGame {
             game_id,
@@ -703,6 +671,21 @@ impl Engine {
             since: Instant::now(),
             last_try: None,
         });
+    }
+
+    /// Forgets the last game's teams, recommendation and summary; returns its teams.
+    async fn clear_game(&mut self) -> Option<LoadingView> {
+        self.last_rec_key = None;
+        let loading = {
+            let state = self.state();
+            let mut sh = state.shared.lock().await;
+            (sh.my_champion_id, sh.rec, sh.post_game) = (0, None, None);
+            sh.loading.take()
+        };
+        let _ = self.app.emit("loading", Option::<LoadingView>::None);
+        let _ = self.app.emit("recommendation", Option::<RecState>::None);
+        let _ = self.app.emit("post-game", Option::<PostGame>::None);
+        loading
     }
 
     async fn poll_post_game(&mut self, lcu: &Lcu) {
@@ -736,39 +719,23 @@ impl Engine {
         }
         if phase == "ChampSelect" {
             self.last_import_key = None;
-            self.last_rec_key = None;
             self.loading_game_id = None;
             self.pending_post_game = None;
-            {
-                let state = self.state();
-                let mut sh = state.shared.lock().await;
-                sh.loading = None;
-                sh.my_champion_id = 0;
-                sh.rec = None;
-                sh.post_game = None;
-            }
-            let _ = self.app.emit("loading", Option::<LoadingView>::None);
-            let _ = self.app.emit("recommendation", Option::<RecState>::None);
-            let _ = self.app.emit("post-game", Option::<PostGame>::None);
+            self.clear_game().await;
             // Map (11 = Summoner's Rift, 12 = ARAM) and queue pick the rune
             // lookup and OP.GG's game mode.
             if let Ok(Some(s)) = lcu.get("/lol-gameflow/v1/session").await {
-                let map_id = s.pointer("/map/id").and_then(Value::as_i64).unwrap_or(11);
-                let queue_id = s.pointer("/gameData/queue/id").and_then(Value::as_i64).unwrap_or(0);
                 let state = self.state();
                 let mut sh = state.shared.lock().await;
-                sh.map_id = map_id;
-                sh.queue_id = queue_id;
+                sh.map_id = int(&s, "/map/id");
+                sh.queue_id = int(&s, "/gameData/queue/id");
             }
         }
         if prev == "Lobby" && phase != "Lobby" {
             self.set_swiftplay(Vec::new()).await;
         }
         if prev == "ChampSelect" && phase != "ChampSelect" {
-            let state = self.state();
-            let mut sh = state.shared.lock().await;
-            sh.champ_select = None;
-            drop(sh);
+            self.state().shared.lock().await.champ_select = None;
             let _ = self.app.emit("champ-select", Option::<ChampSelectView>::None);
         }
         if !matches!(phase, "InProgress" | "Reconnect") {
@@ -941,7 +908,7 @@ impl Engine {
             if need_rec {
                 let me = live::find_me(&data);
                 let pos = me.and_then(|p| p.get("position")).and_then(Value::as_str).unwrap_or("").to_lowercase();
-                let mode = data.pointer("/gameData/gameMode").and_then(Value::as_str).unwrap_or("").to_string();
+                let mode = text(&data, "/gameData/gameMode").to_string();
                 fetch_rec = Some((champ, pos, mode));
             }
             let rec = sh.rec.as_ref().filter(|r| r.champion_id == champ).and_then(|r| r.rec.clone());
@@ -1008,13 +975,8 @@ pub async fn import_for(app: &AppHandle, champion_id: i64, position: &str) -> Re
     let cfg = state.config();
     let (lcu, map_id, name) = {
         let sh = state.shared.lock().await;
-        let name = sh
-            .statics
-            .as_ref()
-            .and_then(|s| s.champions.iter().find(|c| c.id == champion_id))
-            .map(|c| c.name.clone())
-            .unwrap_or_else(|| format!("Champion {champion_id}"));
-        (sh.lcu.clone(), if sh.map_id == 0 { 11 } else { sh.map_id }, name)
+        let name = sh.champion(champion_id).map_or_else(|| format!("Champion {champion_id}"), |c| c.name.clone());
+        (sh.lcu.clone(), sh.map(), name)
     };
     let lcu = lcu.ok_or("Not connected to the League client")?;
     let rec = ensure_rec(app, champion_id, position, None).await;
@@ -1022,11 +984,10 @@ pub async fn import_for(app: &AppHandle, champion_id: i64, position: &str) -> Re
     let result = runes::import(&lcu, &cfg, champion_id, &name, position, map_id, rune_rec)
         .await
         .map(|r| format!("Set \"{}\" ({})", r.page_name, r.source))
-        .map_err(|e| format!("{e:#}"))?;
+        .map_err(msg)?;
     let spells = match rec.as_ref().filter(|r| cfg.set_summoner_spells && r.games >= opgg::MIN_GAMES) {
         Some(r) if r.spells.len() == 2 => match set_spells(app, &lcu, &r.spells).await {
-            Ok(Some(names)) => format!(" · {names}"),
-            Ok(None) => String::new(),
+            Ok(names) => format!(" · {names}"),
             Err(e) => format!(" · couldn't set spells: {e:#}"),
         },
         _ => String::new(),
@@ -1058,7 +1019,7 @@ const PLAYER_SLOTS: &str = "/lol-lobby/v1/lobby/members/localMember/player-slots
 fn slot_keys(slots: &Value) -> Vec<(i64, String)> {
     slots
         .as_array()
-        .map(|a| a.iter().map(|s| (i(s, "championId"), st(s, "positionPreference").to_ascii_lowercase())).collect())
+        .map(|a| a.iter().map(|s| (int(s, "championId"), text(s, "positionPreference").to_ascii_lowercase())).collect())
         .unwrap_or_default()
 }
 
@@ -1072,12 +1033,7 @@ pub async fn import_slots(app: &AppHandle, lcu: &Lcu, wanted: Vec<(usize, i64, S
     let mut events = Vec::new();
     let mut picks = Vec::new();
     for (slot, champ, pos) in wanted {
-        // OP.GG has no League Classic stats.
-        let alias = {
-            let sh = state.shared.lock().await;
-            let c = sh.statics.as_ref().and_then(|s| s.champions.iter().find(|c| c.id == champ && !c.classic));
-            c.map(|c| c.alias.clone())
-        };
+        let alias = state.shared.lock().await.opgg_alias(champ);
         let rec = match alias.filter(|_| cfg.rec_source == "opgg") {
             Some(alias) => state.opgg.recommend(champ, &alias, &pos, "ranked", Some(lcu)).await.ok(),
             None => None,
@@ -1093,18 +1049,10 @@ pub async fn import_slots(app: &AppHandle, lcu: &Lcu, wanted: Vec<(usize, i64, S
     // Read again: the slots may have changed during the OP.GG lookups, and the
     // PUT replaces all of them.
     let Ok(Some(mut slots)) = lcu.get(PLAYER_SLOTS).await else { return events };
-    let spell_names: HashMap<i64, String> = state
-        .shared
-        .lock()
-        .await
-        .statics
-        .as_ref()
-        .map(|s| s.spells.iter().map(|p| (p.id, p.name.clone())).collect())
-        .unwrap_or_default();
     let mut done = Vec::new();
     for (slot, champ, pos, page, source, rec) in picks {
         let Some(s) = slots.get_mut(slot) else { continue };
-        if (i(s, "championId"), st(s, "positionPreference").to_ascii_lowercase()) != (champ, pos.clone()) {
+        if (int(s, "championId"), text(s, "positionPreference").to_ascii_lowercase()) != (champ, pos.clone()) {
             continue; // changed meanwhile; the next tick picks it up
         }
         let perks = runes::slot_perks(&page);
@@ -1112,11 +1060,10 @@ pub async fn import_slots(app: &AppHandle, lcu: &Lcu, wanted: Vec<(usize, i64, S
         let mut msg = format!("Swiftplay {} runes ({source})", runes::position_label(&pos));
         let spells = rec.as_ref().filter(|r| cfg.set_summoner_spells && r.games >= opgg::MIN_GAMES && r.spells.len() == 2);
         if let Some(r) = spells {
-            let (s1, s2) = arrange_spells(&r.spells, (i(s, "spell1"), i(s, "spell2")));
+            let (s1, s2) = arrange_spells(&r.spells, (int(s, "spell1"), int(s, "spell2")));
             s["spell1"] = s1.into();
             s["spell2"] = s2.into();
-            let label = |id: i64| spell_names.get(&id).cloned().unwrap_or_else(|| format!("spell {id}"));
-            msg.push_str(&format!(" · {} + {}", label(s1), label(s2)));
+            msg.push_str(&format!(" · {}", state.shared.lock().await.spell_names(s1, s2)));
         }
         done.push((slot, champ, pos, perks, msg, rec));
     }
@@ -1145,7 +1092,7 @@ pub async fn import_slots(app: &AppHandle, lcu: &Lcu, wanted: Vec<(usize, i64, S
     tokio::time::sleep(Duration::from_millis(500)).await;
     let after = lcu.get(PLAYER_SLOTS).await.ok().flatten().unwrap_or(Value::Null);
     for (slot, champ, _, perks, msg, _) in done {
-        let kept = after.get(slot).is_some_and(|s| same_perks(st(s, "perks"), &perks));
+        let kept = after.get(slot).is_some_and(|s| same_perks(text(s, "perks"), &perks));
         let r = match failed.remove(&slot) {
             _ if kept => Ok(format!("{msg}{items}")),
             Some(e) => Err(format!("couldn't set Swiftplay runes: {e}")),
@@ -1163,16 +1110,16 @@ async fn slot_item_sets(
     lcu: &Lcu,
     done: &[(usize, i64, String, String, String, Option<Recommendation>)],
 ) -> String {
-    let names: HashMap<i64, String> = {
+    let names: Vec<String> = {
         let state = app.state::<AppState>();
         let sh = state.shared.lock().await;
-        sh.statics.as_ref().map(|s| s.champions.iter().map(|c| (c.id, c.name.clone())).collect()).unwrap_or_default()
+        done.iter().map(|(_, champ, ..)| sh.champion(*champ).map(|c| c.name.clone()).unwrap_or_default()).collect()
     };
     let recs: Vec<(&Recommendation, &str, &str)> = done
         .iter()
-        .filter_map(|(_, champ, pos, _, _, rec)| {
-            let r = rec.as_ref().filter(|r| r.games >= opgg::MIN_GAMES)?;
-            Some((r, names.get(champ).map(String::as_str).unwrap_or(""), runes::position_label(pos)))
+        .zip(&names)
+        .filter_map(|((_, _, pos, _, _, rec), name)| {
+            Some((rec.as_ref().filter(|r| r.games >= opgg::MIN_GAMES)?, name.as_str(), runes::position_label(pos)))
         })
         .collect();
     if recs.is_empty() {
@@ -1207,7 +1154,7 @@ fn same_perks(a: &str, b: &str) -> bool {
 /// The Swiftplay "Import runes" button: imports every slot with a champion.
 pub async fn import_swiftplay_now(app: &AppHandle) -> Result<Vec<ImportEvent>, String> {
     let lcu = app.state::<AppState>().shared.lock().await.lcu.clone().ok_or("Not connected to the League client")?;
-    let slots = lcu.get(PLAYER_SLOTS).await.map_err(|e| format!("{e:#}"))?.unwrap_or(Value::Null);
+    let slots = lcu.get(PLAYER_SLOTS).await.map_err(msg)?.unwrap_or(Value::Null);
     let wanted: Vec<_> = slot_keys(&slots)
         .into_iter()
         .enumerate()
@@ -1231,37 +1178,17 @@ pub fn arrange_spells(rec: &[i64], current: (i64, i64)) -> (i64, i64) {
     }
 }
 
-async fn set_spells(app: &AppHandle, lcu: &Lcu, rec: &[i64]) -> anyhow::Result<Option<String>> {
+async fn set_spells(app: &AppHandle, lcu: &Lcu, rec: &[i64]) -> anyhow::Result<String> {
     let session = lcu.get_req("/lol-champ-select/v1/session").await?;
-    let me_cell = i(&session, "localPlayerCellId");
-    let me = session
-        .get("myTeam")
-        .and_then(Value::as_array)
-        .and_then(|t| t.iter().find(|p| i(p, "cellId") == me_cell))
-        .cloned()
-        .unwrap_or(Value::Null);
-    let current = (i(&me, "spell1Id"), i(&me, "spell2Id"));
+    let me_cell = int(&session, "localPlayerCellId");
+    let me = list(&session, "myTeam").iter().find(|p| int(p, "cellId") == me_cell).unwrap_or(&Value::Null);
+    let current = (int(me, "spell1Id"), int(me, "spell2Id"));
     let (s1, s2) = arrange_spells(rec, current);
-    let state = app.state::<AppState>();
-    let names: HashMap<i64, String> = state
-        .shared
-        .lock()
-        .await
-        .statics
-        .as_ref()
-        .map(|s| s.spells.iter().map(|p| (p.id, p.name.clone())).collect())
-        .unwrap_or_default();
-    let label = format!(
-        "{} + {}",
-        names.get(&s1).cloned().unwrap_or_else(|| format!("spell {s1}")),
-        names.get(&s2).cloned().unwrap_or_else(|| format!("spell {s2}"))
-    );
-    if (s1, s2) == current {
-        return Ok(Some(label));
+    if (s1, s2) != current {
+        lcu.patch("/lol-champ-select/v1/session/my-selection", &serde_json::json!({"spell1Id": s1, "spell2Id": s2}))
+            .await?;
     }
-    lcu.patch("/lol-champ-select/v1/session/my-selection", &serde_json::json!({"spell1Id": s1, "spell2Id": s2}))
-        .await?;
-    Ok(Some(label))
+    Ok(app.state::<AppState>().shared.lock().await.spell_names(s1, s2))
 }
 
 /// Fetches (or reuses) the OP.GG recommendation for a champion and publishes
@@ -1278,17 +1205,11 @@ pub async fn ensure_rec(app: &AppHandle, champion_id: i64, position: &str, live_
                 return r.rec.clone();
             }
         }
-        // OP.GG has no League Classic stats.
-        let alias = sh
-            .statics
-            .as_ref()
-            .and_then(|s| s.champions.iter().find(|c| c.id == champion_id && !c.classic))
-            .map(|c| c.alias.clone());
         let mode = match live_mode {
             Some(m) => mode_from_live(m),
-            None => opgg::game_mode_for(sh.queue_id, if sh.map_id == 0 { 11 } else { sh.map_id }),
+            None => opgg::game_mode_for(sh.queue_id, sh.map()),
         };
-        (alias, mode, sh.lcu.clone())
+        (sh.opgg_alias(champion_id), mode, sh.lcu.clone())
     };
     let (Some(alias), Some(game_mode)) = (alias, game_mode) else { return None };
     let publish = |rs: RecState| async move {

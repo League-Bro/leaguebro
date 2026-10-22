@@ -5,6 +5,7 @@
 //! objective kills and everyone's items (both on the scoreboard), and your own
 //! gold. Nothing tracks enemy cooldowns, in line with Riot's third-party rules.
 
+use crate::util::{float, int, list, text};
 use crate::config::TimerConfig;
 use serde::Serialize;
 use serde_json::Value;
@@ -64,39 +65,27 @@ pub struct LaneDiff {
 }
 
 fn item_value(player: &Value, items: &HashMap<i64, (String, i64)>) -> i64 {
-    player
-        .get("items")
-        .and_then(Value::as_array)
-        .map(|list| {
-            list.iter()
-                .map(|it| {
-                    let id = it.get("itemID").and_then(Value::as_i64).unwrap_or(0);
-                    let count = it.get("count").and_then(Value::as_i64).unwrap_or(1).max(1);
-                    let price = items
-                        .get(&id)
-                        .map(|(_, p)| *p)
-                        .unwrap_or_else(|| it.get("price").and_then(Value::as_i64).unwrap_or(0));
-                    price * count
-                })
-                .sum()
+    list(player, "items")
+        .iter()
+        .map(|it| {
+            let price = items.get(&int(it, "itemID")).map_or_else(|| int(it, "price"), |(_, p)| *p);
+            price * int(it, "count").max(1)
         })
-        .unwrap_or(0)
+        .sum()
 }
 
 /// The enemy in your position, compared by item value.
 pub fn lane_diff(data: &Value, items: &HashMap<i64, (String, i64)>) -> Option<LaneDiff> {
     let me = find_me(data)?;
-    let pos = s(me, "position");
+    let pos = text(me, "position");
     if pos.is_empty() || pos.eq_ignore_ascii_case("NONE") {
         return None;
     }
-    let team = s(me, "team");
-    let opp = data
-        .get("allPlayers")?
-        .as_array()?
+    let team = text(me, "team");
+    let opp = list(data, "allPlayers")
         .iter()
-        .find(|p| s(p, "team") != team && s(p, "position").eq_ignore_ascii_case(pos))?;
-    Some(LaneDiff { opponent: s(opp, "championName").to_string(), mine: item_value(me, items), theirs: item_value(opp, items) })
+        .find(|p| text(p, "team") != team && text(p, "position").eq_ignore_ascii_case(pos))?;
+    Some(LaneDiff { opponent: text(opp, "championName").to_string(), mine: item_value(me, items), theirs: item_value(opp, items) })
 }
 
 /// What the overlay should suggest beyond timers.
@@ -116,7 +105,7 @@ pub fn next_skill(data: &Value, order: &[String]) -> Option<String> {
     let abilities = ap.get("abilities")?;
     let spent: i64 = ["Q", "W", "E", "R"]
         .iter()
-        .map(|k| abilities.pointer(&format!("/{k}/abilityLevel")).and_then(Value::as_i64).unwrap_or(0))
+        .map(|k| int(abilities, &format!("/{k}/abilityLevel")))
         .sum();
     if spent >= level {
         return None;
@@ -124,15 +113,11 @@ pub fn next_skill(data: &Value, order: &[String]) -> Option<String> {
     order.get(spent as usize).cloned()
 }
 
-fn s<'a>(v: &'a Value, k: &str) -> &'a str {
-    v.get(k).and_then(Value::as_str).unwrap_or("")
-}
-
 /// Every player's identifying names, so event KillerName can be matched.
 fn player_names(p: &Value) -> Vec<String> {
     let mut v = Vec::new();
     for k in ["riotId", "summonerName", "riotIdGameName"] {
-        let n = s(p, k);
+        let n = text(p, k);
         if !n.is_empty() {
             v.push(n.to_string());
             if let Some((game, _)) = n.split_once('#') {
@@ -146,22 +131,17 @@ fn player_names(p: &Value) -> Vec<String> {
 pub fn find_me(data: &Value) -> Option<&Value> {
     let active = data.get("activePlayer")?;
     let my_names = player_names(active);
-    data.get("allPlayers")?
-        .as_array()?
-        .iter()
-        .find(|p| player_names(p).iter().any(|n| my_names.contains(n)))
+    list(data, "allPlayers").iter().find(|p| player_names(p).iter().any(|n| my_names.contains(n)))
 }
 
 /// Works out upcoming objective spawns from the event log.
 pub fn compute_timers(data: &Value, cfg: &TimerConfig) -> Vec<Timer> {
-    let now = data.pointer("/gameData/gameTime").and_then(Value::as_f64).unwrap_or(0.0);
-    let my_team = find_me(data).map(|p| s(p, "team").to_string()).unwrap_or_default();
+    let now = float(data, "/gameData/gameTime");
+    let my_team = find_me(data).map(|p| text(p, "team").to_string()).unwrap_or_default();
     let mut team_of: HashMap<String, String> = HashMap::new();
-    if let Some(all) = data.get("allPlayers").and_then(Value::as_array) {
-        for p in all {
-            for n in player_names(p) {
-                team_of.insert(n, s(p, "team").to_string());
-            }
+    for p in list(data, "allPlayers") {
+        for n in player_names(p) {
+            team_of.insert(n, text(p, "team").to_string());
         }
     }
     let side_of_team = |team: &str| -> String {
@@ -173,11 +153,6 @@ pub fn compute_timers(data: &Value, cfg: &TimerConfig) -> Vec<Timer> {
             "enemy".into()
         }
     };
-    let events = data
-        .pointer("/events/Events")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
 
     let mut last_dragon: Option<f64> = None;
     let mut dragons_by_team: HashMap<String, i64> = HashMap::new();
@@ -185,23 +160,23 @@ pub fn compute_timers(data: &Value, cfg: &TimerConfig) -> Vec<Timer> {
     // inhib name -> (killed at, respawned?)
     let mut inhibs: HashMap<String, (f64, bool)> = HashMap::new();
 
-    for e in &events {
-        let t = e.get("EventTime").and_then(Value::as_f64).unwrap_or(0.0);
-        match s(e, "EventName") {
+    for e in list(data, "/events/Events") {
+        let t = float(e, "EventTime");
+        match text(e, "EventName") {
             "DragonKill" => {
                 last_dragon = Some(t);
-                if s(e, "DragonType") != "Elder" {
-                    if let Some(team) = team_of.get(s(e, "KillerName")) {
+                if text(e, "DragonType") != "Elder" {
+                    if let Some(team) = team_of.get(text(e, "KillerName")) {
                         *dragons_by_team.entry(team.clone()).or_default() += 1;
                     }
                 }
             }
             "BaronKill" => last_baron = Some(t),
             "InhibKilled" => {
-                inhibs.insert(s(e, "InhibKilled").to_string(), (t, false));
+                inhibs.insert(text(e, "InhibKilled").to_string(), (t, false));
             }
             "InhibRespawned" => {
-                if let Some(entry) = inhibs.get_mut(s(e, "InhibRespawned")) {
+                if let Some(entry) = inhibs.get_mut(text(e, "InhibRespawned")) {
                     entry.1 = true;
                 }
             }
@@ -256,13 +231,8 @@ pub fn next_items(
     items: &HashMap<i64, (String, i64)>,
     limit: usize,
 ) -> Vec<NextItem> {
-    let gold = data.pointer("/activePlayer/currentGold").and_then(Value::as_f64).unwrap_or(0.0);
-    let owned: Vec<i64> = find_me(data)
-        .and_then(|p| p.get("items"))
-        .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(|i| i.get("itemID").and_then(Value::as_i64)).collect())
-        .unwrap_or_default();
-    let mut owned_left = owned.clone();
+    let gold = float(data, "/activePlayer/currentGold");
+    let mut owned_left: Vec<i64> = find_me(data).map(|p| list(p, "items").iter().map(|i| int(i, "itemID")).collect()).unwrap_or_default();
     let mut out = Vec::new();
     for id in build {
         // Each owned copy satisfies one entry, so a build listing an item
@@ -290,10 +260,10 @@ pub fn overlay_state(
     let me = find_me(data);
     let score = |k: &str| me.and_then(|p| p.pointer(&format!("/scores/{k}"))).and_then(Value::as_i64).unwrap_or(0);
     OverlayState {
-        game_time: data.pointer("/gameData/gameTime").and_then(Value::as_f64).unwrap_or(0.0),
-        game_mode: data.pointer("/gameData/gameMode").and_then(Value::as_str).unwrap_or("").to_string(),
-        champion_name: me.map(|p| s(p, "championName").to_string()).unwrap_or_default(),
-        gold: data.pointer("/activePlayer/currentGold").and_then(Value::as_f64).unwrap_or(0.0),
+        game_time: float(data, "/gameData/gameTime"),
+        game_mode: text(data, "/gameData/gameMode").to_string(),
+        champion_name: me.map(|p| text(p, "championName").to_string()).unwrap_or_default(),
+        gold: float(data, "/activePlayer/currentGold"),
         kills: score("kills"),
         deaths: score("deaths"),
         assists: score("assists"),

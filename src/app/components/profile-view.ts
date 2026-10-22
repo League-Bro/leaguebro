@@ -1,7 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
-import { assetUrl, championIcon, formatTier, profileIcon, queueLabel, tierClass } from '../core/assets';
+import { championIcon, formatTier, kdaRatio, profileIcon, queueLabel, tierClass, winPct } from '../core/assets';
 import { MatchLine, MyProfile, PostGame, RankLine } from '../core/models';
 import { PostGameView } from './post-game';
 
@@ -180,7 +180,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
             </div>
             <div class="items">
               @for (id of m.items; track $index) {
-                <span class="slot">@if (itemIcon(id); as url) { <img [src]="url" alt="" (error)="hide($event)" /> }</span>
+                <span class="slot">@if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }</span>
               }
             </div>
           </button>
@@ -350,12 +350,8 @@ export class ProfileView {
       { label: 'Flex', line: p.flex },
     ];
   }
-  pct(wins: number, games: number): number {
-    return games > 0 ? Math.round((wins / games) * 100) : 0;
-  }
-  ratio(k: number, d: number, a: number): string {
-    return d === 0 ? (k + a > 0 ? 'Perfect' : '0.0') : ((k + a) / d).toFixed(1);
-  }
+  pct = winPct;
+  ratio = kdaRatio;
   queue(id: number, mode = ''): string {
     return queueLabel(id, mode);
   }
@@ -371,11 +367,5 @@ export class ProfileView {
     if (h < 24) return `${Math.floor(h)}h ago`;
     const d = Math.floor(h / 24);
     return d < 30 ? `${d}d ago` : new Date(ms).toLocaleDateString();
-  }
-  itemIcon(id: number): string {
-    return id > 0 ? assetUrl(this.rift.itemById().get(id)?.iconPath) : '';
-  }
-  hide(e: Event): void {
-    (e.target as HTMLElement).style.display = 'none';
   }
 }

@@ -28,6 +28,7 @@
 //!
 //! Nothing is fetched until the Patch Notes tab asks for it.
 
+use crate::util::{text, web_client};
 use anyhow::{anyhow, bail, Context, Result};
 use scraper::{CaseSensitivity, ElementRef, Html, Selector};
 use crate::cache::{now_secs, CacheUsage, DiskCache, Generation};
@@ -36,7 +37,6 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 use std::path::PathBuf;
-use std::time::Duration;
 use tokio::sync::Mutex;
 
 const SITE: &str = "https://www.leagueoflegends.com";
@@ -245,7 +245,7 @@ pub fn parse_list(html: &str) -> Result<Vec<PatchInfo>> {
         if out.iter().any(|p| p.url == url) {
             return;
         }
-        let published = v.get("publishedAt").and_then(Value::as_str).unwrap_or("").to_string();
+        let published = text(v, "publishedAt").to_string();
         out.push(PatchInfo { version: version_from(title, &url), title: title.to_string(), url, published });
     });
     // TFT notes share the tag page on some locales.
@@ -647,13 +647,9 @@ pub struct PatchNotesClient {
 
 impl PatchNotesClient {
     /// `cache_dir` is where patch notes are saved; `None` keeps them in memory only.
-    pub fn new(version: &str, cache_dir: Option<PathBuf>) -> PatchNotesClient {
+    pub fn new(cache_dir: Option<PathBuf>) -> PatchNotesClient {
         PatchNotesClient {
-            http: reqwest::Client::builder()
-                .user_agent(format!("LeagueBro/{version} (+https://github.com/doliaro/leaguebro)"))
-                .timeout(Duration::from_secs(15))
-                .build()
-                .expect("http client"),
+            http: web_client(15),
             disk: DiskCache { dir: cache_dir },
             list: Mutex::new(None),
             notes: Mutex::new(HashMap::new()),
@@ -927,7 +923,7 @@ mod tests {
         let disk = DiskCache { dir: Some(dir.clone()) };
         disk.write(&notes_file(url), &SavedNotes { format: CACHE_FORMAT, notes: notes.clone() });
         // A new client (as after restarting the app) reads it without the network.
-        let client = PatchNotesClient::new("test", Some(dir.clone()));
+        let client = PatchNotesClient::new(Some(dir.clone()));
         let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
         assert_eq!(rt.block_on(client.notes(url)).unwrap(), notes);
         let _ = std::fs::remove_dir_all(&dir);

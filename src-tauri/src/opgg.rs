@@ -23,6 +23,7 @@
 //! (`expires_at`): a day at a time for the week after each patch's notes come
 //! out, then a week at a time, and always when the next notes are due.
 
+use crate::util::{flag, float, get_json, int, ints, list, text, web_client};
 use anyhow::{anyhow, bail, Context, Result};
 use crate::cache::{now_secs, CacheUsage, DiskCache, Generation};
 use crate::lcu::Lcu;
@@ -262,41 +263,32 @@ pub struct Recommendation {
     pub source: String,
 }
 
-fn n(v: &Value, k: &str) -> i64 {
-    v.get(k).and_then(Value::as_i64).unwrap_or(0)
-}
-fn ids(v: &Value, k: &str) -> Vec<i64> {
-    v.get(k).and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_i64).collect()).unwrap_or_default()
-}
 fn strs(v: &Value, k: &str) -> Vec<String> {
-    v.get(k)
-        .and_then(Value::as_array)
-        .map(|a| a.iter().map(|x| x.as_str().map(str::to_string).unwrap_or_else(|| x.to_string())).collect())
-        .unwrap_or_default()
+    list(v, k).iter().map(|x| x.as_str().map_or_else(|| x.to_string(), str::to_string)).collect()
 }
 fn win_rate(v: &Value) -> f64 {
-    let games = n(v, "play");
+    let games = int(v, "play");
     if games > 0 {
-        n(v, "win") as f64 / games as f64
+        int(v, "win") as f64 / games as f64
     } else {
         0.0
     }
 }
 
 fn pick_rate(v: &Value) -> f64 {
-    v.get("pick_rate").and_then(Value::as_f64).unwrap_or(0.0)
+    float(v, "pick_rate")
 }
 fn pick_stats(v: &Value) -> Option<PickStats> {
-    let games = n(v, "play");
+    let games = int(v, "play");
     (games > 0).then(|| PickStats { games, win_rate: win_rate(v), pick_rate: pick_rate(v) })
 }
 
 fn item_set(v: &Value) -> Option<ItemSet> {
-    let ids = ids(v, "ids");
+    let ids = ints(v, "ids");
     if ids.is_empty() {
         return None;
     }
-    Some(ItemSet { names: strs(v, "ids_names"), games: n(v, "play"), win_rate: win_rate(v), pick_rate: pick_rate(v), ids })
+    Some(ItemSet { names: strs(v, "ids_names"), games: int(v, "play"), win_rate: win_rate(v), pick_rate: pick_rate(v), ids })
 }
 
 /// Purchase order for the overlay: first core item, boots, rest of the core,
@@ -337,28 +329,28 @@ pub fn build_order(core: Option<&ItemSet>, boots: Option<&ItemSet>, later: &[Vec
 pub fn extract(parsed: &Value, champion_id: i64, position: &str, game_mode: &str) -> Result<Recommendation> {
     let data = parsed.get("data").ok_or_else(|| anyhow!("OP.GG response has no data"))?;
     let runes = data.get("runes").and_then(|r| {
-        let primary = ids(r, "primary_rune_ids");
-        let secondary = ids(r, "secondary_rune_ids");
-        let shards = ids(r, "stat_mod_ids");
+        let primary = ints(r, "primary_rune_ids");
+        let secondary = ints(r, "secondary_rune_ids");
+        let shards = ints(r, "stat_mod_ids");
         if primary.len() != 4 || secondary.len() != 2 || shards.len() != 3 {
             return None;
         }
         let mut names = strs(r, "primary_rune_names");
         names.extend(strs(r, "secondary_rune_names"));
         Some(RuneRec {
-            primary_style_id: n(r, "primary_page_id"),
-            sub_style_id: n(r, "secondary_page_id"),
+            primary_style_id: int(r, "primary_page_id"),
+            sub_style_id: int(r, "secondary_page_id"),
             keystone_name: strs(r, "primary_rune_names").first().cloned().unwrap_or_default(),
-            primary_name: r.get("primary_page_name").and_then(Value::as_str).unwrap_or("").to_string(),
-            secondary_name: r.get("secondary_page_name").and_then(Value::as_str).unwrap_or("").to_string(),
+            primary_name: text(r, "primary_page_name").to_string(),
+            secondary_name: text(r, "secondary_page_name").to_string(),
             perk_names: names,
-            games: n(r, "play"),
+            games: int(r, "play"),
             win_rate: win_rate(r),
             pick_rate: pick_rate(r),
             perk_ids: primary.into_iter().chain(secondary).chain(shards).collect(),
         })
     });
-    let spells = data.get("summoner_spells").map(|s| ids(s, "ids")).unwrap_or_default();
+    let spells = data.get("summoner_spells").map(|s| ints(s, "ids")).unwrap_or_default();
     let masteries = data.get("skill_masteries");
     let skill_max = masteries.map(|m| strs(m, "ids")).unwrap_or_default();
     let skill_stats = masteries.and_then(pick_stats);
@@ -368,22 +360,13 @@ pub fn extract(parsed: &Value, champion_id: i64, position: &str, game_mode: &str
         .filter(|o| !o.is_empty())
         .or_else(|| {
             // ARAM responses carry the order only inside skill_masteries.builds.
-            masteries
-                .and_then(|m| m.get("builds"))
-                .and_then(Value::as_array)
-                .and_then(|b| b.first())
-                .map(|b| strs(b, "order"))
+            masteries.and_then(|m| list(m, "builds").first()).map(|b| strs(b, "order"))
         })
         .unwrap_or_default();
     let set = |k: &str| data.get(k).and_then(item_set);
     let later: Vec<Vec<ItemSet>> = ["fourth_items", "fifth_items", "sixth_items"]
         .iter()
-        .map(|k| {
-            data.get(*k)
-                .and_then(Value::as_array)
-                .map(|a| a.iter().filter_map(item_set).collect())
-                .unwrap_or_default()
-        })
+        .map(|k| list(data, k).iter().filter_map(item_set).collect())
         .filter(|v: &Vec<ItemSet>| !v.is_empty())
         .collect();
     let core = set("core_items");
@@ -399,7 +382,7 @@ pub fn extract(parsed: &Value, champion_id: i64, position: &str, game_mode: &str
         spell_stats: data.get("summoner_spells").and_then(pick_stats),
         skill_max,
         skill_stats,
-        damage_type: data.get("damage_type").and_then(Value::as_str).unwrap_or("").to_string(),
+        damage_type: text(data, "damage_type").to_string(),
         skill_order,
         starter: set("starter_items"),
         boots,
@@ -457,20 +440,13 @@ pub fn web_to_mcp(main: &Value, builds: &Value, damage_type: &str) -> Result<Val
     let d = main.get("data").filter(|d| d.is_object()).ok_or_else(|| anyhow!("OP.GG response has no data"))?;
     let mut data = Map::new();
     for key in ["runes", "summoner_spells", "skills", "skill_masteries", "starter_items", "boots", "core_items"] {
-        if let Some(top) = d.get(key).and_then(Value::as_array).and_then(|a| a.first()) {
+        if let Some(top) = list(d, key).first() {
             data.insert(key.into(), top.clone());
         }
     }
-    let depths = builds.pointer("/data/single_items").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
     for (depth, key) in [(4, "fourth_items"), (5, "fifth_items"), (6, "sixth_items")] {
-        let options = depths
-            .iter()
-            .find(|s| n(s, "depth") == depth)
-            .and_then(|s| s.get("items"))
-            .and_then(Value::as_array)
-            .map(|a| a.iter().take(LATE_ITEM_OPTIONS).cloned().collect::<Vec<_>>())
-            .unwrap_or_default();
-        data.insert(key.into(), Value::Array(options));
+        let options = list(builds, "/data/single_items").iter().find(|s| int(s, "depth") == depth).map_or(&[][..], |s| list(s, "items"));
+        data.insert(key.into(), options.iter().take(LATE_ITEM_OPTIONS).cloned().collect());
     }
     data.insert("damage_type".into(), damage_type.into());
     Ok(json!({ "data": data }))
@@ -566,13 +542,9 @@ pub struct OpGg {
 
 impl OpGg {
     /// `cache_dir` is where answers are saved; `None` keeps them in memory only.
-    pub fn new(version: &str, cache_dir: Option<PathBuf>) -> OpGg {
+    pub fn new(cache_dir: Option<PathBuf>) -> OpGg {
         OpGg {
-            http: reqwest::Client::builder()
-                .user_agent(format!("LeagueBro/{version} (+https://github.com/doliaro/leaguebro)"))
-                .timeout(Duration::from_secs(12))
-                .build()
-                .expect("http client"),
+            http: web_client(12),
             session: Mutex::new(None),
             cache: Mutex::new(HashMap::new()),
             lookups: Mutex::new(HashMap::new()),
@@ -722,21 +694,12 @@ impl OpGg {
         }
     }
 
-    async fn get_json(&self, url: &str) -> Result<Value> {
-        let resp = self.http.get(url).timeout(WEB_TIMEOUT).send().await.with_context(|| format!("couldn't reach {url}"))?;
-        let status = resp.status();
-        if !status.is_success() {
-            bail!("{url} returned {status}");
-        }
-        resp.json().await.with_context(|| format!("{url} sent something unexpected"))
-    }
-
     /// Main page, item depths and damage type, all at once (~0.2–0.3 s).
     async fn fetch_web(&self, champion_id: i64, pos: &str, game_mode: &str, lcu: Option<&Lcu>) -> Result<Recommendation> {
         let base = format!("{WEB_API}/{game_mode}/{champion_id}/{}", web_position(pos, game_mode));
         let builds_url = format!("{base}/builds");
-        let (main, builds, damage) =
-            tokio::join!(self.get_json(&base), self.get_json(&builds_url), self.damage_type(champion_id, lcu));
+        let get = |url: &str| get_json(self.http.get(url).timeout(WEB_TIMEOUT), "OP.GG");
+        let (main, builds, damage) = tokio::join!(get(&base), get(&builds_url), self.damage_type(champion_id, lcu));
         // Without /builds only the 4th-6th item options are missing.
         let builds = builds.unwrap_or_else(|e| {
             eprintln!("OP.GG item options failed: {e:#}");
@@ -754,7 +717,7 @@ impl OpGg {
         let Some(lcu) = lcu else { return String::new() };
         match lcu.get_req(&format!("/lol-game-data/assets/v1/champions/{champion_id}.json")).await {
             Ok(v) => {
-                let d = damage_label(v.pointer("/tacticalInfo/damageType").and_then(Value::as_str).unwrap_or("")).to_string();
+                let d = damage_label(text(&v, "/tacticalInfo/damageType")).to_string();
                 self.damage_types.lock().await.insert(champion_id, d.clone());
                 d
             }
@@ -807,7 +770,7 @@ pub fn parse_rpc_text(body: &str) -> Result<String> {
         .and_then(Value::as_array)
         .map(|a| a.iter().filter_map(|c| c.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n"))
         .unwrap_or_default();
-    if result.get("isError").and_then(Value::as_bool).unwrap_or(false) {
+    if flag(result, "isError") {
         bail!("OP.GG: {}", text.chars().take(200).collect::<String>());
     }
     if text.is_empty() {
@@ -889,7 +852,7 @@ mod tests {
     #[ignore]
     fn live_lookup_speed() {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let op = OpGg::new("test", None);
+        let op = OpGg::new(None);
         rt.block_on(async {
             for (id, alias, pos, mode) in [(103, "Ahri", "mid", "ranked"), (412, "Thresh", "support", "ranked"), (22, "Ashe", "mid", "aram")] {
                 let t = std::time::Instant::now();
@@ -993,7 +956,7 @@ mod tests {
         let now = now_secs();
         disk.write(&rec_file("103:mid:ranked"), &SavedRec { format: CACHE_FORMAT, fetched_at: now, rec: rec.clone() });
         // A new client (as after restarting the app) reads it without the network.
-        let client = OpGg::new("test", Some(dir.clone()));
+        let client = OpGg::new(Some(dir.clone()));
         let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
         assert_eq!(rt.block_on(client.recommend(103, "Ahri", "middle", "ranked", None)).unwrap(), rec);
         // Saved in an older format: not used.

@@ -1,6 +1,6 @@
 import { Component, computed, inject, input, output } from '@angular/core';
 import { RiftService } from '../core/rift.service';
-import { assetUrl, championIcon, clock } from '../core/assets';
+import { championIcon, clock, kdaRatio } from '../core/assets';
 import { PostGame, PostPlayer, PostTeam } from '../core/models';
 
 const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as const;
@@ -32,8 +32,8 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
           </div>
           <div class="items">
             @for (id of m.items; track $index) {
-              <span class="slot" [title]="itemName(id)">
-                @if (itemIcon(id); as url) { <img [src]="url" alt="" (error)="hide($event)" /> }
+              <span class="slot" [title]="rift.itemName(id)">
+                @if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
               </span>
             }
           </div>
@@ -69,8 +69,8 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
             <span class="mono muted">{{ p.vision }}</span>
             <div class="items sm">
               @for (id of p.items; track $index) {
-                <span class="slot" [title]="itemName(id)">
-                  @if (itemIcon(id); as url) { <img [src]="url" alt="" (error)="hide($event)" /> }
+                <span class="slot" [title]="rift.itemName(id)">
+                  @if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
                 </span>
               }
             </div>
@@ -149,9 +149,7 @@ export class PostGameView {
   protected icon = championIcon;
   protected time = clock;
 
-  kda(p: PostPlayer): string {
-    return p.deaths === 0 ? 'Perfect' : ((p.kills + p.assists) / p.deaths).toFixed(1);
-  }
+  kda = (p: PostPlayer) => kdaRatio(p.kills, p.deaths, p.assists);
   perMin(n: number): string {
     return (n / Math.max(1, this.game().duration / 60)).toFixed(1);
   }
@@ -162,16 +160,7 @@ export class PostGameView {
     const n = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
     return [n(t.towers, 'tower'), n(t.dragons, 'dragon'), n(t.barons, 'baron')].join(' · ');
   }
-  hide(e: Event): void {
-    (e.target as HTMLElement).style.display = 'none';
-  }
   mode(m: string): string {
     return m ? m.charAt(0) + m.slice(1).toLowerCase() : 'Game';
-  }
-  itemIcon(id: number): string {
-    return id > 0 ? assetUrl(this.rift.itemById().get(id)?.iconPath) : '';
-  }
-  itemName(id: number): string {
-    return this.rift.itemById().get(id)?.name ?? '';
   }
 }

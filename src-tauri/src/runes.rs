@@ -5,6 +5,7 @@
 //! client's rune editor). League Bro keeps a single page named
 //! "League Bro: ..." and replaces it each time.
 
+use crate::util::{flag, text};
 use crate::config::Config;
 use crate::lcu::Lcu;
 use crate::opgg::{RuneRec, MIN_GAMES};
@@ -87,14 +88,14 @@ pub fn pick_recommended(pages: &Value, wanted_pos: &str) -> Option<RunePage> {
         Some(RunePage { name: String::new(), primary_style_id: primary, sub_style_id: sub, selected_perk_ids: perks })
     };
     let wanted = normalize_position(wanted_pos);
-    let pos_of = |p: &Value| normalize_position(p.get("position").and_then(Value::as_str).unwrap_or(""));
+    let pos_of = |p: &Value| normalize_position(text(p, "position"));
     // 1. exact position match, 2. the champion's default position, 3. anything valid.
     arr.iter()
         .filter(|p| !wanted.is_empty() && pos_of(p) == wanted)
         .find_map(parse)
         .or_else(|| {
             arr.iter()
-                .filter(|p| p.get("isDefaultPosition").and_then(Value::as_bool).unwrap_or(false))
+                .filter(|p| flag(p, "isDefaultPosition"))
                 .find_map(parse)
         })
         .or_else(|| arr.iter().find_map(parse))
@@ -188,7 +189,7 @@ pub async fn import(
 
     // Remove the page League Bro made last time.
     for p in &pages {
-        let name = p.get("name").and_then(Value::as_str).unwrap_or("");
+        let name = text(p, "name");
         let deletable = p.get("isDeletable").and_then(Value::as_bool).unwrap_or(true);
         if is_ours(name) && deletable {
             if let Some(id) = p.get("id").and_then(Value::as_i64) {
@@ -206,8 +207,8 @@ pub async fn import(
         Err(e) if config.reuse_current_page_when_full => {
             // Probably out of page slots: overwrite the selected editable page.
             let current = pages.iter().find(|p| {
-                p.get("current").and_then(Value::as_bool).unwrap_or(false)
-                    && p.get("isEditable").and_then(Value::as_bool).unwrap_or(false)
+                flag(p, "current")
+                    && flag(p, "isEditable")
             });
             let Some(id) = current.and_then(|p| p.get("id")).and_then(Value::as_i64) else {
                 return Err(e.context("no free rune page slot and the selected page isn't editable"));

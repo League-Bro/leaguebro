@@ -25,19 +25,17 @@ import {
   TierList,
   TierSource,
 } from './models';
-import { championSplash, positionLabel } from './assets';
+import { assetUrl, championSplash, positionLabel } from './assets';
 import {
   demoCacheInfo,
-  demoChampSelect,
   demoConfig,
   demoPatch,
   demoPatchList,
   demoPostGame,
   demoProfile,
   demoRec,
-  demoSnapshot,
+  demoScene,
   demoStatic,
-  demoSwiftplay,
   demoTierList,
 } from './demo';
 
@@ -92,30 +90,9 @@ export class RiftService {
     if (this.started) return;
     this.started = true;
     if (this.demo) {
-      this.windowLabel.set(new URLSearchParams(location.search).get('window') ?? 'main');
-      const snap = demoSnapshot();
-      if (new URLSearchParams(location.search).get('scene') === 'champselect') {
-        snap.status.phase = 'ChampSelect';
-        snap.loading = null;
-        snap.overlay = null;
-        snap.champSelect = demoChampSelect();
-      }
-      if (new URLSearchParams(location.search).get('scene') === 'swiftplay') {
-        snap.status.phase = 'Lobby';
-        snap.loading = null;
-        snap.overlay = null;
-        snap.rec = null;
-        snap.lastImport = null;
-        snap.swiftplay = demoSwiftplay();
-      }
-      if (new URLSearchParams(location.search).get('scene') === 'postgame') {
-        snap.status.phase = 'EndOfGame';
-        snap.loading = null;
-        snap.overlay = null;
-        snap.rec = null;
-        snap.postGame = demoPostGame();
-      }
-      this.applySnapshot(snap);
+      const params = new URLSearchParams(location.search);
+      this.windowLabel.set(params.get('window') ?? 'main');
+      this.applySnapshot(demoScene(params.get('scene')));
       this.statics.set(demoStatic());
       this.config.set(demoConfig());
       return;
@@ -171,12 +148,28 @@ export class RiftService {
     return c && !c.classic ? championSplash(c.alias) : '';
   }
 
+  itemIcon(id: number): string {
+    return id > 0 ? assetUrl(this.itemById().get(id)?.iconPath) : '';
+  }
+
+  itemName(id: number): string {
+    return this.itemById().get(id)?.name ?? '';
+  }
+
+  /** For an icon's (error) handler: hides an image CommunityDragon doesn't have. */
+  hideImg(e: Event): void {
+    (e.target as HTMLElement).style.display = 'none';
+  }
+
+  /** Runs a backend command, or `demo` in the browser demo (after `delayMs`, like a real lookup). */
+  private async call<T>(cmd: string, args: Record<string, unknown>, demo: () => T, delayMs = 0): Promise<T> {
+    if (!this.demo) return invoke<T>(cmd, args);
+    if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
+    return demo();
+  }
+
   async saveConfig(config: Config): Promise<void> {
-    if (this.demo) {
-      this.config.set(config);
-      return;
-    }
-    await invoke('save_config', { config });
+    await this.call('save_config', { config }, () => undefined);
     this.config.set(config);
   }
 
@@ -187,103 +180,72 @@ export class RiftService {
   }
 
   importRunesNow(): Promise<string> {
-    if (this.demo) return Promise.resolve('Set "League Bro: Ahri Mid" (OP.GG) · Flash + Ignite · build added to the shop');
-    return invoke<string>('import_runes_now');
+    return this.call('import_runes_now', {}, () => 'Set "League Bro: Ahri Mid" (OP.GG) · Flash + Ignite · build added to the shop');
   }
 
   /** Imports runes (and spells, if on) into every Swiftplay lobby slot with a champion. */
   importSwiftplayNow(): Promise<ImportEvent[]> {
-    if (this.demo) {
-      return Promise.resolve(
-        this.swiftplay().filter((s) => s.championId).map((s) => ({
-          ok: true,
-          championId: s.championId,
-          message: 'Swiftplay ' + positionLabel(s.position) + ' runes (OP.GG) · Flash + Ignite',
-        })),
-      );
-    }
-    return invoke<ImportEvent[]>('import_swiftplay_now');
+    return this.call('import_swiftplay_now', {}, () =>
+      this.swiftplay()
+        .filter((s) => s.championId)
+        .map((s) => ({ ok: true, championId: s.championId, message: `Swiftplay ${positionLabel(s.position)} runes (OP.GG) · Flash + Ignite` })),
+    );
   }
 
   /** OP.GG's recommendation for any champion (Champions tab). Position: top|jungle|middle|bottom|utility. */
-  async lookupRec(championId: number, position: string, gameMode: 'ranked' | 'aram'): Promise<Recommendation> {
-    if (this.demo) {
-      await new Promise((r) => setTimeout(r, 300));
-      const rec = demoRec().rec!;
-      return { ...rec, championId, position, gameMode };
-    }
-    return invoke<Recommendation>('lookup_rec', { championId, position, gameMode });
+  lookupRec(championId: number, position: string, gameMode: 'ranked' | 'aram'): Promise<Recommendation> {
+    return this.call('lookup_rec', { championId, position, gameMode }, () => ({ ...demoRec().rec!, championId, position, gameMode }), 300);
   }
 
   async previewOverlay(show: boolean): Promise<void> {
     this.overlayPreview.set(show);
-    if (!this.demo) await invoke('preview_overlay', { show });
+    await this.call('preview_overlay', { show }, () => undefined);
   }
 
   async setOverlayLocked(locked: boolean): Promise<void> {
     this.overlayLocked.set(locked);
-    if (!this.demo) await invoke('set_overlay_locked', { locked });
+    await this.call('set_overlay_locked', { locked }, () => undefined);
   }
 
-  async getMyProfile(): Promise<MyProfile> {
-    if (this.demo) {
-      await new Promise((r) => setTimeout(r, 300));
-      return demoProfile();
-    }
-    return invoke<MyProfile>('get_my_profile');
+  getMyProfile(): Promise<MyProfile> {
+    return this.call('get_my_profile', {}, demoProfile, 300);
   }
 
   /** Full scoreboard of one of your past games. */
-  async getMatch(gameId: number, queueName: string): Promise<PostGame> {
-    if (this.demo) {
-      await new Promise((r) => setTimeout(r, 300));
-      return { ...demoPostGame(), gameId, queueName };
-    }
-    return invoke<PostGame>('get_match', { gameId, queueName });
+  getMatch(gameId: number, queueName: string): Promise<PostGame> {
+    return this.call('get_match', { gameId, queueName }, () => ({ ...demoPostGame(), gameId, queueName }), 300);
   }
 
   listPatches(): Promise<PatchInfo[]> {
-    if (this.demo) return Promise.resolve(demoPatchList());
-    return invoke<PatchInfo[]>('list_patches');
+    return this.call('list_patches', {}, demoPatchList);
   }
 
   getPatch(url: string): Promise<PatchNotes> {
-    if (this.demo) return Promise.resolve(demoPatch(url));
-    return invoke<PatchNotes>('get_patch', { url });
+    return this.call('get_patch', { url }, () => demoPatch(url));
   }
 
   /** One lane's tier list. Position: top|jungle|middle|bottom|utility; rank is a filter like "emerald_plus" for either source. */
-  async getTierList(source: TierSource, position: string, rank: string): Promise<TierList> {
-    if (this.demo) {
-      await new Promise((r) => setTimeout(r, 250));
-      return demoTierList(source, position, rank);
-    }
-    return invoke<TierList>('get_tier_list', { source, position, rank });
+  getTierList(source: TierSource, position: string, rank: string): Promise<TierList> {
+    return this.call('get_tier_list', { source, position, rank }, () => demoTierList(source, position, rank), 250);
   }
 
   private demoCache: CacheInfo = demoCacheInfo();
 
   cacheInfo(): Promise<CacheInfo> {
-    if (this.demo) return Promise.resolve(structuredClone(this.demoCache));
-    return invoke<CacheInfo>('cache_info');
+    return this.call('cache_info', {}, () => structuredClone(this.demoCache));
   }
 
   /** Deletes one cache and returns what's left in both. */
   clearCache(which: CacheName): Promise<CacheInfo> {
-    if (this.demo) {
+    return this.call('clear_cache', { which }, () => {
       this.demoCache[which] = { files: 0, bytes: 0, inMemory: 0 };
-      return this.cacheInfo();
-    }
-    return invoke<CacheInfo>('clear_cache', { which });
+      return structuredClone(this.demoCache);
+    });
   }
 
   /** Opens a github.com/doliaro/leaguebro/issues link in the default browser. */
   async openIssuePage(url: string): Promise<void> {
-    if (this.demo) {
-      window.open(url, '_blank', 'noopener');
-      return;
-    }
-    await invoke('open_issue_page', { url });
+    await this.call('open_issue_page', { url }, () => void window.open(url, '_blank', 'noopener'));
   }
 
   private lastButtonRect = '';

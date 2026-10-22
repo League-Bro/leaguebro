@@ -3,6 +3,7 @@
 //! one set, replaced on each lock-in (in Swiftplay, one per lobby slot); the
 //! user's own sets are left alone.
 
+use crate::util::{list, text};
 use crate::lcu::Lcu;
 use crate::opgg::{ItemSet, Recommendation};
 use anyhow::{Context, Result};
@@ -75,14 +76,8 @@ pub fn build_set(rec: &Recommendation, champion_name: &str, role_label: &str, ma
 
 /// Replaces League Bro's sets in the client's item-set list, keeping every other set.
 pub fn merge(mut existing: Value, ours: Vec<Value>, now_ms: u64) -> Value {
-    let mut sets: Vec<Value> = existing
-        .get("itemSets")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|s| !s.get("title").and_then(Value::as_str).unwrap_or("").starts_with(TITLE_PREFIX))
-        .collect();
+    let mut sets: Vec<Value> =
+        list(&existing, "itemSets").iter().filter(|s| !text(s, "title").starts_with(TITLE_PREFIX)).cloned().collect();
     sets.splice(0..0, ours);
     if !existing.is_object() {
         existing = json!({ "accountId": 0 });

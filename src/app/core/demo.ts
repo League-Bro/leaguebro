@@ -119,6 +119,22 @@ export function demoSnapshot(): Snapshot {
   };
 }
 
+/** The demo snapshot for `?scene=` (champselect, swiftplay, postgame); in game otherwise. */
+export function demoScene(scene: string | null): Snapshot {
+  const snap = demoSnapshot();
+  const away = { loading: null, overlay: null };
+  switch (scene) {
+    case 'champselect':
+      return { ...snap, ...away, status: { ...snap.status, phase: 'ChampSelect' }, champSelect: demoChampSelect() };
+    case 'swiftplay':
+      return { ...snap, ...away, status: { ...snap.status, phase: 'Lobby' }, rec: null, lastImport: null, swiftplay: demoSwiftplay() };
+    case 'postgame':
+      return { ...snap, ...away, status: { ...snap.status, phase: 'EndOfGame' }, rec: null, postGame: demoPostGame() };
+    default:
+      return snap;
+  }
+}
+
 /** A Swiftplay lobby with a champion picked for one of the two positions. */
 export function demoSwiftplay(): SwiftplaySlot[] {
   return [

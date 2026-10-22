@@ -144,7 +144,7 @@ const MIN_GAMES = 20;
                 <div class="label">Start</div>
                 <div class="row">
                   @for (id of st.ids; track $index) {
-                    @if (itemIcon(id); as url) { <img [src]="url" [title]="itemName(id, st, $index)" alt="" /> } @else { <span class="chip">{{ itemName(id, st, $index) }}</span> }
+                    @if (rift.itemIcon(id); as url) { <img [src]="url" [title]="itemName(id, st, $index)" alt="" /> } @else { <span class="chip">{{ itemName(id, st, $index) }}</span> }
                   }
                 </div>
               }
@@ -152,7 +152,7 @@ const MIN_GAMES = 20;
                 <div class="label">Build</div>
                 <div class="row build">
                   @for (id of r.buildOrder; track id; let last = $last) {
-                    @if (itemIcon(id); as url) { <img [src]="url" [title]="itemNameAny(id, r)" alt="" /> } @else { <span class="chip">{{ itemNameAny(id, r) }}</span> }
+                    @if (rift.itemIcon(id); as url) { <img [src]="url" [title]="itemNameAny(id, r)" alt="" /> } @else { <span class="chip">{{ itemNameAny(id, r) }}</span> }
                     @if (!last) { <span class="faint arrow">›</span> }
                   }
                 </div>
@@ -369,9 +369,6 @@ export class RecCard {
   }
   spellName(id: number): string {
     return this.rift.spellById().get(id)?.name ?? `Spell ${id}`;
-  }
-  itemIcon(id: number): string {
-    return assetUrl(this.rift.itemById().get(id)?.iconPath);
   }
   itemName(id: number, set: ItemSet, i: number): string {
     return this.rift.itemById().get(id)?.name ?? set.names[i] ?? `Item ${id}`;

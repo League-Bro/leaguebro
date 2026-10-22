@@ -1,7 +1,7 @@
 import { Component, computed, inject, input } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
-import { championIcon, formatTier, positionLabel, tierClass } from '../core/assets';
+import { championIcon, formatTier, positionLabel, tierClass, winPct } from '../core/assets';
 
 @Component({
   selector: 'rl-player',
@@ -134,7 +134,5 @@ export class PlayerCard {
   protected icon = championIcon;
   protected tierCls = tierClass;
   protected tier = formatTier;
-  protected wr(w: number, l: number): number {
-    return w + l > 0 ? Math.round((100 * w) / (w + l)) : 0;
-  }
+  protected wr = (w: number, l: number) => winPct(w, w + l);
 }

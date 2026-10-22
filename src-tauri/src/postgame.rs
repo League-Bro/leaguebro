@@ -1,6 +1,7 @@
 //! Post-game summary, built from the League client's match-history record
 //! (`/lol-match-history/v1/games/{gameId}`) once the game has ended.
 
+use crate::util::{flag, int, list, text};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -40,6 +41,15 @@ pub struct PostPlayer {
     /// Riot ID, or None for bots and hidden players.
     pub name: Option<String>,
     pub is_me: bool,
+    #[serde(flatten)]
+    pub line: PlayerLine,
+}
+
+/// One player's numbers from a match-history record, shared by the
+/// scoreboard and the profile's match list.
+#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerLine {
     pub champion_id: i64,
     pub level: i64,
     pub kills: i64,
@@ -53,54 +63,60 @@ pub struct PostPlayer {
     pub spells: [i64; 2],
 }
 
-pub fn parse(game: &Value, my_puuid: &str, queue_name: &str) -> Option<PostGame> {
-    let n = |v: &Value, k: &str| v.get(k).and_then(Value::as_i64).unwrap_or(0);
-    let parts = game.get("participants")?.as_array()?;
-    let idents = game.get("participantIdentities").and_then(Value::as_array).cloned().unwrap_or_default();
-    let ident = |pid: i64| {
-        idents.iter().find(|i| i.get("participantId").and_then(Value::as_i64) == Some(pid)).and_then(|i| i.get("player"))
-    };
-
-    let mut players: Vec<(i64, PostPlayer, Value)> = Vec::new();
-    for p in parts {
-        let s = p.get("stats").cloned().unwrap_or(Value::Null);
-        let player = ident(n(p, "participantId"));
-        let text = |k: &str| player.and_then(|pl| pl.get(k)).and_then(Value::as_str).unwrap_or("");
-        let puuid = text("puuid").to_string();
-        let name = match (text("gameName"), text("tagLine")) {
-            ("", _) => None,
-            (g, "") => Some(g.to_string()),
-            (g, t) => Some(format!("{g}#{t}")),
-        };
-        players.push((
-            n(p, "teamId"),
-            PostPlayer {
-                is_me: !puuid.is_empty() && puuid == my_puuid,
-                puuid,
-                name,
-                champion_id: n(p, "championId"),
-                level: n(&s, "champLevel"),
-                kills: n(&s, "kills"),
-                deaths: n(&s, "deaths"),
-                assists: n(&s, "assists"),
-                cs: n(&s, "totalMinionsKilled") + n(&s, "neutralMinionsKilled"),
-                gold: n(&s, "goldEarned"),
-                damage: n(&s, "totalDamageDealtToChampions"),
-                vision: n(&s, "visionScore"),
-                items: (0..=6).map(|i| n(&s, &format!("item{i}"))).collect(),
-                spells: [n(p, "spell1Id"), n(p, "spell2Id")],
-            },
-            s,
-        ));
+impl PlayerLine {
+    /// `p` is one of the record's `participants`.
+    pub fn parse(p: &Value) -> PlayerLine {
+        let s = |k: &str| int(p, &format!("/stats/{k}"));
+        PlayerLine {
+            champion_id: int(p, "championId"),
+            level: s("champLevel"),
+            kills: s("kills"),
+            deaths: s("deaths"),
+            assists: s("assists"),
+            cs: s("totalMinionsKilled") + s("neutralMinionsKilled"),
+            gold: s("goldEarned"),
+            damage: s("totalDamageDealtToChampions"),
+            vision: s("visionScore"),
+            items: (0..=6).map(|i| s(&format!("item{i}"))).collect(),
+            spells: [int(p, "spell1Id"), int(p, "spell2Id")],
+        }
     }
+}
+
+/// "win", "loss" or "remake" for one of the record's `participants`.
+pub fn result(p: &Value) -> &'static str {
+    if flag(p, "/stats/gameEndedInEarlySurrender") {
+        "remake"
+    } else if flag(p, "/stats/win") {
+        "win"
+    } else {
+        "loss"
+    }
+}
+
+pub fn parse(game: &Value, my_puuid: &str, queue_name: &str) -> Option<PostGame> {
+    let idents = list(game, "participantIdentities");
+    let mut players: Vec<(i64, PostPlayer, &Value)> = list(game, "participants")
+        .iter()
+        .map(|p| {
+            let pid = int(p, "participantId");
+            let player = idents.iter().find(|i| int(i, "participantId") == pid).map_or(&Value::Null, |i| &i["player"]);
+            let puuid = text(player, "puuid").to_string();
+            let name = match (text(player, "gameName"), text(player, "tagLine")) {
+                ("", _) => None,
+                (g, "") => Some(g.to_string()),
+                (g, t) => Some(format!("{g}#{t}")),
+            };
+            let is_me = !puuid.is_empty() && puuid == my_puuid;
+            (int(p, "teamId"), PostPlayer { puuid, name, is_me, line: PlayerLine::parse(p) }, p)
+        })
+        .collect();
     // A solo custom game may not carry the puuid we know; one player means it's us.
     if players.len() == 1 {
         players[0].1.is_me = true;
     }
-    let (my_team, _, my_stats) = players.iter().find(|(_, p, _)| p.is_me)?;
-    let (my_team, my_stats) = (*my_team, my_stats.clone());
+    let &(my_team, _, me) = players.iter().find(|(_, p, _)| p.is_me)?;
 
-    let team_rows = game.get("teams").and_then(Value::as_array).cloned().unwrap_or_default();
     let mut team_ids: Vec<i64> = players.iter().map(|(t, _, _)| *t).collect();
     team_ids.sort();
     team_ids.dedup();
@@ -108,38 +124,30 @@ pub fn parse(game: &Value, my_puuid: &str, queue_name: &str) -> Option<PostGame>
     let teams = team_ids
         .into_iter()
         .map(|id| {
-            let row = team_rows.iter().find(|t| n(t, "teamId") == id).cloned().unwrap_or(Value::Null);
+            let row = list(game, "teams").iter().find(|t| int(t, "teamId") == id).unwrap_or(&Value::Null);
             let members: Vec<PostPlayer> = players.iter().filter(|(t, _, _)| *t == id).map(|(_, p, _)| p.clone()).collect();
             PostTeam {
                 team_id: id,
-                win: row.get("win").and_then(Value::as_str) == Some("Win"),
+                win: text(row, "win") == "Win",
                 is_mine: id == my_team,
-                kills: members.iter().map(|p| p.kills).sum(),
-                gold: members.iter().map(|p| p.gold).sum(),
-                dragons: n(&row, "dragonKills"),
-                barons: n(&row, "baronKills"),
-                towers: n(&row, "towerKills"),
+                kills: members.iter().map(|p| p.line.kills).sum(),
+                gold: members.iter().map(|p| p.line.gold).sum(),
+                dragons: int(row, "dragonKills"),
+                barons: int(row, "baronKills"),
+                towers: int(row, "towerKills"),
                 players: members,
             }
         })
         .collect();
 
     let completed = game.get("endOfGameResult").and_then(Value::as_str).is_none_or(|r| r == "GameComplete");
-    let remake = !completed || my_stats.get("gameEndedInEarlySurrender").and_then(Value::as_bool).unwrap_or(false);
-    let result = if remake {
-        "remake"
-    } else if my_stats.get("win").and_then(Value::as_bool).unwrap_or(false) {
-        "win"
-    } else {
-        "loss"
-    };
     Some(PostGame {
-        game_id: n(game, "gameId"),
-        queue_id: n(game, "queueId"),
+        game_id: int(game, "gameId"),
+        queue_id: int(game, "queueId"),
         queue_name: queue_name.to_string(),
-        game_mode: game.get("gameMode").and_then(Value::as_str).unwrap_or("").to_string(),
-        duration: n(game, "gameDuration"),
-        result: result.to_string(),
+        game_mode: text(game, "gameMode").to_string(),
+        duration: int(game, "gameDuration"),
+        result: (if completed { result(me) } else { "remake" }).to_string(),
         teams,
     })
 }
@@ -166,8 +174,8 @@ mod tests {
         let me = &mine.players[0];
         assert!(me.is_me);
         assert_eq!(me.name.as_deref(), Some("Me#NA1"));
-        assert_eq!((me.kills, me.deaths, me.assists, me.cs), (9, 2, 11, 220));
-        assert_eq!(me.items, vec![6655, 3020, 4645, 0, 1058, 0, 3340]);
+        assert_eq!((me.line.kills, me.line.deaths, me.line.assists, me.line.cs), (9, 2, 11, 220));
+        assert_eq!(me.line.items, vec![6655, 3020, 4645, 0, 1058, 0, 3340]);
         assert!(!mine.players[1].is_me);
         let enemy = &g.teams[1];
         assert!(!enemy.is_mine && !enemy.win);

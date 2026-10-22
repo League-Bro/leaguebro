@@ -108,8 +108,9 @@ pub fn discover(configured_install_dir: Option<&str>) -> Option<Credentials> {
 /// Builds an HTTP client for the client's self-signed localhost certificates.
 /// It is only ever pointed at 127.0.0.1, never at the internet.
 pub fn localhost_http_client() -> Client {
+    crate::util::use_ring();
     Client::builder()
-        .danger_accept_invalid_certs(true)
+        .tls_danger_accept_invalid_certs(true)
         .no_proxy()
         .timeout(Duration::from_secs(8))
         .build()
