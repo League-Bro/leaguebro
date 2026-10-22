@@ -10,6 +10,7 @@ mod postgame;
 mod profile;
 mod runes;
 mod scout;
+mod tierlist;
 
 use config::{Config, RunePage};
 use engine::{AppState, Shared, Snapshot, StaticData};
@@ -143,6 +144,21 @@ async fn get_patch(state: State<'_, AppState>, url: String) -> Result<patch::Pat
     state.patches.notes(&url).await.map_err(|e| format!("{e:#}"))
 }
 
+/// One lane's tier list from Lolalytics or OP.GG (the Tier List tab).
+/// `rank` is a Lolalytics filter like "emerald_plus"; OP.GG ignores it.
+#[tauri::command]
+async fn get_tier_list(
+    state: State<'_, AppState>,
+    source: tierlist::Source,
+    position: String,
+    rank: String,
+) -> Result<tierlist::TierList, String> {
+    let champions = state.shared.lock().await.statics.as_ref().map(|s| {
+        s.champions.iter().filter(|c| !c.classic).map(|c| (c.id, c.name.clone())).collect()
+    });
+    state.tiers.get(&state.opgg, source, &position, &rank, champions).await.map_err(|e| format!("{e:#}"))
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CacheInfo {
@@ -229,6 +245,7 @@ pub fn run() {
                     env!("CARGO_PKG_VERSION"),
                     app.path().app_cache_dir().ok().map(|d| d.join("patch-notes")),
                 ),
+                tiers: tierlist::TierLists::new(env!("CARGO_PKG_VERSION")),
                 overlay_input: std::sync::Mutex::new(engine::OverlayInput { passthrough: true, ..Default::default() }),
             });
             if let Some(overlay) = app.get_webview_window("overlay") {
@@ -261,6 +278,7 @@ pub fn run() {
             set_overlay_locked,
             list_patches,
             get_patch,
+            get_tier_list,
             cache_info,
             clear_cache,
             set_overlay_button

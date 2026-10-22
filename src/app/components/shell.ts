@@ -6,9 +6,10 @@ import { ChampionsView } from './champions-view';
 import { SettingsView } from './settings-view';
 import { PatchView } from './patch-view';
 import { ProfileView } from './profile-view';
+import { TierListView } from './tierlist-view';
 
 /** 'profile' isn't in the tab bar; the brand and your name open it. */
-type Tab = 'live' | 'champions' | 'patch' | 'settings' | 'profile';
+type Tab = 'live' | 'champions' | 'tiers' | 'patch' | 'settings' | 'profile';
 
 const PHASE_LABELS: Record<string, string> = {
   None: 'In client',
@@ -26,7 +27,7 @@ const PHASE_LABELS: Record<string, string> = {
 
 @Component({
   selector: 'rl-shell',
-  imports: [LiveView, ChampionsView, PatchView, SettingsView, ProfileView],
+  imports: [LiveView, ChampionsView, TierListView, PatchView, SettingsView, ProfileView],
   template: `
     <header>
       <button class="brand" [class.active]="tab() === 'profile'" title="Your profile and match history" (click)="tab.set('profile')">
@@ -78,6 +79,7 @@ const PHASE_LABELS: Record<string, string> = {
       @switch (tab()) {
         @case ('live') { <rl-live /> }
         @case ('champions') { <rl-champions /> }
+        @case ('tiers') { <rl-tierlist (openChampion)="openChampion($event)" /> }
         @case ('patch') { <rl-patch /> }
         @case ('settings') { <rl-settings /> }
         @case ('profile') { <rl-profile /> }
@@ -133,11 +135,19 @@ export class Shell implements OnInit {
   protected readonly tabs: { id: Tab; label: string }[] = [
     { id: 'live', label: 'Live' },
     { id: 'champions', label: 'Champions' },
+    { id: 'tiers', label: 'Tier List' },
     { id: 'patch', label: 'Patch Notes' },
     { id: 'settings', label: 'Settings' },
   ];
   ngOnInit(): void {
     this.updates.start();
+  }
+
+  /** From the Tier List: show that champion's ranked build for the lane. */
+  protected openChampion(e: { championId: number; position: string }): void {
+    this.rift.championsGame.set('league');
+    this.rift.championsPick.set({ championId: e.championId, position: e.position, mode: 'ranked' });
+    this.tab.set('champions');
   }
 
   protected readonly statusText = computed(() => {

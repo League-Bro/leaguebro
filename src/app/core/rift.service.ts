@@ -21,6 +21,8 @@ import {
   Snapshot,
   StaticData,
   Status,
+  TierList,
+  TierSource,
 } from './models';
 import {
   demoCacheInfo,
@@ -33,6 +35,7 @@ import {
   demoRec,
   demoSnapshot,
   demoStatic,
+  demoTierList,
 } from './demo';
 
 export function inTauri(): boolean {
@@ -54,6 +57,12 @@ export class RiftService {
   /** Champions tab selection, kept across tab switches. */
   readonly championsPick = signal<{ championId: number; position: string; mode: 'ranked' | 'aram' } | null>(null);
   readonly championsGame = signal<'league' | 'classic'>('league');
+  /** Tier List tab selection, kept across tab switches. */
+  readonly tierPick = signal<{ source: TierSource; position: string; rank: string }>({
+    source: 'lolalytics',
+    position: 'middle',
+    rank: 'emerald_plus',
+  });
   readonly overlayPreview = signal(false);
   readonly overlayLocked = signal(true);
   readonly config = signal<Config | null>(null);
@@ -206,6 +215,15 @@ export class RiftService {
   getPatch(url: string): Promise<PatchNotes> {
     if (this.demo) return Promise.resolve(demoPatch(url));
     return invoke<PatchNotes>('get_patch', { url });
+  }
+
+  /** One lane's tier list. Position: top|jungle|middle|bottom|utility; rank is a Lolalytics filter like "emerald_plus". */
+  async getTierList(source: TierSource, position: string, rank: string): Promise<TierList> {
+    if (this.demo) {
+      await new Promise((r) => setTimeout(r, 250));
+      return demoTierList(source, position, rank);
+    }
+    return invoke<TierList>('get_tier_list', { source, position, rank });
   }
 
   private demoCache: CacheInfo = demoCacheInfo();

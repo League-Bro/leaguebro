@@ -19,6 +19,9 @@ import {
   RecState,
   Snapshot,
   StaticData,
+  TierEntry,
+  TierList,
+  TierSource,
 } from './models';
 
 const champs: [number, string][] = [
@@ -415,5 +418,44 @@ export function demoPatch(url: string): PatchNotes {
         ],
       },
     ],
+  };
+}
+
+const TIER_LANES: Record<string, [number, string][]> = {
+  top: [[54, 'Malphite'], [875, 'Sett'], [98, 'Shen'], [41, 'Gangplank'], [58, 'Renekton'], [122, 'Darius'], [266, 'Aatrox'], [86, 'Garen'], [114, 'Fiora'], [164, 'Camille'], [24, 'Jax'], [516, 'Ornn'], [82, 'Mordekaiser'], [897, "K'Sante"], [17, 'Teemo']],
+  jungle: [[64, 'Lee Sin'], [254, 'Vi'], [121, "Kha'Zix"], [104, 'Graves'], [234, 'Viego'], [56, 'Nocturne'], [141, 'Kayn'], [120, 'Hecarim'], [32, 'Amumu'], [19, 'Warwick'], [245, 'Ekko'], [233, 'Briar'], [76, 'Nidalee'], [59, 'Jarvan IV'], [60, 'Elise']],
+  middle: [[103, 'Ahri'], [245, 'Ekko'], [4, 'Twisted Fate'], [157, 'Yasuo'], [55, 'Katarina'], [127, 'Lissandra'], [7, 'LeBlanc'], [777, 'Yone'], [134, 'Syndra'], [711, 'Vex'], [84, 'Akali'], [101, 'Xerath'], [238, 'Zed'], [99, 'Lux'], [112, 'Viktor']],
+  bottom: [[222, 'Jinx'], [145, "Kai'Sa"], [81, 'Ezreal'], [51, 'Caitlyn'], [21, 'Miss Fortune'], [202, 'Jhin'], [22, 'Ashe'], [67, 'Vayne'], [236, 'Lucian'], [901, 'Smolder'], [119, 'Draven'], [15, 'Sivir'], [498, 'Xayah'], [29, 'Twitch'], [96, "Kog'Maw"]],
+  utility: [[412, 'Thresh'], [40, 'Janna'], [89, 'Leona'], [99, 'Lux'], [12, 'Alistar'], [53, 'Blitzcrank'], [111, 'Nautilus'], [117, 'Lulu'], [267, 'Nami'], [555, 'Pyke'], [497, 'Rakan'], [16, 'Soraka'], [902, 'Milio'], [43, 'Karma'], [201, 'Braum']],
+};
+const LOLA_LABELS = ['S+', 'S', 'S-', 'A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-'];
+
+/** Made-up tier list in the shape tierlist.rs sends. */
+export function demoTierList(source: TierSource, position: string, rank: string): TierList {
+  const lane = TIER_LANES[position] ?? TIER_LANES['middle'];
+  const opgg = source === 'opgg';
+  const entries: TierEntry[] = lane.map(([championId, name], i) => {
+    const step = opgg ? Math.min(4, Math.floor(i / 3)) : Math.min(14, i);
+    const label = opgg ? String(step + 1) : LOLA_LABELS[step];
+    return {
+      championId,
+      name,
+      tier: (opgg ? 'SABCD'[step] : label[0]) as TierEntry['tier'],
+      label,
+      rank: i + 1,
+      rankChange: opgg ? ((i * 7) % 5) - 2 : null,
+      winRate: opgg ? Math.round(53 - i * 0.4) : 53.4 - i * 0.37,
+      pickRate: 9.5 - i * 0.5,
+      banRate: (i * 13) % 17,
+      games: (opgg ? 9800 : 98000) - i * (opgg ? 450 : 4500),
+    };
+  });
+  return {
+    source,
+    position,
+    rank: opgg ? null : rank,
+    gamesAnalysed: opgg ? null : 1_484_916,
+    fetchedAt: Math.floor(Date.now() / 1000) - 600,
+    entries,
   };
 }

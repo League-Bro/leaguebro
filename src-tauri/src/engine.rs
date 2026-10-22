@@ -178,6 +178,7 @@ pub struct AppState {
     pub shared: Mutex<Shared>,
     pub opgg: OpGg,
     pub patches: crate::patch::PatchNotesClient,
+    pub tiers: crate::tierlist::TierLists,
     pub overlay_input: std::sync::Mutex<OverlayInput>,
 }
 
