@@ -441,6 +441,13 @@ export interface TimerConfig {
   inhibRespawn: number;
 }
 
+export interface AbilityKeys {
+  q: string;
+  w: string;
+  e: string;
+  r: string;
+}
+
 export interface Config {
   autoImportRunes: boolean;
   importOnHover: boolean;
@@ -450,6 +457,8 @@ export interface Config {
   setItemSets: boolean;
   useRecommendedBuilds: boolean;
   showSkillHint: boolean;
+  /** The player's ability keybinds, shown in place of Q/W/E/R. */
+  abilityKeys: AbilityKeys;
   scoutInChampSelect: boolean;
   scoutOnLoading: boolean;
   overlayEnabled: boolean;
@@ -457,6 +466,8 @@ export interface Config {
   overlayY: number | null;
   overlayOpacity: number;
   timers: TimerConfig;
+  /** Champion ids starred in the Champions tab, pinned to the top of its list. */
+  favoriteChampions: number[];
   installDir: string | null;
 }
 

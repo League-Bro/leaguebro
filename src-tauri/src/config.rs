@@ -32,6 +32,23 @@ impl Default for TimerConfig {
     }
 }
 
+/// The keys the player has bound to their abilities, shown in place of
+/// Q/W/E/R in skill orders. Display only; recommendations still use Q/W/E/R.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct AbilityKeys {
+    pub q: String,
+    pub w: String,
+    pub e: String,
+    pub r: String,
+}
+
+impl Default for AbilityKeys {
+    fn default() -> Self {
+        Self { q: "Q".into(), w: "W".into(), e: "E".into(), r: "R".into() }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Config {
@@ -54,6 +71,7 @@ pub struct Config {
     pub use_recommended_builds: bool,
     /// Show the skill max order and "level up" hint in the overlay.
     pub show_skill_hint: bool,
+    pub ability_keys: AbilityKeys,
     pub scout_in_champ_select: bool,
     pub scout_on_loading: bool,
     pub overlay_enabled: bool,
@@ -62,6 +80,8 @@ pub struct Config {
     pub overlay_y: Option<i32>,
     pub overlay_opacity: f64,
     pub timers: TimerConfig,
+    /// Champion ids starred in the Champions tab, pinned to the top of its list.
+    pub favorite_champions: Vec<i64>,
     /// League install folder, only needed if auto-detection fails.
     pub install_dir: Option<String>,
 }
@@ -77,6 +97,7 @@ impl Default for Config {
             set_item_sets: true,
             use_recommended_builds: true,
             show_skill_hint: true,
+            ability_keys: AbilityKeys::default(),
             scout_in_champ_select: true,
             scout_on_loading: true,
             overlay_enabled: true,
@@ -84,6 +105,7 @@ impl Default for Config {
             overlay_y: None,
             overlay_opacity: 0.9,
             timers: TimerConfig::default(),
+            favorite_champions: Vec::new(),
             install_dir: None,
         }
     }
@@ -123,6 +145,8 @@ mod tests {
         assert!(c.overlay_enabled);
         assert_eq!(c.rec_source, "opgg");
         assert_eq!(c.timers.baron_respawn, 360.0);
+        assert_eq!(c.ability_keys.q, "Q");
+        assert!(c.favorite_champions.is_empty());
     }
 
     #[test]

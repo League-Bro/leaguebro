@@ -7,9 +7,10 @@ import { SettingsView } from './settings-view';
 import { PatchView } from './patch-view';
 import { ProfileView } from './profile-view';
 import { TierListView } from './tierlist-view';
+import { FeedbackView } from './feedback-view';
 
 /** 'profile' isn't in the tab bar; the brand and your name open it. */
-type Tab = 'live' | 'champions' | 'tiers' | 'patch' | 'settings' | 'profile';
+type Tab = 'live' | 'champions' | 'tiers' | 'patch' | 'settings' | 'feedback' | 'profile';
 
 const PHASE_LABELS: Record<string, string> = {
   None: 'In client',
@@ -27,7 +28,7 @@ const PHASE_LABELS: Record<string, string> = {
 
 @Component({
   selector: 'rl-shell',
-  imports: [LiveView, ChampionsView, TierListView, PatchView, SettingsView, ProfileView],
+  imports: [LiveView, ChampionsView, TierListView, PatchView, SettingsView, FeedbackView, ProfileView],
   template: `
     <header>
       <button class="brand" [class.active]="tab() === 'profile'" title="Your profile and match history" (click)="go('profile')">
@@ -85,6 +86,7 @@ const PHASE_LABELS: Record<string, string> = {
         @case ('tiers') { <rl-tierlist (openChampion)="openChampion($event)" /> }
         @case ('patch') { <rl-patch /> }
         @case ('settings') { <rl-settings /> }
+        @case ('feedback') { <rl-feedback /> }
         @case ('profile') { <rl-profile /> }
       }
     </main>
@@ -156,6 +158,7 @@ export class Shell implements OnInit {
     { id: 'tiers', label: 'Tier List' },
     { id: 'patch', label: 'Patch Notes' },
     { id: 'settings', label: 'Settings' },
+    { id: 'feedback', label: 'Feedback' },
   ];
   ngOnInit(): void {
     this.updates.start();

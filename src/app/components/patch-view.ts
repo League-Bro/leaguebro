@@ -87,7 +87,7 @@ const VERDICT_LABELS: Record<string, string> = {
                 @if (showContext() && e.context) { <p class="context">{{ e.context }}</p> }
                 @for (g of e.groups; track $index) {
                   <div class="group">
-                    @if (g.title) { <div class="gtitle">{{ g.title }}</div> }
+                    @if (g.title) { <div class="gtitle">{{ abilityTitle(g.title) }}</div> }
                     <ul>
                       @for (l of g.lines; track $index) {
                         <li [class]="'line ' + l.effect">
@@ -194,9 +194,17 @@ export class PatchView implements OnInit {
     for (const c of this.rift.statics()?.champions ?? []) m.set(norm(c.name), c.id);
     return m;
   });
+  /** "Q - Sonic Wave" with the player's own key in place of Q. */
+  abilityTitle(title: string): string {
+    return title.replace(/^([QWER])(?=\s*[-–:])/, (k) => this.rift.abilityKey(k));
+  }
+
   private readonly itemPaths = computed(() => {
     const m = new Map<string, string>();
-    for (const i of this.rift.statics()?.items ?? []) m.set(norm(i.name), i.iconPath);
+    // Arena and other modes reuse names under ids ≥ 10000; prefer the normal item.
+    for (const i of this.rift.statics()?.items ?? []) {
+      if (!m.has(norm(i.name)) || i.id < 10000) m.set(norm(i.name), i.iconPath);
+    }
     return m;
   });
   private readonly perkPaths = computed(() => {

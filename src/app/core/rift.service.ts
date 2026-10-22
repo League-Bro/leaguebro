@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
+  AbilityKeys,
   CacheInfo,
   CacheName,
   ChampSelectView,
@@ -140,6 +141,12 @@ export class RiftService {
     this.profiles.set(p);
   }
 
+  /** The player's key for an ability ("Q" → "A" if they rebound it). */
+  abilityKey(k: string): string {
+    const keys = this.config()?.abilityKeys;
+    return keys?.[k.toLowerCase() as keyof AbilityKeys] || k;
+  }
+
   champName(id: number): string {
     return this.champById().get(id) ?? (id > 0 ? `#${id}` : '');
   }
@@ -240,6 +247,15 @@ export class RiftService {
       return this.cacheInfo();
     }
     return invoke<CacheInfo>('clear_cache', { which });
+  }
+
+  /** Opens a github.com/doliaro/leaguebro/issues link in the default browser. */
+  async openIssuePage(url: string): Promise<void> {
+    if (this.demo) {
+      window.open(url, '_blank', 'noopener');
+      return;
+    }
+    await invoke('open_issue_page', { url });
   }
 
   private lastButtonRect = '';

@@ -356,16 +356,12 @@ async fn load_statics(lcu: &Lcu) -> anyhow::Result<StaticData> {
         })
         .collect();
     champions.sort_by(|a, b| a.name.cmp(&b.name));
+    // Every item, not just what the shop sells: upgrades (Muramana, Seraph's),
+    // champion-only items and mode copies (ids ≥ 10000) still show up in
+    // builds, match history and the scoreboard, and need names and icons.
     let mut items: Vec<ItemInfo> = arr(&items)
         .iter()
-        .filter(|it| {
-            let id = i(it, "id");
-            id > 0
-                && id < 10000 // larger ids are mode-specific (Arena etc.)
-                && i(it, "priceTotal") > 0
-                && it.get("inStore").and_then(Value::as_bool).unwrap_or(true)
-                && st(it, "requiredChampion").is_empty()
-        })
+        .filter(|it| i(it, "id") > 0 && !st(it, "name").is_empty())
         .map(|it| {
             let (stats, desc) = item_tooltip(st(it, "description"));
             ItemInfo {

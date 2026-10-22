@@ -1,0 +1,15 @@
+# Field ids are also query params: the app's Feedback page fills them in (feedback-view.ts).
+name: Feature request
+description: An idea for League Bro.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why would it help?

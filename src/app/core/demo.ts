@@ -299,6 +299,7 @@ export function demoConfig(): Config {
     setItemSets: true,
     useRecommendedBuilds: true,
     showSkillHint: true,
+    abilityKeys: { q: 'Q', w: 'W', e: 'E', r: 'R' },
     scoutInChampSelect: true,
     scoutOnLoading: true,
     overlayEnabled: true,
@@ -306,6 +307,7 @@ export function demoConfig(): Config {
     overlayY: null,
     overlayOpacity: 0.9,
     timers: { firstDragon: 300, firstBaron: 1200, dragonRespawn: 300, elderRespawn: 360, baronRespawn: 360, inhibRespawn: 300 },
+    favoriteChampions: [103, 222],
     installDir: null,
   };
 }

@@ -126,13 +126,13 @@ const MIN_GAMES = 20;
                 <div class="label">Skill order</div>
                 <div class="row max">
                   @for (k of r.skillMax; track $index; let last = $last) {
-                    <span class="key">{{ k }}</span>@if (!last) { <span class="faint">›</span> }
+                    <span class="key">{{ rift.abilityKey(k) }}</span>@if (!last) { <span class="faint">›</span> }
                   }
                 </div>
                 @if (r.skillOrder.length) {
                   <div class="levels">
                     @for (k of r.skillOrder; track $index) {
-                      <span [class]="'lvl k' + k" [title]="'Level ' + ($index + 1)">{{ k }}</span>
+                      <span [class]="'lvl k' + k" [title]="'Level ' + ($index + 1)">{{ rift.abilityKey(k) }}</span>
                     }
                   </div>
                 }
@@ -305,7 +305,9 @@ export class RecCard {
     const r = this.state()?.rec;
     if (!r) return null;
     const champ = this.rift.statics()?.champions.find((c) => c.id === r.championId);
-    return buildWhy(r, champ, this.rift.itemById(), this.rift.perkById(), this.rift.styleById(), this.rift.spellById());
+    return buildWhy(r, champ, this.rift.itemById(), this.rift.perkById(), this.rift.styleById(), this.rift.spellById(), (k) =>
+      this.rift.abilityKey(k),
+    );
   });
 
   /** "Ahri is a mage / assassin who deals magic damage. Each pick below…" */

@@ -1,7 +1,7 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { UpdateService } from '../core/update.service';
-import { CacheInfo, CacheName, Config, TimerConfig } from '../core/models';
+import { AbilityKeys, CacheInfo, CacheName, Config, TimerConfig } from '../core/models';
 import { clock } from '../core/assets';
 
 type BoolKey =
@@ -103,6 +103,21 @@ type BoolKey =
         </section>
 
         <section class="card stack">
+          <h2>Ability keys</h2>
+          <p class="faint small">If you've rebound your abilities in League, enter your keys. Skill orders everywhere in League Bro (champ select, the Champions tab, the overlay, patch notes) then show your keys instead of Q W E R.</p>
+          <div class="field">
+            @for (k of abilitySlots; track k) {
+              <label class="keybind">
+                <span class="faint small">{{ k.toUpperCase() }}</span>
+                <input type="text" class="key" maxlength="12" [placeholder]="k.toUpperCase()" [value]="cfg.abilityKeys[k]"
+                  [attr.aria-label]="'Your key for the ' + k.toUpperCase() + ' ability'" (input)="setKey(k, $any($event.target).value)" />
+              </label>
+            }
+            <button class="ghost" (click)="resetKeys()">Reset</button>
+          </div>
+        </section>
+
+        <section class="card stack">
           <h2>Rune import</h2>
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.autoImportRunes" (change)="setBool('autoImportRunes', $any($event.target).checked)" />
@@ -181,6 +196,8 @@ type BoolKey =
     .field > span:first-child { width: 150px; color: var(--text-dim); }
     .field input[type='range'] { flex: 1; accent-color: var(--accent); }
     .wide { flex: 1; }
+    .keybind { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .key { width: 52px; text-align: center; text-transform: uppercase; }
     .small { font-size: 12.5px; margin: 0; }
     .cache-row { display: flex; align-items: center; gap: 12px; }
     .cache-row .label { flex: 1; display: flex; flex-direction: column; gap: 2px; }
@@ -193,6 +210,7 @@ export class SettingsView {
   protected readonly updates = inject(UpdateService);
   protected readonly error = signal('');
   protected time = clock;
+  protected readonly abilitySlots: (keyof AbilityKeys)[] = ['q', 'w', 'e', 'r'];
   protected readonly timerFields: { key: keyof TimerConfig; label: string }[] = [
     { key: 'firstDragon', label: 'First dragon at' },
     { key: 'dragonRespawn', label: 'Dragon respawn' },
@@ -275,6 +293,14 @@ export class SettingsView {
     const unlocking = this.rift.overlayLocked();
     if (unlocking && !this.rift.overlayPreview()) await this.rift.previewOverlay(true);
     await this.rift.setOverlayLocked(!unlocking);
+  }
+  setKey(key: keyof AbilityKeys, raw: string): void {
+    // Empty is fine: displays fall back to Q/W/E/R (RiftService.abilityKey).
+    const v = raw.trim().toUpperCase();
+    this.save((c) => ({ ...c, abilityKeys: { ...c.abilityKeys, [key]: v } }));
+  }
+  resetKeys(): void {
+    this.save((c) => ({ ...c, abilityKeys: { q: 'Q', w: 'W', e: 'E', r: 'R' } }));
   }
   setTimer(key: keyof TimerConfig, v: number): void {
     if (!Number.isFinite(v) || v < 0) return;

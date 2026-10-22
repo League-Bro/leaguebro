@@ -56,10 +56,10 @@ const PREVIEW: OverlayState = {
           <div class="skills">
             <span class="cap">Max</span>
             @for (k of o.skillMax; track $index; let last = $last) {
-              <b>{{ k }}</b>@if (!last) { <span class="sep">›</span> }
+              <b>{{ rift.abilityKey(k) }}</b>@if (!last) { <span class="sep">›</span> }
             }
             @if (o.nextSkill) {
-              <span class="levelup">Level up <b>{{ o.nextSkill }}</b></span>
+              <span class="levelup">Level up <b>{{ rift.abilityKey(o.nextSkill) }}</b></span>
             }
           </div>
         }

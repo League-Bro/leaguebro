@@ -157,6 +157,8 @@ export function buildWhy(
   perks: Map<number, PerkInfo>,
   styles: Map<number, PerkInfo>,
   spells: Map<number, PerkInfo>,
+  /** The player's key for an ability ("Q" → their keybind). */
+  key: (k: string) => string = (k) => k,
 ): WhySet {
   const champName = champ?.name ?? 'this champion';
   const roles = champ?.roles ?? [];
@@ -230,9 +232,9 @@ export function buildWhy(
   // ----- skills & spells -----
   const skills: string[] = [];
   if (rec.skillMax.length) {
-    skills.push(`Max ${rec.skillMax.join(' › ')}: the order most ${champName} players use.`);
+    skills.push(`Max ${rec.skillMax.map(key).join(' › ')}: the order most ${champName} players use.`);
     if (rec.skillStats) skills.push(statsLine(rec.skillStats, 'Used') + '.');
-    if (rec.skillOrder.length >= 3) skills.push(`Levels 1–3: ${rec.skillOrder.slice(0, 3).join(', ')}.`);
+    if (rec.skillOrder.length >= 3) skills.push(`Levels 1–3: ${rec.skillOrder.slice(0, 3).map(key).join(', ')}.`);
   }
   const spellWhy: Why[] = rec.spells.map((id, i) => {
     const s = spells.get(id);

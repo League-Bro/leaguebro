@@ -209,6 +209,27 @@ async fn preview_overlay(app: AppHandle, show: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Where the Feedback page's issue links go. Nothing else can be opened.
+const ISSUE_URL_PREFIX: &str = "https://github.com/doliaro/leaguebro/issues";
+
+/// Opens a GitHub issue page (prefilled by the Feedback page) in the
+/// default browser. Creating the issue happens there, signed in as the user,
+/// so the app holds no GitHub token.
+#[tauri::command]
+fn open_issue_page(url: String) -> Result<(), String> {
+    let rest = url.strip_prefix(ISSUE_URL_PREFIX).ok_or("Not a League Bro issue link")?;
+    if !(rest.is_empty() || rest.starts_with('/') || rest.starts_with('?')) {
+        return Err("Not a League Bro issue link".into());
+    }
+    // Hands the URL to Windows' default browser. Passed as one argument (no
+    // cmd.exe), so `&` in the query string is safe.
+    std::process::Command::new("rundll32")
+        .args(["url.dll,FileProtocolHandler", &url])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Couldn't open the browser: {e}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -264,7 +285,8 @@ pub fn run() {
             get_tier_list,
             cache_info,
             clear_cache,
-            set_overlay_button
+            set_overlay_button,
+            open_issue_page
         ])
         .run(tauri::generate_context!())
         .expect("error while running League Bro");

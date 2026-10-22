@@ -98,10 +98,12 @@ src-tauri/src/
   config.rs     settings (%APPDATA%\dev.dom.leaguebro\settings.json), serde defaults for new fields
 src-tauri/tauri.conf.json   windows (main + transparent overlay), CSP, updater pubkey + endpoint, version
 src/app/core/   rift.service.ts (events/commands), update.service.ts (auto-update), models.ts, demo.ts, assets.ts, why.ts (recommendation explanations)
-src/app/components/  shell, live-view, post-game, champions-view, profile-view, rec-card, player-card, patch-view, settings-view, overlay
+src/app/components/  shell, live-view, post-game, champions-view, profile-view, rec-card, player-card, patch-view, settings-view, feedback-view, overlay
                      (the Profile page isn't in the tab bar; the "League Bro" brand and your name in the header open it)
 .github/workflows/build-windows.yml   release workflow (tauri-action, signs updates, publishes latest.json)
 .github/workflows/pages.yml           publishes site/ to GitHub Pages (https://doliaro.github.io/leaguebro/)
+.github/ISSUE_TEMPLATE/               bug report + feature request issue forms; the Feedback tab opens them prefilled
+                                      (query params = field ids) via `open_issue_page`, which only opens github.com/doliaro/leaguebro/issues links
 site/index.html                       download website: one static page, no build step; the download button
                                       reads releases/latest from GitHub's API in the browser and picks the
                                       *-setup.exe asset, falling back to the releases page

@@ -1,4 +1,5 @@
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { RecCard } from './rec-card';
 import { championIcon } from '../core/assets';
@@ -16,7 +17,7 @@ const ROLES = [
 /** Look up any champion's OP.GG build. */
 @Component({
   selector: 'rl-champions',
-  imports: [RecCard],
+  imports: [RecCard, NgTemplateOutlet],
   template: `
     <div class="layout">
       <aside class="card">
@@ -26,15 +27,32 @@ const ROLES = [
         </div>
         <input type="text" class="filter" placeholder="Search champions…" [value]="query()" (input)="query.set($any($event.target).value)" />
         <div class="list">
-          @for (c of list(); track c.id) {
-            <button class="champ" [class.active]="c.id === pick()?.championId" (click)="select(c.id)">
+          @if (favorites().length) {
+            <div class="group-label">Favorites</div>
+            @for (c of favorites(); track c.id) {
+              <ng-container *ngTemplateOutlet="row; context: { $implicit: c, fav: true }" />
+            }
+            @if (others().length) { <div class="group-label">All champions</div> }
+          }
+          @for (c of others(); track c.id) {
+            <ng-container *ngTemplateOutlet="row; context: { $implicit: c, fav: false }" />
+          } @empty {
+            @if (!favorites().length) {
+              <p class="faint small">{{ rift.statics() ? 'No champion matches.' : 'Champions load once the League client is open.' }}</p>
+            }
+          }
+        </div>
+        <ng-template #row let-c let-fav="fav">
+          <div class="champ" [class.active]="c.id === pick()?.championId">
+            <button class="pick" (click)="select(c.id)">
               <img class="champ-icon sm" [src]="icon(c.id)" alt="" />
               <span class="cname">{{ c.name }}</span>
             </button>
-          } @empty {
-            <p class="faint small">{{ rift.statics() ? 'No champion matches.' : 'Champions load once the League client is open.' }}</p>
-          }
-        </div>
+            <button class="star" [class.on]="fav" [title]="fav ? 'Remove from favorites' : 'Add to favorites'"
+                    [attr.aria-label]="(fav ? 'Remove ' : 'Add ') + c.name + (fav ? ' from favorites' : ' to favorites')"
+                    (click)="toggleFavorite(c.id)">{{ fav ? '★' : '☆' }}</button>
+          </div>
+        </ng-template>
       </aside>
 
       <div class="main">
@@ -46,7 +64,12 @@ const ROLES = [
             <img class="big" [src]="icon(p.championId)" alt="" />
             <div class="stack grow">
               <div>
-                <h2>{{ rift.champName(p.championId) }}@if (isClassic()) { <span class="classic-tag">League Classic</span> }</h2>
+                <h2>
+                  {{ rift.champName(p.championId) }}@if (isClassic()) { <span class="classic-tag">League Classic</span> }
+                  <button class="star head-star" [class.on]="isFavorite(p.championId)"
+                          [title]="isFavorite(p.championId) ? 'Remove from favorites' : 'Add to favorites'"
+                          (click)="toggleFavorite(p.championId)">{{ isFavorite(p.championId) ? '★' : '☆' }}</button>
+                </h2>
                 @if (roles()) { <div class="muted small">{{ roles() }}</div> }
               </div>
               @if (!isClassic()) {
@@ -99,9 +122,18 @@ const ROLES = [
     .classic-note { margin-top: 16px; }
     .classic-note p { margin: 0; }
     .list { display: flex; flex-direction: column; gap: 1px; overflow: auto; margin: 0 -6px; padding: 0 6px; }
-    .champ { display: flex; align-items: center; gap: 9px; background: none; border-color: transparent; text-align: left; padding: 4px 6px; }
+    .group-label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); padding: 8px 6px 4px; }
+    .group-label:first-child { padding-top: 0; }
+    .champ { display: flex; align-items: center; border-radius: 8px; }
     .champ:hover { background: var(--bg-sunken); }
-    .champ.active { background: var(--accent-soft); border-color: transparent; color: var(--accent); font-weight: 600; }
+    .champ.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    .champ .pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; background: none; border-color: transparent; color: inherit; font-weight: inherit; text-align: left; padding: 4px 6px; }
+    .star { background: none; border-color: transparent; color: var(--text-dim); padding: 2px 6px; font-size: 15px; line-height: 1; }
+    .star:hover { color: var(--accent); }
+    .star.on { color: var(--accent); }
+    .champ .star:not(.on) { visibility: hidden; }
+    .champ:hover .star, .champ .star:focus-visible { visibility: visible; }
+    .head-star { margin-left: 6px; vertical-align: middle; font-size: 20px; }
     .cname { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .main { min-width: 0; }
     .head { position: relative; display: flex; align-items: center; gap: 18px; padding: 22px; }
@@ -133,6 +165,10 @@ export class ChampionsView {
       .filter((c) => !q || c.name.toLowerCase().includes(q) || c.alias.toLowerCase().includes(q))
       .sort((a, b) => a.name.localeCompare(b.name));
   });
+  private readonly favoriteIds = computed(() => new Set(this.rift.config()?.favoriteChampions ?? []));
+  /** Starred champions, pinned above the rest of the list. */
+  protected readonly favorites = computed(() => this.list().filter((c) => this.favoriteIds().has(c.id)));
+  protected readonly others = computed(() => this.list().filter((c) => !this.favoriteIds().has(c.id)));
   protected readonly isClassic = computed(() => {
     const id = this.pick()?.championId;
     return this.rift.statics()?.champions.find((c) => c.id === id)?.classic ?? false;
@@ -174,6 +210,17 @@ export class ChampionsView {
     if (classic !== undefined) this.game.set(classic ? 'classic' : 'league');
     const prev = this.pick();
     this.pick.set({ championId, position: prev?.position ?? 'middle', mode: prev?.mode ?? 'ranked' });
+  }
+  isFavorite(championId: number): boolean {
+    return this.favoriteIds().has(championId);
+  }
+  toggleFavorite(championId: number): void {
+    void this.rift.updateConfig((c) => ({
+      ...c,
+      favoriteChampions: c.favoriteChampions.includes(championId)
+        ? c.favoriteChampions.filter((id) => id !== championId)
+        : [...c.favoriteChampions, championId],
+    }));
   }
   setRole(position: string): void {
     const p = this.pick();

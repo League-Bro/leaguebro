@@ -1,0 +1,28 @@
+# Field ids are also query params: the app's Feedback page fills them in (feedback-view.ts).
+name: Bug report
+description: Something in League Bro doesn't work right.
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Queue ranked solo
+        2. Lock in Ahri mid
+        3. …
+  - type: input
+    id: details
+    attributes:
+      label: App details
+      description: League Bro version and what the League client was doing.
