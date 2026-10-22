@@ -2,7 +2,7 @@ import { Component, computed, inject, input, signal } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { assetUrl } from '../core/assets';
-import { ItemSet, RecState } from '../core/models';
+import { ItemSet, RecState, RuneRec } from '../core/models';
 import { buildWhy, rolesLabel } from '../core/why';
 
 const MIN_GAMES = 20;
@@ -43,8 +43,8 @@ const MIN_GAMES = 20;
                 <div class="row">
                   @if (perkIcon(ru.perkIds[0]); as url) { <img class="keystone" [src]="url" alt="" /> }
                   <div>
-                    <div class="strong">{{ ru.keystoneName }}</div>
-                    <div class="muted small">{{ ru.primaryName }} / {{ ru.secondaryName }}</div>
+                    <div class="strong">{{ perkLabel(ru.perkIds[0], ru.keystoneName) }}</div>
+                    <div class="muted small">{{ styleName(ru.primaryStyleId, ru.primaryName) }} / {{ styleName(ru.subStyleId, ru.secondaryName) }}</div>
                   </div>
                 </div>
                 <div class="perks">
@@ -54,7 +54,7 @@ const MIN_GAMES = 20;
                     }
                   }
                 </div>
-                <div class="faint small names">{{ ru.perkNames.slice(1).join(' · ') }}</div>
+                <div class="faint small names">{{ runeNames(ru) }}</div>
               </div>
             }
 
@@ -267,6 +267,21 @@ export class RecCard {
   perkName(id: number): string {
     const p = this.rift.perkById().get(id);
     return p ? [p.name, p.desc].filter(Boolean).join('\n') : '';
+  }
+  /** Names from the client's data, falling back to OP.GG's (the website API sends none). */
+  perkLabel(id: number, fallback: string): string {
+    return this.rift.perkById().get(id)?.name ?? fallback;
+  }
+  styleName(id: number, fallback: string): string {
+    return this.rift.styleById().get(id)?.name ?? fallback;
+  }
+  /** The runes after the keystone: 3 primary + 2 secondary (no shards). */
+  runeNames(ru: RuneRec): string {
+    return ru.perkIds
+      .slice(1, 6)
+      .map((id, i) => this.perkLabel(id, ru.perkNames[i + 1] ?? ''))
+      .filter(Boolean)
+      .join(' · ');
   }
   spellIcon(id: number): string {
     return assetUrl(this.rift.spellById().get(id)?.iconPath);

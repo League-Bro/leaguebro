@@ -332,10 +332,13 @@ export function demoChampSelect(): ChampSelectView {
   };
 }
 
-/** Real OP.GG answer for Ahri mid (from the probe), as League Bro shows it. */
+/**
+ * Real OP.GG answer for Ahri mid (website API, October 2026), as League Bro
+ * shows it. Like that API it has no names; the UI takes them from the client's data.
+ */
 export function demoRec(): RecState {
-  const total = 10962;
-  const set = (ids: number[], names: string[], games: number, wins: number) => ({ ids, names, games, winRate: wins / games, pickRate: games / total });
+  const total = 12836;
+  const set = (ids: number[], games: number, wins: number) => ({ ids, names: [], games, winRate: wins / games, pickRate: games / total });
   return {
     championId: 103,
     position: 'mid',
@@ -349,29 +352,29 @@ export function demoRec(): RecState {
         primaryStyleId: 8100,
         subStyleId: 8200,
         perkIds: [8112, 8139, 8140, 8106, 8210, 8226, 5005, 5008, 5001],
-        keystoneName: 'Electrocute',
-        primaryName: 'Domination',
-        secondaryName: 'Sorcery',
-        perkNames: ['Electrocute', 'Taste of Blood', 'Grisly Mementos', 'Ultimate Hunter', 'Transcendence', 'Manaflow Band'],
-        games: 3764,
-        winRate: 1930 / 3764,
-        pickRate: 3764 / total,
+        keystoneName: '',
+        primaryName: '',
+        secondaryName: '',
+        perkNames: [],
+        games: 6015,
+        winRate: 3050 / 6015,
+        pickRate: 0.4686,
       },
       spells: [4, 14],
-      spellStats: { games: 6120, winRate: 0.512, pickRate: 0.56 },
+      spellStats: { games: 8890, winRate: 4576 / 8890, pickRate: 0.6925 },
       skillMax: ['Q', 'W', 'E'],
-      skillStats: { games: 8810, winRate: 0.509, pickRate: 0.8 },
+      skillStats: { games: 7944, winRate: 4646 / 7944, pickRate: 0.9184 },
       damageType: 'AP',
       skillOrder: ['W', 'Q', 'E', 'Q', 'Q', 'R', 'Q', 'W', 'Q', 'W', 'R', 'W', 'W', 'E', 'E'],
-      starter: set([1056, 2003, 2003], ["Doran's Ring", 'Health Potion', 'Health Potion'], 7944, 4084),
-      boots: set([3020], ["Sorcerer's Shoes"], 4455, 2271),
-      core: set([3118, 4645, 3157], ['Malignance', 'Shadowflame', "Zhonya's Hourglass"], 619, 328),
+      starter: set([1056, 2003, 2003], 12729, 6517),
+      boots: set([3020], 7253, 3743),
+      core: set([3118, 4645, 3157], 971, 502),
       later: [
-        [set([3089], ["Rabadon's Deathcap"], 212, 113), set([3135], ['Void Staff'], 140, 77)],
-        [set([3135], ['Void Staff'], 98, 52)],
+        [set([3089], 950, 540), set([3157], 739, 446), set([3135], 247, 138)],
+        [set([3089], 148, 96), set([3135], 126, 64), set([3157], 116, 64)],
       ],
       buildOrder: [3118, 3020, 4645, 3157, 3089, 3135],
-      games: 3764,
+      games: 6015,
       source: 'OP.GG',
     },
   };

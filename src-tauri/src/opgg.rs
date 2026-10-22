@@ -1,7 +1,11 @@
 //! Champion recommendations (runes, summoner spells, skill order, items)
-//! from OP.GG's public MCP endpoint (https://mcp-api.op.gg/mcp).
+//! from OP.GG.
 //!
-//! The endpoint speaks MCP (JSON-RPC over HTTP). Tool results come back as
+//! First choice is the JSON behind op.gg's champion pages (`WEB_API`, ~0.2 s;
+//! `web_to_mcp` reshapes it). If that fails, the public MCP endpoint
+//! (https://mcp-api.op.gg/mcp) has the same numbers but takes ~3.5 s.
+//!
+//! The MCP endpoint speaks JSON-RPC over HTTP. Tool results come back as
 //! a compact text format rather than JSON:
 //!
 //! ```text
@@ -21,15 +25,25 @@
 
 use anyhow::{anyhow, bail, Context, Result};
 use crate::cache::{now_secs, CacheUsage, DiskCache, Generation};
+use crate::lcu::Lcu;
 use crate::patch::{notes_releases_around, DAY_SECS};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 
+/// The JSON behind op.gg's champion pages: ~0.2 s per champion. Tried first.
+pub const WEB_API: &str = "https://lol-api-champion.op.gg/api/global/champions";
+/// The MCP endpoint: the same numbers but ~3.5 s per champion. The fallback.
 pub const ENDPOINT: &str = "https://mcp-api.op.gg/mcp";
+/// The website API is quick, so a slow answer means trouble: give up and ask
+/// the MCP endpoint instead of waiting the full `http` timeout.
+const WEB_TIMEOUT: Duration = Duration::from_secs(5);
+/// How many 4th/5th/6th item options to keep (what the MCP tool returns).
+const LATE_ITEM_OPTIONS: usize = 3;
 /// Below this many games OP.GG's numbers are mostly noise (e.g. an off-role
 /// pick), so League Bro falls back to the client's own recommendation.
 pub const MIN_GAMES: i64 = 20;
@@ -431,6 +445,53 @@ pub fn game_mode_for(queue_id: i64, map_id: i64) -> Option<&'static str> {
     }
 }
 
+// ---------- website API ----------
+
+/// Reshapes the website API's answers into the MCP tool's `data` shape, so
+/// `extract` reads both. The website lists every option (most played first)
+/// where the MCP tool gives only the top one, and has no names; the UI names
+/// runes and items from the client's own data. `builds` is `/builds`, whose
+/// `single_items` depth 4–6 are the MCP tool's 4th–6th item options (same
+/// numbers, checked October 2026); Null when it couldn't be fetched.
+pub fn web_to_mcp(main: &Value, builds: &Value, damage_type: &str) -> Result<Value> {
+    let d = main.get("data").filter(|d| d.is_object()).ok_or_else(|| anyhow!("OP.GG response has no data"))?;
+    let mut data = Map::new();
+    for key in ["runes", "summoner_spells", "skills", "skill_masteries", "starter_items", "boots", "core_items"] {
+        if let Some(top) = d.get(key).and_then(Value::as_array).and_then(|a| a.first()) {
+            data.insert(key.into(), top.clone());
+        }
+    }
+    let depths = builds.pointer("/data/single_items").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
+    for (depth, key) in [(4, "fourth_items"), (5, "fifth_items"), (6, "sixth_items")] {
+        let options = depths
+            .iter()
+            .find(|s| n(s, "depth") == depth)
+            .and_then(|s| s.get("items"))
+            .and_then(Value::as_array)
+            .map(|a| a.iter().take(LATE_ITEM_OPTIONS).cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        data.insert(key.into(), Value::Array(options));
+    }
+    data.insert("damage_type".into(), damage_type.into());
+    Ok(json!({ "data": data }))
+}
+
+/// The client's `tacticalInfo.damageType` ("kMagic") as OP.GG's label ("AP").
+pub fn damage_label(tactical: &str) -> &'static str {
+    match tactical {
+        "kPhysical" => "AD",
+        "kMagic" => "AP",
+        "kMixed" => "BOTH",
+        _ => "",
+    }
+}
+
+/// OP.GG's lane for the website API: modes without lanes take `none` (the
+/// MCP tool wants a lane there instead).
+fn web_position<'a>(pos: &'a str, game_mode: &str) -> &'a str {
+    if game_mode == "ranked" || game_mode == "flex" { pos } else { "none" }
+}
+
 // ---------- MCP client ----------
 
 const FIELDS: &[&str] = &[
@@ -492,6 +553,12 @@ pub struct OpGg {
     /// Answers read this session (from disk or OP.GG), by champion:position:mode.
     /// `None` means the disk was checked and had nothing, so it isn't read again.
     cache: Mutex<HashMap<String, Option<SavedRec>>>,
+    /// One lock per key, held for a whole lookup, so a second caller (e.g. the
+    /// rune import at lock-in while the hover lookup is still out) waits for
+    /// the answer instead of sending the same request again.
+    lookups: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    /// "AD" / "AP" / "BOTH" by champion id, for the website API's answers.
+    damage_types: Mutex<HashMap<i64, String>>,
     disk: DiskCache,
     /// Bumped by `clear`, under the `cache` lock.
     generation: Generation,
@@ -508,6 +575,8 @@ impl OpGg {
                 .expect("http client"),
             session: Mutex::new(None),
             cache: Mutex::new(HashMap::new()),
+            lookups: Mutex::new(HashMap::new()),
+            damage_types: Mutex::new(HashMap::new()),
             disk: DiskCache { dir: cache_dir },
             generation: Generation::default(),
         }
@@ -587,12 +656,23 @@ impl OpGg {
         unreachable!()
     }
 
-    pub async fn recommend(&self, champion_id: i64, alias: &str, position: &str, game_mode: &str) -> Result<Recommendation> {
+    /// `lcu` supplies the champion's damage type for website API answers
+    /// (left empty without it).
+    pub async fn recommend(
+        &self,
+        champion_id: i64,
+        alias: &str,
+        position: &str,
+        game_mode: &str,
+        lcu: Option<&Lcu>,
+    ) -> Result<Recommendation> {
         let pos = position_param(position, game_mode);
         if pos.is_empty() {
             bail!("no position to look up (blind pick without a role)");
         }
         let key = format!("{champion_id}:{pos}:{game_mode}");
+        let lookup = self.lookups.lock().await.entry(key.clone()).or_default().clone();
+        let _lookup = lookup.lock().await;
         let file = rec_file(&key);
         let now = now_secs();
         let generation = self.generation.current();
@@ -613,7 +693,7 @@ impl OpGg {
         if let Some(s) = saved.as_ref().filter(|s| s.is_fresh(now)) {
             return Ok(s.rec.clone());
         }
-        match self.fetch_rec(champion_id, alias, pos, game_mode).await {
+        match self.fetch_rec(champion_id, alias, pos, game_mode, lcu).await {
             Ok(rec) => {
                 let fresh = SavedRec { format: CACHE_FORMAT, fetched_at: now, rec: rec.clone() };
                 let mut cache = self.cache.lock().await;
@@ -630,7 +710,62 @@ impl OpGg {
         }
     }
 
-    async fn fetch_rec(&self, champion_id: i64, alias: &str, pos: &str, game_mode: &str) -> Result<Recommendation> {
+    async fn fetch_rec(&self, champion_id: i64, alias: &str, pos: &str, game_mode: &str, lcu: Option<&Lcu>) -> Result<Recommendation> {
+        match self.fetch_web(champion_id, pos, game_mode, lcu).await {
+            Ok(rec) => Ok(rec),
+            Err(e) => {
+                eprintln!("OP.GG website API failed ({e:#}); asking the MCP endpoint");
+                self.fetch_mcp(champion_id, alias, pos, game_mode)
+                    .await
+                    .with_context(|| format!("OP.GG website API failed ({e:#}), then the MCP endpoint"))
+            }
+        }
+    }
+
+    async fn get_json(&self, url: &str) -> Result<Value> {
+        let resp = self.http.get(url).timeout(WEB_TIMEOUT).send().await.with_context(|| format!("couldn't reach {url}"))?;
+        let status = resp.status();
+        if !status.is_success() {
+            bail!("{url} returned {status}");
+        }
+        resp.json().await.with_context(|| format!("{url} sent something unexpected"))
+    }
+
+    /// Main page, item depths and damage type, all at once (~0.2–0.3 s).
+    async fn fetch_web(&self, champion_id: i64, pos: &str, game_mode: &str, lcu: Option<&Lcu>) -> Result<Recommendation> {
+        let base = format!("{WEB_API}/{game_mode}/{champion_id}/{}", web_position(pos, game_mode));
+        let builds_url = format!("{base}/builds");
+        let (main, builds, damage) =
+            tokio::join!(self.get_json(&base), self.get_json(&builds_url), self.damage_type(champion_id, lcu));
+        // Without /builds only the 4th-6th item options are missing.
+        let builds = builds.unwrap_or_else(|e| {
+            eprintln!("OP.GG item options failed: {e:#}");
+            Value::Null
+        });
+        extract(&web_to_mcp(&main?, &builds, &damage)?, champion_id, pos, game_mode)
+    }
+
+    /// From the League client's own champion data (local, a few ms). Empty
+    /// when the client can't say; the UI then just leaves it out.
+    async fn damage_type(&self, champion_id: i64, lcu: Option<&Lcu>) -> String {
+        if let Some(d) = self.damage_types.lock().await.get(&champion_id) {
+            return d.clone();
+        }
+        let Some(lcu) = lcu else { return String::new() };
+        match lcu.get_req(&format!("/lol-game-data/assets/v1/champions/{champion_id}.json")).await {
+            Ok(v) => {
+                let d = damage_label(v.pointer("/tacticalInfo/damageType").and_then(Value::as_str).unwrap_or("")).to_string();
+                self.damage_types.lock().await.insert(champion_id, d.clone());
+                d
+            }
+            Err(e) => {
+                eprintln!("Damage type lookup failed: {e:#}");
+                String::new()
+            }
+        }
+    }
+
+    async fn fetch_mcp(&self, champion_id: i64, alias: &str, pos: &str, game_mode: &str) -> Result<Recommendation> {
         let text = self
             .call_tool(
                 "lol_get_champion_analysis",
@@ -722,6 +857,65 @@ mod tests {
     }
 
     #[test]
+    fn website_api_matches_the_mcp_shape() {
+        let main: Value = serde_json::from_str(&fixture("opgg_web_ahri_mid.json")).unwrap();
+        let builds: Value = serde_json::from_str(&fixture("opgg_web_ahri_mid_builds.json")).unwrap();
+        let r = extract(&web_to_mcp(&main, &builds, "AP").unwrap(), 103, "mid", "ranked").unwrap();
+        let runes = r.runes.as_ref().unwrap();
+        assert_eq!((runes.primary_style_id, runes.sub_style_id), (8100, 8200));
+        assert_eq!(runes.perk_ids, vec![8112, 8139, 8140, 8106, 8210, 8226, 5005, 5008, 5001]);
+        assert_eq!((runes.games, runes.pick_rate), (6015, 0.4686));
+        assert_eq!(r.spells, vec![4, 14]);
+        assert_eq!(r.skill_max, vec!["Q", "W", "E"]);
+        assert_eq!(r.skill_order[0], "W");
+        assert_eq!(r.starter.as_ref().unwrap().ids, vec![1056, 2003, 2003]);
+        assert_eq!(r.later.len(), 3);
+        assert!(r.later.iter().all(|o| o.len() == LATE_ITEM_OPTIONS));
+        // Same build as the MCP answer: 6th-item options have under 10 games.
+        assert_eq!(r.build_order, vec![3118, 3020, 4645, 3157, 3089, 3135]);
+        assert_eq!(r.damage_type, "AP");
+
+        // Without /builds there are just no 4th-6th options.
+        let r = extract(&web_to_mcp(&main, &Value::Null, "").unwrap(), 103, "mid", "ranked").unwrap();
+        assert!(r.later.is_empty());
+        assert_eq!(r.build_order, vec![3118, 3020, 4645, 3157]);
+        // Unknown champions come back without a data object.
+        assert!(web_to_mcp(&json!({"data": []}), &Value::Null, "").is_err());
+    }
+
+    /// Hits OP.GG for real and prints how long each source takes:
+    /// `cargo test live_lookup_speed -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn live_lookup_speed() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let op = OpGg::new("test", None);
+        rt.block_on(async {
+            for (id, alias, pos, mode) in [(103, "Ahri", "mid", "ranked"), (412, "Thresh", "support", "ranked"), (22, "Ashe", "mid", "aram")] {
+                let t = std::time::Instant::now();
+                let web = op.fetch_web(id, pos, mode, None).await.unwrap();
+                let web_ms = t.elapsed().as_millis();
+                let t = std::time::Instant::now();
+                let mcp = op.fetch_mcp(id, alias, pos, mode).await.unwrap();
+                println!("{alias} {pos} {mode}: website {web_ms} ms, MCP {} ms", t.elapsed().as_millis());
+                assert_eq!(web.runes.map(|r| r.perk_ids), mcp.runes.map(|r| r.perk_ids));
+                // Damage type comes from the League client, not tested here.
+                assert_eq!(web.spells, mcp.spells);
+            }
+        });
+    }
+
+    #[test]
+    fn website_lanes_and_damage_labels() {
+        assert_eq!(web_position("adc", "ranked"), "adc");
+        assert_eq!(web_position("support", "flex"), "support");
+        assert_eq!(web_position("mid", "aram"), "none");
+        assert_eq!(damage_label("kMagic"), "AP");
+        assert_eq!(damage_label("kPhysical"), "AD");
+        assert_eq!(damage_label("kSomethingNew"), "");
+    }
+
+    #[test]
     fn filtered_thresh_response() {
         // Field order differs per class here (SummonerSpells has win before play).
         let v = parse_compact(&fixture("thresh_support_fields.txt")).unwrap();
@@ -801,7 +995,7 @@ mod tests {
         // A new client (as after restarting the app) reads it without the network.
         let client = OpGg::new("test", Some(dir.clone()));
         let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
-        assert_eq!(rt.block_on(client.recommend(103, "Ahri", "middle", "ranked")).unwrap(), rec);
+        assert_eq!(rt.block_on(client.recommend(103, "Ahri", "middle", "ranked", None)).unwrap(), rec);
         // Saved in an older format: not used.
         let old = SavedRec { format: CACHE_FORMAT + 1, fetched_at: now, rec: rec.clone() };
         assert!(!old.is_fresh(now));

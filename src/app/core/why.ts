@@ -168,6 +168,8 @@ export function buildWhy(
   const runeNotes: string[] = [];
   if (rec.runes) {
     const r = rec.runes;
+    const primary = styles.get(r.primaryStyleId)?.name ?? r.primaryName;
+    const secondary = styles.get(r.subStyleId)?.name ?? r.secondaryName;
     r.perkIds.slice(0, 6).forEach((id, i) => {
       const p = perks.get(id);
       const reasons: string[] = [];
@@ -183,15 +185,15 @@ export function buildWhy(
         id,
         name: p?.name ?? r.perkNames[i] ?? `Rune ${id}`,
         iconPath: p?.iconPath ?? '',
-        tag: i === 0 ? 'Keystone' : i < 4 ? r.primaryName : r.secondaryName,
+        tag: i === 0 ? 'Keystone' : i < 4 ? primary : secondary,
         what: p?.desc ?? '',
         stats: [],
         reasons,
         data: i === 0 ? statsLine(r, 'This page is used', `${champName}${lane}`) : '',
       });
     });
-    const secondary = styles.get(r.subStyleId)?.name ?? r.secondaryName;
-    if (secondary) runeNotes.push(`${secondary} as the secondary tree adds ${r.perkNames.slice(4, 6).join(' and ')}.`);
+    const secondaryRunes = r.perkIds.slice(4, 6).map((id, i) => perks.get(id)?.name ?? r.perkNames[i + 4]).filter(Boolean);
+    if (secondary && secondaryRunes.length) runeNotes.push(`${secondary} as the secondary tree adds ${secondaryRunes.join(' and ')}.`);
     const shards = r.perkIds.slice(6).map((id) => perks.get(id)?.name).filter(Boolean);
     if (shards.length) runeNotes.push(`Stat shards: ${shards.join(', ')}.`);
   }

@@ -42,7 +42,9 @@ The Rust side runs one background loop (`engine.rs`, 1 s tick) that pushes state
    - `lol-game-data/assets/v1/{champion-summary,items,perks,perkstyles,summoner-spells}.json` (static data). `champion-summary` also lists League Classic copies of ~80 champions: same name, id = 60000 + the normal id, alias `Jade_…` (checked October 2026). `ChampInfo.classic` marks them (`is_league_classic`); the Champions tab lists them separately, and OP.GG lookups and the live-game name match skip them.
    - The schema reference is the swagger at https://github.com/dysolix/hasagi-types (`swagger.json`).
 2. **Live Client Data API:** `https://127.0.0.1:2999/liveclientdata/allgamedata`, served while a game is running. `live.rs` uses it for objective timers, the next-item reminder, the skill-point hint and the lane item-value diff (`lane_diff`: you vs the enemy with the same `position`, summing `priceTotal` × `count` from the client's item list; none in ARAM etc. where positions are empty). It doesn't report enemy gold, so the diff is item value, like Blitz's; items are public on the scoreboard, so this is within Riot's rules. Its `scores.creepScore` only updates in steps of 10, so CS was removed from the overlay (Dom saw it not change in game); the game's own scoreboard shows the exact number.
-3. **OP.GG MCP endpoint:** `https://mcp-api.op.gg/mcp`, JSON-RPC over HTTP (MCP streamable HTTP). It's public, needs no key, and is unofficial for apps, so it could change. `opgg.rs` does:
+3. **OP.GG**, two sources with the same numbers, both unofficial for apps (they could change):
+   - **Website API (tried first, ~0.3 s):** `lol-api-champion.op.gg/api/global/champions/{mode}/{championId}/{lane}` (the JSON behind op.gg's champion pages) plus `…/builds` in parallel, whose `single_items` depth 4–6 are the 4th–6th item options. `lane` is `top|jungle|mid|adc|support`, or `none` for ARAM/URF/Nexus Blitz. No `tier` param = Emerald+, which matches the MCP tool. Each list is every option, most played first, with no names; `web_to_mcp` takes the first of each into the MCP tool's `data` shape so `extract` reads both, and the UI names runes and items from the client's data. Damage type comes from the League client's `lol-game-data/assets/v1/champions/{id}.json` (`tacticalInfo.damageType`, local and instant; that's why `recommend` takes the `Lcu`). Checked October 2026 to give the same runes, spells and damage type as MCP (`cargo test live_lookup_speed -- --ignored --nocapture` compares them and prints timings).
+   - **MCP endpoint (fallback, ~3.5 s, most of it OP.GG's server):** `https://mcp-api.op.gg/mcp`, JSON-RPC over HTTP (MCP streamable HTTP), public, no key. Used only when the website API fails or takes over 5 s. `opgg.rs` does:
    - `initialize`, then `tools/call` → `lol_get_champion_analysis` with `game_mode`, `champion`, `position`, `lang`, `desired_output_fields`.
    - **The response is not JSON.** It's a compact text format: `class Name: field1,field2` header lines, then constructor-style values like `Runes(8112,[...],"Electrocute")`. `parse_compact` maps positional args to field names using the headers. Field order differs between classes (e.g. `SummonerSpells` has `win` before `play`), so always go through the headers.
    - Champion names: OP.GG accepts the client `alias` uppercased, in any format (`MONKEYKING`, `KAISA`).
@@ -86,7 +88,7 @@ src-tauri/src/
   lcu.rs        League client discovery + HTTP
   runes.rs      rune page choice/naming/import
   itemsets.rs   OP.GG build as a client item set (in-game shop)
-  opgg.rs       OP.GG client, compact-format parser, Recommendation model
+  opgg.rs       OP.GG client (website API, MCP fallback), compact-format parser, Recommendation model
   patch.rs      Riot patch notes: list + article parsing into buffs/nerfs, PATCH_SCHEDULE
   cache.rs      on-disk cache folders (patch notes, OP.GG), usage + clearing for Settings
   scout.rs      rank + match history summaries

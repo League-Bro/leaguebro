@@ -87,16 +87,16 @@ async fn lookup_rec(
     if !matches!(game_mode.as_str(), "ranked" | "aram") {
         return Err(format!("Unknown game mode {game_mode}"));
     }
-    let alias = {
+    let (alias, lcu) = {
         let sh = state.shared.lock().await;
         let statics = sh.statics.as_ref().ok_or("Open the League client to load champions")?;
         let champ = statics.champions.iter().find(|c| c.id == champion_id).ok_or("Unknown champion")?;
         if champ.classic {
             return Err("OP.GG has no League Classic stats".into());
         }
-        champ.alias.clone()
+        (champ.alias.clone(), sh.lcu.clone())
     };
-    state.opgg.recommend(champion_id, &alias, &position, &game_mode).await.map_err(|e| format!("{e:#}"))
+    state.opgg.recommend(champion_id, &alias, &position, &game_mode, lcu.as_ref()).await.map_err(|e| format!("{e:#}"))
 }
 
 /// Unlocks the overlay so it accepts mouse input and can be dragged to a new

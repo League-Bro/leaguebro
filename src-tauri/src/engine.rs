@@ -814,18 +814,19 @@ impl Engine {
         let key = (view.my_champion_id, view.my_position.clone());
         if should_import && self.last_import_key.as_ref() != Some(&key) {
             self.last_import_key = Some(key);
-            let result = import_for(&self.app, view.my_champion_id, &view.my_position).await;
-            self.publish_import(view.my_champion_id, result).await;
+            // In the background: the import waits on OP.GG (seconds), and the
+            // loop should keep updating champ select meanwhile.
+            let app = self.app.clone();
+            let (champ, pos) = (view.my_champion_id, view.my_position.clone());
+            tauri::async_runtime::spawn(async move {
+                let result = import_for(&app, champ, &pos).await;
+                // A slow import for a champion you've since left (swap, dodge,
+                // a new champ select) shouldn't report over the current one.
+                if app.state::<AppState>().shared.lock().await.my_champion_id == champ {
+                    publish_import(&app, champ, result).await;
+                }
+            });
         }
-    }
-
-    async fn publish_import(&self, champion_id: i64, result: Result<String, String>) {
-        let ev = match result {
-            Ok(m) => ImportEvent { ok: true, champion_id, message: m },
-            Err(m) => ImportEvent { ok: false, champion_id, message: m },
-        };
-        self.state().shared.lock().await.last_import = Some(ev.clone());
-        let _ = self.app.emit("rune-import", ev);
     }
 
     async fn loading(&mut self, lcu: &Lcu) {
@@ -945,6 +946,10 @@ impl Engine {
 /// Imports the rune page for a champion (used by the loop and the
 /// "Import now" button).
 pub async fn import_for(app: &AppHandle, champion_id: i64, position: &str) -> Result<String, String> {
+    // One at a time, so quick hover changes (or the button) apply in order
+    // instead of racing over the same rune page and item set.
+    static IMPORTING: Mutex<()> = Mutex::const_new(());
+    let _importing = IMPORTING.lock().await;
     let state = app.state::<AppState>();
     let cfg = state.config();
     let (lcu, map_id, name) = {
@@ -981,6 +986,15 @@ pub async fn import_for(app: &AppHandle, champion_id: i64, position: &str) -> Re
         None => String::new(),
     };
     Ok(format!("{result}{spells}{items}"))
+}
+
+async fn publish_import(app: &AppHandle, champion_id: i64, result: Result<String, String>) {
+    let ev = match result {
+        Ok(m) => ImportEvent { ok: true, champion_id, message: m },
+        Err(m) => ImportEvent { ok: false, champion_id, message: m },
+    };
+    app.state::<AppState>().shared.lock().await.last_import = Some(ev.clone());
+    let _ = app.emit("rune-import", ev);
 }
 
 /// Puts each recommended spell where you already have it (so Flash stays on
@@ -1034,7 +1048,7 @@ pub async fn ensure_rec(app: &AppHandle, champion_id: i64, position: &str, live_
     if state.config().rec_source != "opgg" || champion_id == 0 {
         return None;
     }
-    let (alias, game_mode) = {
+    let (alias, game_mode, lcu) = {
         let sh = state.shared.lock().await;
         if let Some(r) = sh.rec.as_ref() {
             if r.champion_id == champion_id && r.position == position && r.rec.is_some() {
@@ -1051,7 +1065,7 @@ pub async fn ensure_rec(app: &AppHandle, champion_id: i64, position: &str, live_
             Some(m) => mode_from_live(m),
             None => opgg::game_mode_for(sh.queue_id, if sh.map_id == 0 { 11 } else { sh.map_id }),
         };
-        (alias, mode)
+        (alias, mode, sh.lcu.clone())
     };
     let (Some(alias), Some(game_mode)) = (alias, game_mode) else { return None };
     let publish = |rs: RecState| async move {
@@ -1068,7 +1082,7 @@ pub async fn ensure_rec(app: &AppHandle, champion_id: i64, position: &str, live_
     };
     let base = RecState { champion_id, position: position.to_string(), ..Default::default() };
     publish(RecState { loading: true, ..base.clone() }).await;
-    match state.opgg.recommend(champion_id, &alias, position, game_mode).await {
+    match state.opgg.recommend(champion_id, &alias, position, game_mode, lcu.as_ref()).await {
         Ok(rec) => {
             publish(RecState { rec: Some(rec.clone()), ..base }).await;
             Some(rec)
