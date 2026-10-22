@@ -650,7 +650,7 @@ impl PatchNotesClient {
     pub fn new(version: &str, cache_dir: Option<PathBuf>) -> PatchNotesClient {
         PatchNotesClient {
             http: reqwest::Client::builder()
-                .user_agent(format!("LeagueBro/{version} (+https://github.com/doliaro/leaguebuddy)"))
+                .user_agent(format!("LeagueBro/{version} (+https://github.com/doliaro/leaguebro)"))
                 .timeout(Duration::from_secs(15))
                 .build()
                 .expect("http client"),

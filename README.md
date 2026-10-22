@@ -4,7 +4,7 @@ A small, ad-free League of Legends companion for Windows. It imports your runes 
 
 ## Install
 
-1. Go to the **[latest release](https://github.com/doliaro/leaguebuddy/releases/latest)** and download `League.Bro_x.y.z_x64-setup.exe`.
+1. Go to the **[latest release](https://github.com/doliaro/leaguebro/releases/latest)** and download `League.Bro_x.y.z_x64-setup.exe`.
 2. Run it. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**. That warning appears because the app isn't code-signed, not because something is wrong with it.
 3. Open League Bro, then open League. It connects on its own.
 
@@ -86,7 +86,7 @@ Built with [Tauri 2](https://tauri.app) (Rust) and Angular 21.
 Clone the repo, then run the setup script from the project folder:
 
 ```powershell
-git clone https://github.com/doliaro/leaguebuddy.git
+git clone https://github.com/doliaro/leaguebro.git
 cd leaguebuddy
 scripts\setup-dev.cmd
 ```
