@@ -1826,7 +1826,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "leaguebuddy"
+name = "leaguebro"
 version = "0.1.2"
 dependencies = [
  "anyhow",

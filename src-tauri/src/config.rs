@@ -1,9 +1,12 @@
 //! User settings, stored as JSON in the app's config folder
-//! (on Windows: %APPDATA%\dev.dom.leaguebuddy\settings.json).
+//! (on Windows: %APPDATA%\dev.dom.leaguebro\settings.json).
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+
+/// The app's identifier before it was renamed to League Bro.
+const OLD_IDENTIFIER: &str = "dev.dom.leaguebuddy";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -115,6 +118,25 @@ impl Config {
         }
     }
 
+    /// The app was called League Buddy (identifier `dev.dom.leaguebuddy`)
+    /// before. On the first run after the rename, copy its settings over so
+    /// saved rune pages and builds survive. The old file is left in place.
+    pub fn migrate_old_settings(path: &Path) {
+        if path.exists() {
+            return;
+        }
+        let Some(old) = path.parent().and_then(Path::parent).map(|d| d.join(OLD_IDENTIFIER).join("settings.json")) else {
+            return;
+        };
+        if !old.exists() {
+            return;
+        }
+        let copied = path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|_| std::fs::copy(&old, path));
+        if let Err(e) = copied {
+            eprintln!("couldn't copy settings from {}: {e}", old.display());
+        }
+    }
+
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
@@ -142,12 +164,31 @@ mod tests {
 
     #[test]
     fn round_trip() {
-        let dir = std::env::temp_dir().join(format!("leaguebuddy-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("leaguebro-test-{}", std::process::id()));
         let path = dir.join("settings.json");
         let mut c = Config::default();
         c.builds.insert("103".into(), vec![3020, 6655]);
         c.save(&path).unwrap();
         assert_eq!(Config::load(&path), c);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn migrates_league_buddy_settings() {
+        let root = std::env::temp_dir().join(format!("leaguebro-migrate-test-{}", std::process::id()));
+        let old = root.join(OLD_IDENTIFIER).join("settings.json");
+        let new = root.join("dev.dom.leaguebro").join("settings.json");
+        let mut c = Config::default();
+        c.builds.insert("103".into(), vec![3020]);
+        c.save(&old).unwrap();
+
+        Config::migrate_old_settings(&new);
+        assert_eq!(Config::load(&new), c);
+
+        // Never overwrites settings the new app already has.
+        Config::default().save(&new).unwrap();
+        Config::migrate_old_settings(&new);
+        assert_eq!(Config::load(&new), Config::default());
+        let _ = std::fs::remove_dir_all(root);
     }
 }

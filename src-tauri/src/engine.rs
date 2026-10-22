@@ -867,7 +867,7 @@ impl Engine {
                     sh.my_champion_id = c.id;
                 }
             }
-            // If League Buddy was started mid-game (no champ select), look the
+            // If League Bro was started mid-game (no champ select), look the
             // recommendation up from the live game instead.
             let champ = sh.my_champion_id;
             let need_rec = champ != 0

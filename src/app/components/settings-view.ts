@@ -107,7 +107,7 @@ type BoolKey = 'scoutInChampSelect' | 'scoutOnLoading' | 'overlayEnabled';
 
         <section class="card stack">
           <h2>League install folder</h2>
-          <p class="faint small">Only needed if League Buddy never connects. It normally finds the client on its own.</p>
+          <p class="faint small">Only needed if League Bro never connects. It normally finds the client on its own.</p>
           <div class="field">
             <input type="text" class="wide" placeholder="C:\\Riot Games\\League of Legends" [value]="cfg.installDir ?? ''"
               (change)="setInstall($any($event.target).value)" />
@@ -115,7 +115,7 @@ type BoolKey = 'scoutInChampSelect' | 'scoutOnLoading' | 'overlayEnabled';
         </section>
         <section class="card stack">
           <h2>Clear cache</h2>
-          <p class="faint small">League Buddy saves downloads so it doesn't fetch them every time. Clearing one makes it download fresh copies the next time they're needed.</p>
+          <p class="faint small">League Bro saves downloads so it doesn't fetch them every time. Clearing one makes it download fresh copies the next time they're needed.</p>
           @for (c of cacheRows; track c.key) {
             <div class="cache-row">
               <span class="label"><b>{{ c.label }}</b><span>{{ c.hint }}</span></span>
@@ -130,9 +130,9 @@ type BoolKey = 'scoutInChampSelect' | 'scoutOnLoading' | 'overlayEnabled';
         <section class="card stack">
           <h2>About &amp; updates</h2>
           <p class="muted small">
-            @if (updates.currentVersion()) { League Buddy {{ updates.currentVersion() }} } @else { League Buddy (dev build) }
+            @if (updates.currentVersion()) { League Bro {{ updates.currentVersion() }} } @else { League Bro (dev build) }
           </p>
-          <p class="faint small">League Buddy checks for updates when it starts and every few hours, then asks before installing.</p>
+          <p class="faint small">League Bro checks for updates when it starts and every few hours, then asks before installing.</p>
           <div class="row">
             <button [disabled]="updates.checking() || !updates.currentVersion()" (click)="updates.check(true)">
               {{ updates.checking() ? 'Checking…' : 'Check for updates' }}

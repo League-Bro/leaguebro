@@ -17,7 +17,7 @@
 //! One block can hold several entries (the Items section separates them
 //! with `<hr>` and a new `<h3>`), so entries start at each `<h3>`.
 //!
-//! Caching (on disk, `%LOCALAPPDATA%\dev.dom.leaguebuddy\patch-notes`):
+//! Caching (on disk, `%LOCALAPPDATA%\dev.dom.leaguebro\patch-notes`):
 //! - Each patch's parsed notes are saved the first time they're opened and
 //!   never downloaded again.
 //! - The list of patches is saved too, and only re-checked once the next
@@ -650,7 +650,7 @@ impl PatchNotesClient {
     pub fn new(version: &str, cache_dir: Option<PathBuf>) -> PatchNotesClient {
         PatchNotesClient {
             http: reqwest::Client::builder()
-                .user_agent(format!("LeagueBuddy/{version} (+https://github.com/doliaro/leaguebuddy)"))
+                .user_agent(format!("LeagueBro/{version} (+https://github.com/doliaro/leaguebuddy)"))
                 .timeout(Duration::from_secs(15))
                 .build()
                 .expect("http client"),
@@ -740,7 +740,7 @@ impl PatchNotesClient {
         let html = self.fetch(url).await?;
         let sections = parse_article(&article_body(&html)?);
         if sections.is_empty() {
-            bail!("the patch notes page had no changes League Buddy could read");
+            bail!("the patch notes page had no changes League Bro could read");
         }
         let notes = PatchNotes { info, sections };
         let mut cache = self.notes.lock().await;

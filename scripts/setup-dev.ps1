@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Sets up a Windows PC to develop League Buddy.
+  Sets up a Windows PC to develop League Bro.
 
 .DESCRIPTION
   Checks for, and installs with winget when missing:
@@ -86,7 +86,7 @@ function Test-WebView2 {
     return [bool]($item -and $item.pv -and $item.pv -ne '0.0.0.0')
 }
 
-Write-Host 'League Buddy dev setup' -ForegroundColor White
+Write-Host 'League Bro dev setup' -ForegroundColor White
 Write-Host "Project folder: $repoRoot"
 Update-SessionPath
 

@@ -1,5 +1,5 @@
 // One-off probe: asks OP.GG's public MCP endpoint which tools it has and
-// what a champion analysis looks like, so League Buddy can be built against
+// what a champion analysis looks like, so League Bro can be built against
 // the real format. Run:  node scripts/opgg-probe.mjs
 // Output goes to scripts/probe-output/ (safe to delete afterwards).
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -66,7 +66,7 @@ function guessArgs(schema) {
 const init = await rpc('initialize', {
   protocolVersion: '2025-06-18',
   capabilities: {},
-  clientInfo: { name: 'leaguebuddy-probe', version: '0.1.0' },
+  clientInfo: { name: 'leaguebro-probe', version: '0.1.0' },
 });
 save('1-initialize.json', init);
 await rpc('notifications/initialized', undefined, true);
