@@ -17,6 +17,7 @@ import {
   PatchNotes,
   PostGame,
   Profile,
+  RecChoice,
   RecState,
   Recommendation,
   Snapshot,
@@ -35,6 +36,7 @@ import {
   demoPostGame,
   demoProfile,
   demoRec,
+  demoWithChoice,
   demoScene,
   demoStatic,
   demoTierList,
@@ -201,6 +203,25 @@ export class RiftService {
   }
 
   /** OP.GG's recommendation for any champion (Champions tab). Position: top|jungle|middle|bottom|utility. */
+  /** Picks a different rune page, spells or build for champ select's champion; imported right away there. */
+  chooseRecOption(choice: RecChoice): Promise<string> {
+    return this.call(
+      'choose_rec_option',
+      { choice },
+      () => {
+        const s = this.rec();
+        if (s?.rec) this.rec.set({ ...s, choice, rec: demoWithChoice(s.rec, choice) });
+        return 'Set "League Bro: Ahri Mid" (OP.GG) · Flash + Ignite · build added to the shop';
+      },
+      300,
+    );
+  }
+
+  /** A looked-up recommendation with picks in place (the Champions tab; nothing is imported). */
+  recWithChoice(rec: Recommendation, choice: RecChoice): Promise<Recommendation> {
+    return this.call('rec_with_choice', { rec, choice }, () => demoWithChoice(rec, choice));
+  }
+
   lookupRec(championId: number, position: string, gameMode: 'ranked' | 'aram'): Promise<Recommendation> {
     return this.call('lookup_rec', { championId, position, gameMode }, () => ({ ...demoRec().rec!, championId, position, gameMode }), 300);
   }

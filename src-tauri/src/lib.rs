@@ -113,6 +113,19 @@ async fn restore_global_item_sets(state: State<'_, AppState>) -> Result<itemsets
     Ok(itemsets::scan_global(&dir))
 }
 
+/// Picks a different rune page, spells or build for the current champion; in
+/// champ select it's imported straight away.
+#[tauri::command]
+async fn choose_rec_option(app: AppHandle, choice: opgg::RecChoice) -> Result<String, String> {
+    engine::choose(&app, choice).await
+}
+
+/// A looked-up recommendation with picks in place (the Champions tab, which doesn't import).
+#[tauri::command]
+fn rec_with_choice(rec: opgg::Recommendation, choice: opgg::RecChoice) -> opgg::Recommendation {
+    opgg::with_choice(&rec, &choice)
+}
+
 /// OP.GG's recommendation for any champion, role and mode (the Champions tab).
 /// Unlike champ select's lookup this doesn't change the current recommendation.
 #[tauri::command]
@@ -315,6 +328,8 @@ pub fn run() {
             import_runes_now,
             import_swiftplay_now,
             lookup_rec,
+            choose_rec_option,
+            rec_with_choice,
             global_item_sets,
             move_global_item_sets,
             restore_global_item_sets,

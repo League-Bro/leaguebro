@@ -16,8 +16,12 @@ import {
   PostGame,
   PostPlayer,
   Profile,
+  RecChoice,
   RecState,
+  Recommendation,
+  RuneRec,
   Snapshot,
+  SpellOption,
   StaticData,
   SwiftplaySlot,
   TierEntry,
@@ -288,6 +292,9 @@ export function demoStatic(): StaticData {
       demoItem(3118, 'Malignance', 2700, '3118_Mage_T3_Malignance.png', ['80 Ability Power', '600 Mana', '25 Ability Haste'], 'Scorn\nGain Ultimate Ability Haste.\nHatefog\nYour ultimate burns the ground and lowers Magic Resist of enemies inside.', ['SpellDamage', 'Mana', 'AbilityHaste']),
       demoItem(4645, 'Shadowflame', 3200, '4645_Mage_T3_Shadowflame.png', ['110 Ability Power', '15 Magic Penetration'], 'Cinderbloom\nMagic and true damage crit against low health enemies.', ['SpellDamage', 'MagicPenetration']),
       demoItem(3135, 'Void Staff', 3000, '3135_Mage_T3_VoidStaff.png', ['95 Ability Power', '40% Magic Penetration'], '', ['SpellDamage', 'MagicPenetration']),
+      demoItem(3100, 'Lich Bane', 3200, '3100_Mage_T3_LichBane.png', ['100 Ability Power', '10% Move Speed'], 'Spellblade\nYour next attack after using an ability deals bonus magic damage.', ['SpellDamage', 'NonbootsMovement']),
+      demoItem(3158, 'Ionian Boots of Lucidity', 900, '3158_Class_T2_IonianBootsofLucidity.png', ['10 Ability Haste', '45 Move Speed'], '', ['Boots', 'AbilityHaste']),
+      demoItem(3111, "Mercury's Treads", 1250, '3111_Class_T2_MercurysTreads.png', ['20 Magic Resist', '45 Move Speed', '30% Tenacity'], '', ['Boots', 'SpellBlock', 'Tenacity']),
       demoItem(1056, "Doran's Ring", 400, '1056_Mage_T1_DoransRing.png', ['18 Ability Power', '90 Health'], 'Focus\nAttacks deal bonus damage to minions.\nDrain\nRestore mana over time.', ['Health', 'SpellDamage', 'ManaRegen', 'Lane']),
       demoItem(2003, 'Health Potion', 50, '2003_Class_T1_HealthPotion.png', [], 'Click to consume: restore health over 15 seconds.', ['Consumable', 'HealthRegen', 'Active']),
     ],
@@ -298,6 +305,11 @@ export function demoStatic(): StaticData {
       [8106, 'Ultimate Hunter', 'Domination/UltimateHunter/UltimateHunter.png', 'Your ultimate gains haste for each unique champion takedown.', 'Ultimate Cooldown'],
       [8210, 'Transcendence', 'Sorcery/Transcendence/Transcendence.png', 'Gain Ability Haste at levels 5 and 8; takedowns refund basic ability cooldowns at level 11.', 'Ability Haste'],
       [8226, 'Manaflow Band', 'Sorcery/ManaflowBand/ManaflowBand.png', 'Hitting champions with abilities permanently increases maximum mana.', 'Mana'],
+      [8229, 'Arcane Comet', 'Sorcery/ArcaneComet/ArcaneComet.png', 'Damaging a champion with an ability hurls a comet at their location.', 'Poke'],
+      [8237, 'Scorch', 'Sorcery/Scorch/Scorch.png', 'Your next ability hit sets champions on fire, dealing bonus magic damage after 1s.', 'Poke'],
+      [8135, 'Treasure Hunter', 'Domination/TreasureHunter/TreasureHunter.png', 'Gain gold for each unique champion takedown.', 'Gold'],
+      [9111, 'Triumph', 'Precision/Triumph.png', 'Takedowns restore health and grant extra gold.', 'Healing'],
+      [8014, 'Coup de Grace', 'Precision/CoupDeGrace/CoupDeGrace.png', 'Deal more damage to low health champions.', 'Damage'],
       [5005, 'Attack Speed', 'StatMods/StatModsAttackSpeedIcon.png', '+10% Attack Speed', ''],
       [5008, 'Adaptive Force', 'StatMods/StatModsAdaptiveForceIcon.png', '+9 Adaptive Force', ''],
       [5001, 'Health Scaling', 'StatMods/StatModsHealthScalingIcon.png', '+10-180 Health (based on level)', ''],
@@ -306,9 +318,12 @@ export function demoStatic(): StaticData {
     })),
     spells: [
       { id: 4, name: 'Flash', iconPath: '/lol-game-data/assets/DATA/Spells/Icons2D/Summoner_flash.png', desc: 'Teleports your champion a short distance toward your cursor.', tag: '' },
+      { id: 12, name: 'Teleport', iconPath: '/lol-game-data/assets/DATA/Spells/Icons2D/Summoner_teleport_new.png', desc: 'After channeling, teleports your champion to a target allied structure.', tag: '' },
+      { id: 3, name: 'Exhaust', iconPath: '/lol-game-data/assets/DATA/Spells/Icons2D/SummonerExhaust.png', desc: 'Slows an enemy champion and reduces their damage dealt.', tag: '' },
       { id: 14, name: 'Ignite', iconPath: '/lol-game-data/assets/DATA/Spells/Icons2D/SummonerIgnite.png', desc: 'Ignites a target enemy champion, dealing true damage over 5 seconds and reducing healing.', tag: '' },
     ],
     styles: [
+      { id: 8000, name: 'Precision', iconPath: '', desc: '', tag: '' },
       { id: 8100, name: 'Domination', iconPath: '', desc: '', tag: '' },
       { id: 8200, name: 'Sorcery', iconPath: '', desc: '', tag: '' },
     ],
@@ -406,7 +421,46 @@ export function demoRec(): RecState {
       buildOrder: [3118, 3020, 4645, 3157, 3089, 3135],
       games: 6015,
       source: 'OP.GG',
+      runeOptions: [
+        rune(8100, 8200, [8112, 8139, 8140, 8106, 8210, 8226, 5005, 5008, 5001], 6015, 3050),
+        rune(8200, 8100, [8229, 8226, 8210, 8237, 8139, 8135, 5005, 5008, 5001], 1048, 540),
+        rune(8100, 8000, [8112, 8139, 8140, 8106, 9111, 8014, 5005, 5008, 5001], 579, 301),
+      ],
+      spellOptions: [spell([4, 14], 8890, 4576), spell([4, 12], 3639, 1890), spell([3, 4], 175, 91)],
+      coreOptions: [set([3118, 4645, 3157], 971, 502), set([3118, 4645, 3089], 588, 310), set([3118, 3100, 3089], 344, 180)],
+      bootsOptions: [set([3020], 7253, 3743), set([3158], 3728, 1930), set([3111], 1330, 670)],
     },
+    choice: { runes: 0, spells: 0, core: 0, boots: 0 },
+  };
+
+  function rune(primaryStyleId: number, subStyleId: number, perkIds: number[], games: number, wins: number): RuneRec {
+    return { primaryStyleId, subStyleId, perkIds, keystoneName: '', primaryName: '', secondaryName: '', perkNames: [], games, winRate: wins / games, pickRate: games / total };
+  }
+  function spell(ids: number[], games: number, wins: number): SpellOption {
+    return { ids, games, winRate: wins / games, pickRate: games / total };
+  }
+}
+
+/** The browser demo's stand-in for the Rust `with_choice`: the picked options in place. */
+export function demoWithChoice(rec: Recommendation, c: RecChoice): Recommendation {
+  const runes = rec.runeOptions[c.runes] ?? rec.runes;
+  const sp = rec.spellOptions[c.spells];
+  const core = rec.coreOptions[c.core] ?? rec.core;
+  const boots = rec.bootsOptions[c.boots] ?? rec.boots;
+  const order: number[] = [];
+  const add = (id: number | undefined) => id !== undefined && !order.includes(id) && order.push(id);
+  add(core?.ids[0]);
+  boots?.ids.forEach(add);
+  core?.ids.slice(1).forEach(add);
+  for (const opts of rec.later) add(opts.flatMap((o) => o.ids).find((id) => !order.includes(id)));
+  return {
+    ...rec,
+    runes,
+    spells: sp ? sp.ids : rec.spells,
+    spellStats: sp ? { games: sp.games, winRate: sp.winRate, pickRate: sp.pickRate } : rec.spellStats,
+    core,
+    boots,
+    buildOrder: order,
   };
 }
 

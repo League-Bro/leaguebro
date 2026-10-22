@@ -1,8 +1,8 @@
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { assetUrl } from '../core/assets';
-import { ItemSet, RecState, RuneRec } from '../core/models';
+import { ItemSet, RecChoice, RecState, RuneRec } from '../core/models';
 import { buildWhy, rolesLabel } from '../core/why';
 
 const MIN_GAMES = 20;
@@ -94,6 +94,19 @@ const MIN_GAMES = 20;
             @if (r.runes; as ru) {
               <div class="block runes">
                 <div class="label">Runes</div>
+                @if (r.runeOptions.length > 1) {
+                  <div class="opts" role="radiogroup" aria-label="Rune page">
+                    @for (o of r.runeOptions; track $index) {
+                      <button class="opt" role="radio" [attr.aria-checked]="s.choice.runes === $index" [class.on]="s.choice.runes === $index"
+                        [disabled]="pickBusy()" [title]="optTip(o, runeOptionNames(o))" (click)="pick('runes', $index)">
+                        <span class="n">{{ $index + 1 }}</span>
+                        @if (perkIcon(o.perkIds[0]); as url) { <img class="round" [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+                        <span class="opt-name">{{ styleName(o.subStyleId, o.secondaryName) }}</span>
+                        <span class="wr">{{ pct(o.winRate) }}</span>
+                      </button>
+                    }
+                  </div>
+                }
                 <div class="row">
                   @if (perkIcon(ru.perkIds[0]); as url) { <img class="keystone" [src]="url" alt="" /> }
                   <div>
@@ -115,6 +128,17 @@ const MIN_GAMES = 20;
             <div class="block">
               @if (r.spells.length === 2) {
                 <div class="label">Summoner spells</div>
+                @if (r.spellOptions.length > 1) {
+                  <div class="opts" role="radiogroup" aria-label="Summoner spells">
+                    @for (o of r.spellOptions; track $index) {
+                      <button class="opt" role="radio" [attr.aria-checked]="s.choice.spells === $index" [class.on]="s.choice.spells === $index"
+                        [disabled]="pickBusy()" [title]="optTip(o, spellName(o.ids[0]) + ' + ' + spellName(o.ids[1]))" (click)="pick('spells', $index)">
+                        @for (id of o.ids; track $index) { @if (spellIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> } }
+                        <span class="wr">{{ pct(o.winRate) }}</span>
+                      </button>
+                    }
+                  </div>
+                }
                 <div class="row spells">
                   @for (id of r.spells; track $index) {
                     @if (spellIcon(id); as url) { <img [src]="url" alt="" /> }
@@ -150,6 +174,28 @@ const MIN_GAMES = 20;
               }
               @if (r.buildOrder.length) {
                 <div class="label">Build</div>
+                @if (r.coreOptions.length > 1) {
+                  <div class="opts" role="radiogroup" aria-label="Core items">
+                    @for (o of r.coreOptions; track $index) {
+                      <button class="opt" role="radio" [attr.aria-checked]="s.choice.core === $index" [class.on]="s.choice.core === $index"
+                        [disabled]="pickBusy()" [title]="optTip(o, setNames(o))" (click)="pick('core', $index)">
+                        @for (id of o.ids; track $index) { @if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> } }
+                        <span class="wr">{{ pct(o.winRate) }}</span>
+                      </button>
+                    }
+                  </div>
+                }
+                @if (r.bootsOptions.length > 1) {
+                  <div class="opts" role="radiogroup" aria-label="Boots">
+                    @for (o of r.bootsOptions; track $index) {
+                      <button class="opt" role="radio" [attr.aria-checked]="s.choice.boots === $index" [class.on]="s.choice.boots === $index"
+                        [disabled]="pickBusy()" [title]="optTip(o, setNames(o))" (click)="pick('boots', $index)">
+                        @for (id of o.ids; track $index) { @if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> } }
+                        <span class="wr">{{ pct(o.winRate) }}</span>
+                      </button>
+                    }
+                  </div>
+                }
                 <div class="row build">
                   @for (id of r.buildOrder; track id; let last = $last) {
                     @if (rift.itemIcon(id); as url) { <img [src]="url" [title]="itemNameAny(id, r)" alt="" /> } @else { <span class="chip">{{ itemNameAny(id, r) }}</span> }
@@ -162,6 +208,11 @@ const MIN_GAMES = 20;
               }
             </div>
           </div>
+          @if (pickBusy()) {
+            <p class="muted small">Applying your pick…</p>
+          } @else if (pickMsg(); as m) {
+            <p class="small" [class.loss]="m.bad" [class.picked]="!m.bad">{{ m.text }}</p>
+          }
 
           @if (showWhy() && why(); as w) {
             <div class="why">
@@ -223,6 +274,22 @@ const MIN_GAMES = 20;
     .grid { display: grid; grid-template-columns: 1.1fr 1fr 1.3fr; gap: 18px; }
     .block { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
     .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); margin-top: 2px; }
+    /* Option chips: pick another rune page / spells / build. */
+    .opts { display: flex; flex-wrap: wrap; gap: 4px; }
+    .opt {
+      display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px 3px 5px; border-radius: 999px;
+      background: var(--bg-sunken); border: 1px solid var(--line); color: var(--text-dim); font-size: 11.5px; cursor: pointer;
+    }
+    .opt:hover:not(:disabled) { border-color: var(--line-strong); color: var(--text); }
+    .opt.on { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+    .opt:disabled { cursor: progress; }
+    .opts .opt img { width: 18px; height: 18px; border-radius: 4px; border: 0; }
+    .opts .opt img.round { border-radius: 50%; }
+    .opt .n { font: 700 10px var(--mono); color: var(--text-faint); }
+    .opt.on .n { color: var(--accent); }
+    .opt .opt-name { max-width: 78px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .opt .wr { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+    .picked { color: var(--win); }
     .strong { font-weight: 600; }
     .keystone { width: 44px; height: 44px; }
     .perks { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
@@ -329,6 +396,44 @@ export class RecCard {
 
   /** A lookup to show instead of champ select's (the Champions tab). */
   readonly lookup = input<RecState | null>();
+  /** With `lookup`: the player picked another option; the parent applies it. */
+  readonly choiceChange = output<RecChoice>();
+  protected readonly pickBusy = signal(false);
+  protected readonly pickMsg = signal<{ text: string; bad: boolean } | null>(null);
+
+  /** Picks another option. In champ select it's imported right away. */
+  async pick(kind: keyof RecChoice, index: number): Promise<void> {
+    const s = this.state();
+    if (!s?.rec || this.pickBusy() || s.choice[kind] === index) return;
+    const choice: RecChoice = { ...s.choice, [kind]: index };
+    if (this.lookup() !== undefined) {
+      this.choiceChange.emit(choice);
+      return;
+    }
+    this.pickBusy.set(true);
+    this.pickMsg.set(null);
+    try {
+      this.pickMsg.set({ text: await this.rift.chooseRecOption(choice), bad: false });
+    } catch (e) {
+      this.pickMsg.set({ text: String(e), bad: true });
+    } finally {
+      this.pickBusy.set(false);
+    }
+  }
+
+  pct(winRate: number): string {
+    return `${Math.round(winRate * 100)}%`;
+  }
+  /** Hover text for an option chip: what it is, then how it does on OP.GG. */
+  optTip(o: { games: number; winRate: number; pickRate: number }, what: string): string {
+    return `${what}\n${(o.winRate * 100).toFixed(1)}% win · ${o.games.toLocaleString()} games · picked in ${(o.pickRate * 100).toFixed(0)}%`;
+  }
+  runeOptionNames(o: RuneRec): string {
+    return o.perkIds.slice(0, 6).map((id, i) => this.perkLabel(id, o.perkNames[i] ?? '')).filter(Boolean).join(' · ');
+  }
+  setNames(o: ItemSet): string {
+    return o.ids.map((id, i) => this.itemName(id, o, i)).join(' + ');
+  }
 
   /** Only show the recommendation for the champion currently picked. */
   protected readonly state = computed(() => {

@@ -52,7 +52,9 @@ pub const MIN_GAMES: i64 = 20;
 const MIN_LATE_ITEM_GAMES: i64 = 10;
 /// Bump when `Recommendation` or `extract` changes, so saved answers are
 /// fetched again instead of read in an old shape.
-const CACHE_FORMAT: u32 = 1;
+const CACHE_FORMAT: u32 = 2;
+/// Rune pages, spell pairs, core builds and boots offered to pick from (the top one included).
+const PICK_OPTIONS: usize = 3;
 /// How long after a patch's notes come out OP.GG answers are kept for only a
 /// day, while the new patch's numbers settle. After that, a week.
 const SETTLING_SECS: u64 = 7 * DAY_SECS;
@@ -261,6 +263,87 @@ pub struct Recommendation {
     /// Games behind the rune page; small numbers mean a rare pick.
     pub games: i64,
     pub source: String,
+    /// Alternatives to pick from, most played first; index 0 is what's shown
+    /// above by default. One entry when the source only gives the top pick (MCP).
+    pub rune_options: Vec<RuneRec>,
+    pub spell_options: Vec<SpellOption>,
+    pub core_options: Vec<ItemSet>,
+    pub boots_options: Vec<ItemSet>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SpellOption {
+    pub ids: Vec<i64>,
+    pub games: i64,
+    pub win_rate: f64,
+    pub pick_rate: f64,
+}
+
+/// Which option the player picked in each section (index into the `*_options` lists).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RecChoice {
+    pub runes: usize,
+    pub spells: usize,
+    pub core: usize,
+    pub boots: usize,
+}
+
+/// The recommendation with the picked options in place of the top ones, so
+/// rune import, spells, the shop build and the overlay all follow the pick.
+/// Out-of-range picks keep the top option. `games` stays the top page's, since
+/// it gates whether OP.GG's data is used at all.
+pub fn with_choice(rec: &Recommendation, choice: &RecChoice) -> Recommendation {
+    let mut r = rec.clone();
+    if let Some(runes) = rec.rune_options.get(choice.runes) {
+        r.runes = Some(runes.clone());
+    }
+    if let Some(s) = rec.spell_options.get(choice.spells) {
+        r.spells = s.ids.clone();
+        r.spell_stats = Some(PickStats { games: s.games, win_rate: s.win_rate, pick_rate: s.pick_rate });
+    }
+    if let Some(core) = rec.core_options.get(choice.core) {
+        r.core = Some(core.clone());
+    }
+    if let Some(boots) = rec.boots_options.get(choice.boots) {
+        r.boots = Some(boots.clone());
+    }
+    r.build_order = build_order(r.core.as_ref(), r.boots.as_ref(), &r.later);
+    r
+}
+
+/// Keeps the top option, plus any others with enough games to mean something.
+fn worth_offering<T>(options: Vec<T>, games: impl Fn(&T) -> i64) -> Vec<T> {
+    options.into_iter().enumerate().filter(|(i, o)| *i == 0 || games(o) >= MIN_GAMES).map(|(_, o)| o).collect()
+}
+
+fn rune_rec(r: &Value) -> Option<RuneRec> {
+    let primary = ints(r, "primary_rune_ids");
+    let secondary = ints(r, "secondary_rune_ids");
+    let shards = ints(r, "stat_mod_ids");
+    if primary.len() != 4 || secondary.len() != 2 || shards.len() != 3 {
+        return None;
+    }
+    let mut names = strs(r, "primary_rune_names");
+    names.extend(strs(r, "secondary_rune_names"));
+    Some(RuneRec {
+        primary_style_id: int(r, "primary_page_id"),
+        sub_style_id: int(r, "secondary_page_id"),
+        keystone_name: strs(r, "primary_rune_names").first().cloned().unwrap_or_default(),
+        primary_name: text(r, "primary_page_name").to_string(),
+        secondary_name: text(r, "secondary_page_name").to_string(),
+        perk_names: names,
+        games: int(r, "play"),
+        win_rate: win_rate(r),
+        pick_rate: pick_rate(r),
+        perk_ids: primary.into_iter().chain(secondary).chain(shards).collect(),
+    })
+}
+
+fn spell_option(s: &Value) -> Option<SpellOption> {
+    let ids = ints(s, "ids");
+    (ids.len() == 2).then(|| SpellOption { ids, games: int(s, "play"), win_rate: win_rate(s), pick_rate: pick_rate(s) })
 }
 
 fn strs(v: &Value, k: &str) -> Vec<String> {
@@ -328,28 +411,16 @@ pub fn build_order(core: Option<&ItemSet>, boots: Option<&ItemSet>, later: &[Vec
 /// Extracts a Recommendation from a parsed lol_get_champion_analysis result.
 pub fn extract(parsed: &Value, champion_id: i64, position: &str, game_mode: &str) -> Result<Recommendation> {
     let data = parsed.get("data").ok_or_else(|| anyhow!("OP.GG response has no data"))?;
-    let runes = data.get("runes").and_then(|r| {
-        let primary = ints(r, "primary_rune_ids");
-        let secondary = ints(r, "secondary_rune_ids");
-        let shards = ints(r, "stat_mod_ids");
-        if primary.len() != 4 || secondary.len() != 2 || shards.len() != 3 {
-            return None;
-        }
-        let mut names = strs(r, "primary_rune_names");
-        names.extend(strs(r, "secondary_rune_names"));
-        Some(RuneRec {
-            primary_style_id: int(r, "primary_page_id"),
-            sub_style_id: int(r, "secondary_page_id"),
-            keystone_name: strs(r, "primary_rune_names").first().cloned().unwrap_or_default(),
-            primary_name: text(r, "primary_page_name").to_string(),
-            secondary_name: text(r, "secondary_page_name").to_string(),
-            perk_names: names,
-            games: int(r, "play"),
-            win_rate: win_rate(r),
-            pick_rate: pick_rate(r),
-            perk_ids: primary.into_iter().chain(secondary).chain(shards).collect(),
-        })
-    });
+    let runes = data.get("runes").and_then(rune_rec);
+    // `<key>_options` comes from the website API; the MCP tool has only the top pick.
+    let options = |key: &str| -> Vec<Value> {
+        let all = list(data, &format!("{key}_options"));
+        if all.is_empty() { data.get(key).cloned().into_iter().collect() } else { all.to_vec() }
+    };
+    let rune_options = worth_offering(options("runes").iter().filter_map(rune_rec).collect(), |r: &RuneRec| r.games);
+    let spell_options = worth_offering(options("summoner_spells").iter().filter_map(spell_option).collect(), |s: &SpellOption| s.games);
+    let core_options = worth_offering(options("core_items").iter().filter_map(item_set).collect(), |s: &ItemSet| s.games);
+    let boots_options = worth_offering(options("boots").iter().filter_map(item_set).collect(), |s: &ItemSet| s.games);
     let spells = data.get("summoner_spells").map(|s| ints(s, "ids")).unwrap_or_default();
     let masteries = data.get("skill_masteries");
     let skill_max = masteries.map(|m| strs(m, "ids")).unwrap_or_default();
@@ -390,6 +461,10 @@ pub fn extract(parsed: &Value, champion_id: i64, position: &str, game_mode: &str
         later,
         games,
         source: "OP.GG".into(),
+        rune_options,
+        spell_options,
+        core_options,
+        boots_options,
     })
 }
 
@@ -443,6 +518,10 @@ pub fn web_to_mcp(main: &Value, builds: &Value, damage_type: &str) -> Result<Val
         if let Some(top) = list(d, key).first() {
             data.insert(key.into(), top.clone());
         }
+    }
+    // The alternatives the player can pick instead (`extract` reads `<key>_options`).
+    for key in ["runes", "summoner_spells", "boots", "core_items"] {
+        data.insert(format!("{key}_options"), list(d, key).iter().take(PICK_OPTIONS).cloned().collect());
     }
     for (depth, key) in [(4, "fourth_items"), (5, "fifth_items"), (6, "sixth_items")] {
         let options = list(builds, "/data/single_items").iter().find(|s| int(s, "depth") == depth).map_or(&[][..], |s| list(s, "items"));
@@ -801,6 +880,9 @@ mod tests {
         let v = parse_compact(&fixture("ahri_mid_full.txt")).unwrap();
         assert_eq!(v["champion"], "AHRI");
         let r = extract(&v, 103, "mid", "ranked").unwrap();
+        // The MCP tool gives only the top pick, so each option list has just that.
+        assert_eq!((r.rune_options.len(), r.spell_options.len(), r.core_options.len(), r.boots_options.len()), (1, 1, 1, 1));
+        assert_eq!(r.rune_options[0], *r.runes.as_ref().unwrap());
         let runes = r.runes.as_ref().unwrap();
         assert_eq!((runes.primary_style_id, runes.sub_style_id), (8100, 8200));
         assert_eq!(runes.perk_ids, vec![8112, 8139, 8140, 8106, 8210, 8226, 5005, 5008, 5001]);
@@ -844,6 +926,48 @@ mod tests {
         assert_eq!(r.build_order, vec![3118, 3020, 4645, 3157]);
         // Unknown champions come back without a data object.
         assert!(web_to_mcp(&json!({"data": []}), &Value::Null, "").is_err());
+    }
+
+    #[test]
+    fn options_and_picking_one() {
+        let main: Value = serde_json::from_str(&fixture("opgg_web_ahri_mid.json")).unwrap();
+        let builds: Value = serde_json::from_str(&fixture("opgg_web_ahri_mid_builds.json")).unwrap();
+        let r = extract(&web_to_mcp(&main, &builds, "AP").unwrap(), 103, "mid", "ranked").unwrap();
+        // Top three of each list, most played first; the top one is what's shown by default.
+        assert_eq!(r.rune_options.len(), 3);
+        assert_eq!(r.rune_options[0], *r.runes.as_ref().unwrap());
+        assert_eq!(r.spell_options.iter().map(|s| s.ids.clone()).collect::<Vec<_>>(), vec![vec![4, 14], vec![4, 12], vec![3, 4]]);
+        assert_eq!(r.spell_options[1].games, 3639);
+        assert_eq!(r.core_options[1].ids, vec![3118, 4645, 3089]);
+        assert_eq!(r.boots_options.iter().map(|b| b.ids[0]).collect::<Vec<_>>(), vec![3020, 3158, 3111]);
+
+        // The default pick changes nothing.
+        assert_eq!(with_choice(&r, &RecChoice::default()), r);
+
+        // Picking Teleport, the Rabadon's core and Ionian boots flows into spells and the build.
+        let picked = with_choice(&r, &RecChoice { runes: 1, spells: 1, core: 1, boots: 1 });
+        assert_eq!(picked.spells, vec![4, 12]);
+        assert_eq!(picked.spell_stats.as_ref().unwrap().games, 3639);
+        assert_eq!(picked.runes.as_ref(), Some(&r.rune_options[1]));
+        assert_eq!(picked.core.as_ref().unwrap().ids, vec![3118, 4645, 3089]);
+        assert_eq!(&picked.build_order[..4], &[3118, 3158, 4645, 3089]);
+        assert_eq!(picked.games, r.games, "MIN_GAMES gating stays on the top page");
+        // The options themselves don't change, so the picker can still show them all.
+        assert_eq!(picked.rune_options, r.rune_options);
+
+        // An out-of-range pick keeps the top option.
+        assert_eq!(with_choice(&r, &RecChoice { spells: 9, ..Default::default() }).spells, vec![4, 14]);
+    }
+
+    #[test]
+    fn options_need_enough_games() {
+        let opt = |play: i64| json!({ "ids": [4, 14], "play": play, "win": play / 2 });
+        let data = json!({ "data": { "summoner_spells": opt(500), "summoner_spells_options": [opt(500), opt(19), opt(20)] } });
+        let r = extract(&data, 103, "mid", "ranked").unwrap();
+        assert_eq!(r.spell_options.iter().map(|s| s.games).collect::<Vec<_>>(), vec![500, 20]);
+        // The top one stays even when it's rare.
+        let data = json!({ "data": { "summoner_spells_options": [opt(3), opt(2)] } });
+        assert_eq!(extract(&data, 103, "mid", "ranked").unwrap().spell_options.len(), 1);
     }
 
     /// Hits OP.GG for real and prints how long each source takes:

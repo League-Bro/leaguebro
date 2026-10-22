@@ -6,7 +6,7 @@ use crate::config::Config;
 use crate::itemsets;
 use crate::lcu::{self, Lcu};
 use crate::live::{self, OverlayState};
-use crate::opgg::{self, OpGg, Recommendation};
+use crate::opgg::{self, OpGg, RecChoice, Recommendation};
 use crate::postgame::{self, PostGame};
 use crate::runes;
 use crate::scout::{self, Profile};
@@ -175,8 +175,25 @@ pub struct RecState {
     pub champion_id: i64,
     pub position: String,
     pub loading: bool,
+    /// OP.GG's answer as fetched (top options); see `effective` for the picked ones.
     pub rec: Option<Recommendation>,
     pub error: Option<String>,
+    /// The rune page, spells and build the player picked. Starts on the top
+    /// options for each new champion/role.
+    pub choice: RecChoice,
+}
+
+impl RecState {
+    /// The recommendation with the player's picks in place; what imports,
+    /// the shop build and the overlay use.
+    pub fn effective(&self) -> Option<Recommendation> {
+        self.rec.as_ref().map(|r| opgg::with_choice(r, &self.choice))
+    }
+
+    /// As the UI gets it: `rec` already has the picks in place.
+    pub fn for_ui(&self) -> RecState {
+        RecState { rec: self.effective(), ..self.clone() }
+    }
 }
 
 #[derive(Default)]
@@ -966,7 +983,7 @@ impl Engine {
                 let mode = text(&data, "/gameData/gameMode").to_string();
                 fetch_rec = Some((champ, pos, mode));
             }
-            let rec = sh.rec.as_ref().filter(|r| r.champion_id == champ).and_then(|r| r.rec.clone());
+            let rec = sh.rec.as_ref().filter(|r| r.champion_id == champ).and_then(RecState::effective);
             let build = rec
                 .as_ref()
                 .filter(|r| cfg.use_recommended_builds && r.games >= opgg::MIN_GAMES && !r.build_order.is_empty())
@@ -1021,6 +1038,28 @@ impl Engine {
 
 /// Imports the rune page for a champion (used by the loop and the
 /// "Import now" button).
+/// Sets the player's picks for the current recommendation. In champ select on
+/// that champion it imports them straight away (runes, spells, shop build);
+/// otherwise they're kept for the overlay and later imports.
+pub async fn choose(app: &AppHandle, choice: RecChoice) -> Result<String, String> {
+    let state = app.state::<AppState>();
+    let (rs, in_champ_select) = {
+        let mut sh = state.shared.lock().await;
+        let in_cs = sh.champ_select.as_ref().map(|cs| cs.my_champion_id);
+        let rs = sh.rec.as_mut().filter(|r| r.rec.is_some()).ok_or("There's no recommendation to pick from yet")?;
+        rs.choice = choice;
+        let rs = rs.clone();
+        (rs.clone(), in_cs == Some(rs.champion_id))
+    };
+    let _ = app.emit("recommendation", Some(rs.for_ui()));
+    if in_champ_select {
+        // The recommendation's own position, so `ensure_rec` reuses it (and the picks).
+        import_for(app, rs.champion_id, &rs.position).await
+    } else {
+        Ok("Saved. It's used for the overlay and the next import.".into())
+    }
+}
+
 pub async fn import_for(app: &AppHandle, champion_id: i64, position: &str) -> Result<String, String> {
     // One at a time, so quick hover changes (or the button) apply in order
     // instead of racing over the same rune page and item set.
@@ -1257,7 +1296,7 @@ pub async fn ensure_rec(app: &AppHandle, champion_id: i64, position: &str, live_
         let sh = state.shared.lock().await;
         if let Some(r) = sh.rec.as_ref() {
             if r.champion_id == champion_id && r.position == position && r.rec.is_some() {
-                return r.rec.clone();
+                return r.effective();
             }
         }
         let mode = match live_mode {
@@ -1277,7 +1316,7 @@ pub async fn ensure_rec(app: &AppHandle, champion_id: i64, position: &str, live_
         }
         sh.rec = Some(rs.clone());
         drop(sh);
-        let _ = app.emit("recommendation", Some(rs));
+        let _ = app.emit("recommendation", Some(rs.for_ui()));
     };
     let base = RecState { champion_id, position: position.to_string(), ..Default::default() };
     publish(RecState { loading: true, ..base.clone() }).await;
@@ -1314,7 +1353,7 @@ pub async fn snapshot(app: &AppHandle) -> Snapshot {
         profiles: sh.profiles.values().cloned().collect(),
         last_import: sh.last_import.clone(),
         overlay: sh.overlay.clone(),
-        rec: sh.rec.clone(),
+        rec: sh.rec.as_ref().map(RecState::for_ui),
         post_game: sh.post_game.clone(),
         swiftplay: sh.swiftplay.clone(),
     }

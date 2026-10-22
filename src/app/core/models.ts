@@ -253,14 +253,36 @@ export interface Recommendation {
   buildOrder: number[];
   games: number;
   source: string;
+  /** Alternatives to pick from, most played first (index 0 = the default). */
+  runeOptions: RuneRec[];
+  spellOptions: SpellOption[];
+  coreOptions: ItemSet[];
+  bootsOptions: ItemSet[];
+}
+
+export interface SpellOption {
+  ids: number[];
+  games: number;
+  winRate: number;
+  pickRate: number;
+}
+
+/** Which option is picked in each section (index into the `*Options` lists). */
+export interface RecChoice {
+  runes: number;
+  spells: number;
+  core: number;
+  boots: number;
 }
 
 export interface RecState {
   championId: number;
   position: string;
   loading: boolean;
+  /** With the picked options already in place. */
   rec: Recommendation | null;
   error: string | null;
+  choice: RecChoice;
 }
 
 /** Total cost of the items each of you holds (the game doesn't share enemy gold). */

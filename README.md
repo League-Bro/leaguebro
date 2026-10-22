@@ -26,6 +26,8 @@ If you installed the app before it was renamed to League Bro, updating installs 
 
 When you hover or lock a champion, League Bro pulls OP.GG's ranked stats for that champion and role and shows the most popular rune page, summoner spells, skill order, starting items and build path, with game counts and win rate.
 
+When OP.GG has other popular choices (up to three rune pages, summoner spell pairs, core builds and boots, each with enough games to trust), they show as numbered chips with their win rates. Hover one for details, click it to switch. In champ select, once you've picked that champion, switching re-imports your runes, spells and shop build right away, and the overlay follows your choice.
+
 To look up any champion outside champ select, use the **Champions** tab: pick a champion, then Ranked (with a role) or ARAM.
 
 ### Rune, summoner spell and shop build auto-import

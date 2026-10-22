@@ -3,7 +3,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { RecCard } from './rec-card';
 import { championIcon } from '../core/assets';
-import { RecState } from '../core/models';
+import { RecChoice, RecState } from '../core/models';
 import { rolesLabel } from '../core/why';
 
 const ROLES = [
@@ -98,7 +98,7 @@ const ROLES = [
           @if (rift.config()?.recSource !== 'opgg') {
             <p class="faint small note">OP.GG recommendations are off (Settings → Recommendations).</p>
           }
-          <rl-rec-card [lookup]="recState()" />
+          <rl-rec-card [lookup]="recState()" (choiceChange)="pickOption($event)" />
           }
         } @else {
           <section class="card empty">
@@ -153,6 +153,15 @@ export class ChampionsView {
   protected readonly roles_ = ROLES;
   protected readonly query = signal('');
   protected readonly recState = signal<RecState | null>(null);
+
+  /** Shows another rune page, spells or build (nothing is imported from here). */
+  async pickOption(choice: RecChoice): Promise<void> {
+    const s = this.recState();
+    if (!s?.rec) return;
+    const rec = await this.rift.recWithChoice(s.rec, choice);
+    // Ignore it if the champion or role changed meanwhile.
+    if (this.recState() === s) this.recState.set({ ...s, rec, choice });
+  }
   protected readonly pick = this.rift.championsPick;
   private lookupSeq = 0;
 
@@ -195,7 +204,7 @@ export class ChampionsView {
 
   private async load(championId: number, position: string, mode: 'ranked' | 'aram'): Promise<void> {
     const seq = ++this.lookupSeq;
-    const base: RecState = { championId, position, loading: true, rec: null, error: null };
+    const base: RecState = { championId, position, loading: true, rec: null, error: null, choice: { runes: 0, spells: 0, core: 0, boots: 0 } };
     this.recState.set(base);
     try {
       const rec = await this.rift.lookupRec(championId, position, mode);
