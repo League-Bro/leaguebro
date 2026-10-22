@@ -2,7 +2,8 @@
 # GitHub Release, so nobody needs Rust or Visual Studio installed.
 #
 # To make a release: Actions tab -> "Release Windows installer" -> Run workflow.
-# The version comes from src-tauri/tauri.conf.json; bump it there for each new release.
+# The version comes from src-tauri/tauri.conf.json; bump it there (and in package.json and
+# src-tauri/Cargo.toml) for each new release. Pushing a tag works too, but it must be v<that version>.
 # The installer (.exe) and latest.json (for auto-updates) are attached to the release.
 # Requires the TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD repo secrets.
 name: Release Windows installer
@@ -20,6 +21,22 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      # The release is named after the config version, not the tag, so a pushed
+      # tag that doesn't match would rebuild (and overwrite) an older release.
+      - name: Check versions match
+        shell: pwsh
+        run: |
+          $conf = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $cargo = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+          if ($conf -ne $pkg -or $conf -ne $cargo) {
+            Write-Error "Versions differ: tauri.conf.json $conf, package.json $pkg, Cargo.toml $cargo. Bump all three together."
+            exit 1
+          }
+          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne "v$conf") {
+            Write-Error "Tag ${{ github.ref_name }} doesn't match the config version $conf. Push tag v$conf instead."
+            exit 1
+          }
       - uses: actions/setup-node@v4
         with:
           node-version: 22
