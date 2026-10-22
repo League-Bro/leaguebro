@@ -468,6 +468,95 @@ pub fn extract(parsed: &Value, champion_id: i64, position: &str, game_mode: &str
     })
 }
 
+// ---------- lane matchups ----------
+
+/// How your champion does against one lane opponent, from OP.GG.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Matchup {
+    pub champion_id: i64,
+    pub opponent_id: i64,
+    pub position: String,
+    /// Your champion's games and win rate against the opponent in this lane
+    /// (0 games when OP.GG has none).
+    pub games: i64,
+    pub win_rate: f64,
+    /// OP.GG's runes, spells and build in this matchup only. Its `games` is
+    /// the matchup's top rune page, so small numbers mean too little data.
+    pub rec: Option<Recommendation>,
+    pub tip: Option<MatchupTip>,
+    /// "AD", "AP" or "BOTH" (empty when the League client can't say).
+    pub opponent_damage_type: String,
+}
+
+/// OP.GG's lane guide for the matchup (MCP tool `lol_get_lane_matchup_guide`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct MatchupTip {
+    pub text: String,
+    /// Who usually comes out of lane ahead / gets more solo kills:
+    /// "you", "them" or "even" (empty when OP.GG doesn't say).
+    pub lane_advantage: String,
+    pub solo_kills: String,
+    /// OP.GG's suggested approach: "aggressive", "even" or "defensive".
+    pub play_style: String,
+}
+
+/// Reads a matchup from the website API's answers (fetched with
+/// `?target_champion=`, same shape as the champion's own) or from the MCP
+/// guide, whose `data` has that shape too. The head-to-head record is the
+/// opponent's entry in `counters`, which holds your champion's wins.
+pub fn parse_matchup(
+    main: &Value,
+    builds: &Value,
+    damage_type: &str,
+    guide: Option<&Value>,
+    champion_id: i64,
+    opponent_id: i64,
+    position: &str,
+    game_mode: &str,
+) -> Result<Matchup> {
+    let rec = extract(&web_to_mcp(main, builds, damage_type)?, champion_id, position, game_mode)?;
+    let h2h = list(main, "/data/counters").iter().find(|c| int(c, "champion_id") == opponent_id);
+    Ok(Matchup {
+        champion_id,
+        opponent_id,
+        position: position.to_string(),
+        games: h2h.map_or(0, |c| int(c, "play")),
+        win_rate: h2h.map_or(0.0, win_rate),
+        rec: Some(rec),
+        tip: guide.and_then(matchup_tip),
+        opponent_damage_type: String::new(),
+    })
+}
+
+/// The tip and lane read from the MCP guide. OP.GG names the champion that
+/// has the edge, or says "EVEN".
+pub fn matchup_tip(guide: &Value) -> Option<MatchupTip> {
+    let data = guide.get("data")?;
+    let (me, them) = (text(guide, "my_champion"), text(guide, "opponent_champion"));
+    let side = |key: &str| {
+        let who = text(data, key);
+        if who.eq_ignore_ascii_case("even") {
+            "even"
+        } else if !who.is_empty() && who == me {
+            "you"
+        } else if !who.is_empty() && who == them {
+            "them"
+        } else {
+            ""
+        }
+        .to_string()
+    };
+    let tip = MatchupTip {
+        text: text(data, "opponent_champion_tip").trim().to_string(),
+        lane_advantage: side("lane_advantage_champion"),
+        solo_kills: side("lane_solo_kill_advantage_champion"),
+        play_style: text(data, "recommended_play_style").to_ascii_lowercase(),
+    };
+    (!tip.text.is_empty() || !tip.lane_advantage.is_empty()).then_some(tip)
+}
+
 // ---------- mapping League's names to OP.GG's ----------
 
 /// OP.GG accepts the champion key in any case, with or without underscores
@@ -576,14 +665,19 @@ pub fn expires_at(fetched_at: u64) -> u64 {
     (fetched_at + keep).min(next)
 }
 
+/// A saved answer: a `Recommendation`, or a `Matchup` (files starting `m-`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct SavedRec {
+struct Saved<T> {
     format: u32,
     fetched_at: u64,
-    rec: Recommendation,
+    rec: T,
 }
 
-impl SavedRec {
+/// Answers read this session (from disk or OP.GG), by key. `None` means the
+/// disk was checked and had nothing, so it isn't read again.
+type Answers<T> = Mutex<HashMap<String, Option<Saved<T>>>>;
+
+impl<T> Saved<T> {
     fn is_fresh(&self, now: u64) -> bool {
         self.format == CACHE_FORMAT && now < expires_at(self.fetched_at)
     }
@@ -605,9 +699,10 @@ fn rec_file(key: &str) -> String {
 pub struct OpGg {
     http: reqwest::Client,
     session: Mutex<Option<String>>,
-    /// Answers read this session (from disk or OP.GG), by champion:position:mode.
-    /// `None` means the disk was checked and had nothing, so it isn't read again.
-    cache: Mutex<HashMap<String, Option<SavedRec>>>,
+    /// Recommendations by champion:position:mode.
+    cache: Answers<Recommendation>,
+    /// Lane matchups by m:champion:opponent:position:mode.
+    matchups: Answers<Matchup>,
     /// One lock per key, held for a whole lookup, so a second caller (e.g. the
     /// rune import at lock-in while the hover lookup is still out) waits for
     /// the answer instead of sending the same request again.
@@ -626,6 +721,7 @@ impl OpGg {
             http: web_client(12),
             session: Mutex::new(None),
             cache: Mutex::new(HashMap::new()),
+            matchups: Mutex::new(HashMap::new()),
             lookups: Mutex::new(HashMap::new()),
             damage_types: Mutex::new(HashMap::new()),
             disk: DiskCache { dir: cache_dir },
@@ -634,8 +730,9 @@ impl OpGg {
     }
 
     pub async fn usage(&self) -> CacheUsage {
-        let in_memory = self.cache.lock().await.values().filter(|s| s.is_some()).count();
-        self.disk.usage(in_memory)
+        let recs = self.cache.lock().await.values().filter(|s| s.is_some()).count();
+        let matchups = self.matchups.lock().await.values().filter(|s| s.is_some()).count();
+        self.disk.usage(recs + matchups)
     }
 
     /// Forgets every saved answer, on disk and in memory, so the next champion
@@ -643,9 +740,59 @@ impl OpGg {
     /// but doesn't save it.
     pub async fn clear(&self) -> Result<()> {
         let mut cache = self.cache.lock().await;
+        let mut matchups = self.matchups.lock().await;
         self.generation.bump();
         cache.clear();
+        matchups.clear();
         self.disk.clear()
+    }
+
+    /// Returns the saved answer for `key` while it's fresh, else fetches and
+    /// saves a new one. Answers `keep` rejects (e.g. missing a part that may
+    /// come back next time) are returned but not saved.
+    async fn cached<T, F, Fut>(&self, answers: &Answers<T>, key: String, fetch: F, keep: impl Fn(&T) -> bool) -> Result<T>
+    where
+        T: Clone + Serialize + serde::de::DeserializeOwned,
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<T>>,
+    {
+        let lookup = self.lookups.lock().await.entry(key.clone()).or_default().clone();
+        let _lookup = lookup.lock().await;
+        let file = rec_file(&key);
+        let now = now_secs();
+        let generation = self.generation.current();
+        let cached = answers.lock().await.get(&key).cloned();
+        let saved = match cached {
+            Some(s) => s,
+            None => {
+                // First lookup of this key this session: check the disk (once,
+                // outside the lock).
+                let s = self.disk.read::<Saved<T>>(&file).filter(|s| s.format == CACHE_FORMAT);
+                let mut map = answers.lock().await;
+                if self.generation.current() == generation {
+                    map.entry(key.clone()).or_insert_with(|| s.clone());
+                }
+                s
+            }
+        };
+        if let Some(s) = saved.as_ref().filter(|s| s.is_fresh(now)) {
+            return Ok(s.rec.clone());
+        }
+        match fetch().await {
+            Ok(rec) => {
+                let fresh = Saved { format: CACHE_FORMAT, fetched_at: now, rec: rec.clone() };
+                let mut map = answers.lock().await;
+                // Cleared while fetching: still use the answer, just don't save it.
+                if self.generation.current() == generation && keep(&rec) {
+                    self.disk.write(&file, &fresh);
+                    map.insert(key, Some(fresh));
+                }
+                Ok(rec)
+            }
+            // Offline or OP.GG is down: an expired answer from this patch still
+            // beats none. One from an older patch doesn't; the client's page is used.
+            Err(e) => saved.filter(|s| s.is_this_patch(now)).map(|s| s.rec).ok_or(e),
+        }
     }
 
     async fn post(&self, body: Value, session: Option<&str>) -> Result<(Option<String>, String)> {
@@ -722,43 +869,74 @@ impl OpGg {
             bail!("no position to look up (blind pick without a role)");
         }
         let key = format!("{champion_id}:{pos}:{game_mode}");
-        let lookup = self.lookups.lock().await.entry(key.clone()).or_default().clone();
-        let _lookup = lookup.lock().await;
-        let file = rec_file(&key);
-        let now = now_secs();
-        let generation = self.generation.current();
-        let cached = self.cache.lock().await.get(&key).cloned();
-        let saved = match cached {
-            Some(s) => s,
-            None => {
-                // First lookup of this key this session: check the disk (once,
-                // outside the lock).
-                let s = self.disk.read::<SavedRec>(&file).filter(|s| s.format == CACHE_FORMAT);
-                let mut cache = self.cache.lock().await;
-                if self.generation.current() == generation {
-                    cache.entry(key.clone()).or_insert_with(|| s.clone());
-                }
-                s
+        self.cached(&self.cache, key, || self.fetch_rec(champion_id, alias, pos, game_mode, lcu), |_| true).await
+    }
+
+    /// Your champion against one lane opponent: the matchup's own runes,
+    /// spells and build, the head-to-head record and OP.GG's lane tip. Only
+    /// for modes with lanes (ranked, flex; normal draft and blind use ranked).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn matchup(
+        &self,
+        champion_id: i64,
+        alias: &str,
+        opponent_id: i64,
+        opponent_alias: &str,
+        position: &str,
+        game_mode: &str,
+        lcu: Option<&Lcu>,
+    ) -> Result<Matchup> {
+        let pos = position_param(position, game_mode);
+        if pos.is_empty() || !matches!(game_mode, "ranked" | "flex") {
+            bail!("no lane to compare (this mode has no lanes, or you have no role)");
+        }
+        let key = format!("m:{champion_id}:{opponent_id}:{pos}:{game_mode}");
+        let fetch = || self.fetch_matchup(champion_id, alias, opponent_id, opponent_alias, pos, game_mode, lcu);
+        // Without the tip (the slow MCP call failed), ask again next time.
+        self.cached(&self.matchups, key, fetch, |m| m.tip.is_some()).await
+    }
+
+    /// The website API (quick) and the MCP guide (~3.5 s, the only source of
+    /// the tip) at once. If the website fails, the guide has the numbers too.
+    #[allow(clippy::too_many_arguments)]
+    async fn fetch_matchup(
+        &self,
+        champion_id: i64,
+        alias: &str,
+        opponent_id: i64,
+        opponent_alias: &str,
+        pos: &str,
+        game_mode: &str,
+        lcu: Option<&Lcu>,
+    ) -> Result<Matchup> {
+        let guide_args = json!({
+            "position": pos,
+            "my_champion": champion_param(alias),
+            "opponent_champion": champion_param(opponent_alias),
+            "lang": "en_US",
+        });
+        let guide = async {
+            let text = self.call_tool("lol_get_lane_matchup_guide", guide_args).await?;
+            serde_json::from_str::<Value>(&text).context("couldn't read OP.GG's matchup guide")
+        };
+        let (web, guide, opponent_damage) = tokio::join!(
+            self.fetch_web_raw(champion_id, pos, game_mode, Some(opponent_id), lcu),
+            guide,
+            self.damage_type(opponent_id, lcu),
+        );
+        let guide = guide.map_err(|e| eprintln!("OP.GG matchup guide failed: {e:#}")).ok();
+        let mut m = match web {
+            Ok((main, builds, damage)) => {
+                parse_matchup(&main, &builds, &damage, guide.as_ref(), champion_id, opponent_id, pos, game_mode)?
+            }
+            Err(e) => {
+                let g = guide.as_ref().ok_or(e).context("OP.GG matchup")?;
+                let damage = self.damage_type(champion_id, lcu).await;
+                parse_matchup(g, g, &damage, Some(g), champion_id, opponent_id, pos, game_mode)?
             }
         };
-        if let Some(s) = saved.as_ref().filter(|s| s.is_fresh(now)) {
-            return Ok(s.rec.clone());
-        }
-        match self.fetch_rec(champion_id, alias, pos, game_mode, lcu).await {
-            Ok(rec) => {
-                let fresh = SavedRec { format: CACHE_FORMAT, fetched_at: now, rec: rec.clone() };
-                let mut cache = self.cache.lock().await;
-                // Cleared while fetching: still use the answer, just don't save it.
-                if self.generation.current() == generation {
-                    self.disk.write(&file, &fresh);
-                    cache.insert(key, Some(fresh));
-                }
-                Ok(rec)
-            }
-            // Offline or OP.GG is down: an expired answer from this patch still
-            // beats none. One from an older patch doesn't; the client's page is used.
-            Err(e) => saved.filter(|s| s.is_this_patch(now)).map(|s| s.rec).ok_or(e),
-        }
+        m.opponent_damage_type = opponent_damage;
+        Ok(m)
     }
 
     async fn fetch_rec(&self, champion_id: i64, alias: &str, pos: &str, game_mode: &str, lcu: Option<&Lcu>) -> Result<Recommendation> {
@@ -775,16 +953,31 @@ impl OpGg {
 
     /// Main page, item depths and damage type, all at once (~0.2–0.3 s).
     async fn fetch_web(&self, champion_id: i64, pos: &str, game_mode: &str, lcu: Option<&Lcu>) -> Result<Recommendation> {
+        let (main, builds, damage) = self.fetch_web_raw(champion_id, pos, game_mode, None, lcu).await?;
+        extract(&web_to_mcp(&main, &builds, &damage)?, champion_id, pos, game_mode)
+    }
+
+    /// The main answer, `/builds` (Null if only that failed) and the damage
+    /// type. `target` narrows the numbers to games against that champion.
+    async fn fetch_web_raw(
+        &self,
+        champion_id: i64,
+        pos: &str,
+        game_mode: &str,
+        target: Option<i64>,
+        lcu: Option<&Lcu>,
+    ) -> Result<(Value, Value, String)> {
         let base = format!("{WEB_API}/{game_mode}/{champion_id}/{}", web_position(pos, game_mode));
-        let builds_url = format!("{base}/builds");
+        let query = target.map(|t| format!("?target_champion={t}")).unwrap_or_default();
+        let (main_url, builds_url) = (format!("{base}{query}"), format!("{base}/builds{query}"));
         let get = |url: &str| get_json(self.http.get(url).timeout(WEB_TIMEOUT), "OP.GG");
-        let (main, builds, damage) = tokio::join!(get(&base), get(&builds_url), self.damage_type(champion_id, lcu));
+        let (main, builds, damage) = tokio::join!(get(&main_url), get(&builds_url), self.damage_type(champion_id, lcu));
         // Without /builds only the 4th-6th item options are missing.
         let builds = builds.unwrap_or_else(|e| {
             eprintln!("OP.GG item options failed: {e:#}");
             Value::Null
         });
-        extract(&web_to_mcp(&main?, &builds, &damage)?, champion_id, pos, game_mode)
+        Ok((main?, builds, damage))
     }
 
     /// From the League client's own champion data (local, a few ms). Empty
