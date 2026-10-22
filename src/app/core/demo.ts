@@ -102,6 +102,7 @@ export function demoSnapshot(): Snapshot {
       buildSource: 'OP.GG',
       skillMax: ['Q', 'W', 'E'],
       nextSkill: 'Q',
+      lane: { opponent: 'Zed', mine: 5350, theirs: 3967 },
     },
     rec: demoRec(),
     postGame: null,

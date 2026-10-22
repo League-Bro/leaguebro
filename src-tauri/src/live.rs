@@ -2,7 +2,7 @@
 //! which the game itself serves while a match is running.
 //!
 //! Only information already visible to you in game is used: the game clock,
-//! objective kills (which the scoreboard also shows), and your own items and
+//! objective kills and everyone's items (both on the scoreboard), and your own
 //! gold. Nothing tracks enemy cooldowns, in line with Riot's third-party rules.
 
 use crate::config::TimerConfig;
@@ -51,6 +51,54 @@ pub struct OverlayState {
     pub skill_max: Vec<String>,
     /// Ability to put your next point in, when you have one unspent.
     pub next_skill: Option<String>,
+    /// Your item value against your lane opponent's; None without roles (ARAM etc.).
+    pub lane: Option<LaneDiff>,
+}
+
+/// Item value (total cost of the items each of you holds). The game doesn't
+/// share enemy gold, so this is what the scoreboard lets you compare.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LaneDiff {
+    pub opponent: String,
+    pub mine: i64,
+    pub theirs: i64,
+}
+
+fn item_value(player: &Value, items: &HashMap<i64, (String, i64)>) -> i64 {
+    player
+        .get("items")
+        .and_then(Value::as_array)
+        .map(|list| {
+            list.iter()
+                .map(|it| {
+                    let id = it.get("itemID").and_then(Value::as_i64).unwrap_or(0);
+                    let count = it.get("count").and_then(Value::as_i64).unwrap_or(1).max(1);
+                    let price = items
+                        .get(&id)
+                        .map(|(_, p)| *p)
+                        .unwrap_or_else(|| it.get("price").and_then(Value::as_i64).unwrap_or(0));
+                    price * count
+                })
+                .sum()
+        })
+        .unwrap_or(0)
+}
+
+/// The enemy in your position, compared by item value.
+pub fn lane_diff(data: &Value, items: &HashMap<i64, (String, i64)>) -> Option<LaneDiff> {
+    let me = find_me(data)?;
+    let pos = s(me, "position");
+    if pos.is_empty() || pos.eq_ignore_ascii_case("NONE") {
+        return None;
+    }
+    let team = s(me, "team");
+    let opp = data
+        .get("allPlayers")?
+        .as_array()?
+        .iter()
+        .find(|p| s(p, "team") != team && s(p, "position").eq_ignore_ascii_case(pos))?;
+    Some(LaneDiff { opponent: s(opp, "championName").to_string(), mine: item_value(me, items), theirs: item_value(opp, items) })
 }
 
 /// What the overlay should suggest beyond timers.
@@ -257,6 +305,7 @@ pub fn overlay_state(
         build_source: if build.is_some() { guide.build_source.to_string() } else { String::new() },
         skill_max: guide.skill_max.to_vec(),
         next_skill: next_skill(data, guide.skill_order),
+        lane: lane_diff(data, items),
     }
 }
 
@@ -327,6 +376,26 @@ mod tests {
         let st = overlay_state(&sample(600.0, json!([])), &TimerConfig::default(), &Guidance::default(), &items);
         assert_eq!((st.kills, st.champion_name.as_str()), (3, "Ahri"));
         assert!(st.next_skill.is_none());
+    }
+
+    #[test]
+    fn lane_item_value() {
+        let mut items = HashMap::new();
+        items.insert(1056, ("Doran's Ring".to_string(), 400));
+        items.insert(3020, ("Sorcerer's Shoes".to_string(), 1100));
+        items.insert(2003, ("Health Potion".to_string(), 50));
+        let mut d = sample(600.0, json!([]));
+        // Zed: two potions in one slot, plus an item the client list doesn't know.
+        d["allPlayers"][2]["items"] = json!([{"itemID": 2003, "count": 2}, {"itemID": 9999, "count": 1, "price": 875}]);
+        let lane = lane_diff(&d, &items).unwrap();
+        assert_eq!(lane, LaneDiff { opponent: "Zed".into(), mine: 1500, theirs: 975 });
+        assert_eq!(overlay_state(&d, &TimerConfig::default(), &Guidance::default(), &items).lane, Some(lane));
+
+        // ARAM and other modes have no positions.
+        for p in d["allPlayers"].as_array_mut().unwrap() {
+            p["position"] = json!("");
+        }
+        assert_eq!(lane_diff(&d, &items), None);
     }
 
     #[test]

@@ -1,4 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { PlayerCard } from './player-card';
 import { RecCard } from './rec-card';
@@ -7,7 +8,7 @@ import { championIcon, clock, positionLabel } from '../core/assets';
 
 @Component({
   selector: 'rl-live',
-  imports: [PlayerCard, RecCard, PostGameView],
+  imports: [PlayerCard, RecCard, PostGameView, DecimalPipe],
   template: `
     @if (!rift.status().connected) {
       <div class="empty card">
@@ -82,6 +83,12 @@ import { championIcon, clock, positionLabel } from '../core/assets';
         <section class="ingame card row">
           <div class="clock mono">{{ time(o.gameTime) }}</div>
           <div class="mono">{{ o.kills }}/{{ o.deaths }}/{{ o.assists }} <span class="faint">KDA</span></div>
+          @if (o.lane; as ln) {
+            <div class="mono" title="Total cost of your items vs your lane opponent's">
+              <span [class.win]="ln.mine > ln.theirs" [class.loss]="ln.mine < ln.theirs">{{ ln.mine > ln.theirs ? '+' : ln.mine < ln.theirs ? '−' : '±' }}{{ abs(ln.mine - ln.theirs) | number }}</span>
+              <span class="faint">items vs {{ ln.opponent }}</span>
+            </div>
+          }
           <div class="spacer"></div>
           @for (t of o.timers; track t.key) {
             <div class="timer"><span class="muted">{{ t.label }}</span> <span class="mono">{{ time(t.spawnAt - o.gameTime) }}</span></div>
@@ -191,6 +198,7 @@ export class LiveView {
   protected icon = championIcon;
   protected pos = positionLabel;
   protected time = clock;
+  protected abs = Math.abs;
 
   async importNow(): Promise<void> {
     this.busy.set(true);

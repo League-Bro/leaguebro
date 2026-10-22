@@ -1,4 +1,5 @@
 import { Component, ElementRef, afterRenderEffect, computed, inject, viewChild } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { assetUrl, clock } from '../core/assets';
 import { OverlayState } from '../core/models';
@@ -24,10 +25,12 @@ const PREVIEW: OverlayState = {
   buildSource: 'OP.GG',
   skillMax: ['Q', 'W', 'E'],
   nextSkill: 'Q',
+  lane: { opponent: 'Zed', mine: 5350, theirs: 3967 },
 };
 
 @Component({
   selector: 'rl-overlay',
+  imports: [DecimalPipe],
   template: `
     @if (state(); as o) {
       <div class="panel" [style.opacity]="opacity()">
@@ -35,8 +38,13 @@ const PREVIEW: OverlayState = {
           <div class="drag-layer" data-tauri-drag-region>Drag to move, then lock</div>
         }
         <div class="top">
-          <span class="clock">{{ time(o.gameTime) }}</span>
-          <span class="kda">{{ o.kills }}/{{ o.deaths }}/{{ o.assists }}</span>
+          @if (o.lane; as l) {
+            <div class="lane" title="Total cost of your items vs your lane opponent's">
+              <span class="cap">vs {{ l.opponent }}</span>
+              <span class="diff" [class.ahead]="l.mine > l.theirs" [class.behind]="l.mine < l.theirs">{{ signed(l.mine - l.theirs) }}</span>
+              <span class="vals">{{ l.mine | number }} · {{ l.theirs | number }}</span>
+            </div>
+          }
           <button #lockBtn class="lock" [class.open]="!locked()" [title]="locked() ? 'Unlock to move' : 'Lock in place'"
             (click)="rift.setOverlayLocked(!locked())">
             <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
@@ -106,9 +114,7 @@ const PREVIEW: OverlayState = {
       font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
       color: var(--gold); cursor: move;
     }
-    .top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-    .clock { font: 600 18px var(--mono); color: var(--gold); }
-    .kda { margin-left: auto; font: 12px var(--mono); color: var(--text-dim); }
+    .top { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-bottom: 6px; }
     .lock {
       all: unset; position: relative; z-index: 11;
       display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px;
@@ -116,6 +122,11 @@ const PREVIEW: OverlayState = {
     }
     .lock:hover { color: var(--gold); background: rgba(217, 173, 85, 0.16); }
     .lock.open { color: var(--gold); background: rgba(217, 173, 85, 0.22); }
+    .lane { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+    .lane .diff { font: 600 13px var(--mono); color: var(--text-dim); }
+    .lane .diff.ahead { color: var(--win); }
+    .lane .diff.behind { color: var(--loss); }
+    .lane .vals { margin-left: auto; font: 11px var(--mono); color: var(--text-faint); }
     .skills { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; font-size: 12.5px; }
     .skills b { color: var(--gold); }
     .skills .sep { color: var(--text-faint); }
@@ -158,6 +169,9 @@ export class Overlay {
     });
   }
 
+  signed(n: number): string {
+    return `${n > 0 ? '+' : n < 0 ? '−' : '±'}${Math.abs(n).toLocaleString()}`;
+  }
   itemIcon(id: number): string {
     return assetUrl(this.rift.itemById().get(id)?.iconPath);
   }

@@ -165,6 +165,13 @@ export interface RecState {
   error: string | null;
 }
 
+/** Total cost of the items each of you holds (the game doesn't share enemy gold). */
+export interface LaneDiff {
+  opponent: string;
+  mine: number;
+  theirs: number;
+}
+
 export interface OverlayState {
   gameTime: number;
   gameMode: string;
@@ -179,6 +186,8 @@ export interface OverlayState {
   buildSource: string;
   skillMax: string[];
   nextSkill: string | null;
+  /** Your item value vs your lane opponent's; null without roles (ARAM etc.). */
+  lane: LaneDiff | null;
 }
 
 export interface Snapshot {
