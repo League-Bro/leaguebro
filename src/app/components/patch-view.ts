@@ -115,21 +115,21 @@ const VERDICT_LABELS: Record<string, string> = {
     :host { display: flex; flex-direction: column; gap: 16px; max-width: 1180px; margin: 0 auto; }
     .top { display: flex; align-items: flex-end; gap: 12px; }
     h1 { font-size: 22px; display: flex; align-items: center; gap: 10px; }
-    .latest { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gold); background: var(--gold-soft); padding: 2px 8px; border-radius: 10px; }
+    .latest { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); background: var(--accent-soft); padding: 2px 8px; border-radius: 10px; }
     .small { font-size: 12.5px; }
     .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
     .tile {
       display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
-      padding: 12px 14px; border-radius: var(--radius); background: var(--bg-raised); border: 1px solid var(--line);
+      padding: 14px 16px; border-radius: var(--radius); background: var(--glass), var(--bg-raised); border: 1px solid var(--line);
       text-align: left;
     }
-    .tile .count { font-size: 24px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .tile .count { font: 800 28px var(--display); line-height: 1.1; font-variant-numeric: tabular-nums; }
     .tile .tlabel { color: var(--text-dim); font-size: 12.5px; }
     .tile.buff .count { color: var(--win); }
     .tile.nerf .count { color: var(--loss); }
     .tile.adjusted .count { color: var(--gold); }
     .tile.new .count { color: var(--ally); }
-    .tile.active { border-color: var(--gold); background: var(--gold-soft); }
+    .tile.active { border-color: var(--accent); background: var(--accent-soft); }
     .tools { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
     .tools input[type='text'] { flex: 1; min-width: 220px; max-width: 420px; }
     .check { display: flex; align-items: center; gap: 6px; color: var(--text-dim); font-size: 13px; cursor: pointer; }
@@ -140,7 +140,7 @@ const VERDICT_LABELS: Record<string, string> = {
     .notes p { margin: 0 0 6px; white-space: pre-line; }
     .entries { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; align-items: start; }
     .entry {
-      background: var(--bg-raised); border: 1px solid var(--line); border-left: 3px solid var(--line-strong);
+      background: var(--glass), var(--bg-raised); border: 1px solid var(--line); border-left: 3px solid var(--line-strong);
       border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; user-select: text;
     }
     .entry.v-buff { border-left-color: var(--win); }

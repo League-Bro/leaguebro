@@ -179,13 +179,8 @@ type BoolKey =
     .card { gap: 8px; }
     .field { display: flex; align-items: center; gap: 10px; }
     .field > span:first-child { width: 150px; color: var(--text-dim); }
-    .field input[type='range'] { flex: 1; accent-color: var(--gold); }
+    .field input[type='range'] { flex: 1; accent-color: var(--accent); }
     .wide { flex: 1; }
-    .seg { display: flex; gap: 0; }
-    .seg button { border-radius: 0; }
-    .seg button:first-child { border-radius: 8px 0 0 8px; }
-    .seg button:last-child { border-radius: 0 8px 8px 0; border-left: none; }
-    .seg button.on { background: var(--gold-soft); border-color: var(--gold); color: var(--gold); }
     .small { font-size: 12.5px; margin: 0; }
     .cache-row { display: flex; align-items: center; gap: 12px; }
     .cache-row .label { flex: 1; display: flex; flex-direction: column; gap: 2px; }

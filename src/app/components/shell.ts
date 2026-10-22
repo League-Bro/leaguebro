@@ -87,34 +87,40 @@ const PHASE_LABELS: Record<string, string> = {
     :host { display: flex; flex-direction: column; height: 100vh; }
     header {
       display: flex; align-items: center; gap: 22px;
-      padding: 0 20px; height: 56px; flex: none;
+      padding: 0 20px; height: 64px; flex: none;
       border-bottom: 1px solid var(--line);
-      background: linear-gradient(180deg, #0f1523, var(--bg));
+      background: rgba(13, 14, 18, 0.7);
+      backdrop-filter: blur(14px);
     }
-    .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; letter-spacing: 0.04em; }
-    .brand img { width: 22px; height: 22px; }
-    nav { display: flex; gap: 2px; height: 100%; }
-    nav button {
-      background: none; border: none; border-radius: 0; height: 100%;
-      padding: 0 14px; color: var(--text-dim); border-bottom: 2px solid transparent;
+    .brand { display: flex; align-items: center; gap: 10px; font: 800 15px var(--display); letter-spacing: 0.01em; }
+    .brand img { width: 28px; height: 28px; filter: drop-shadow(0 0 8px var(--accent-glow)); }
+    nav {
+      display: flex; gap: 2px; padding: 4px;
+      background: var(--bg-sunken); border: 1px solid var(--line); border-radius: 999px;
     }
-    nav button:hover { color: var(--text); }
-    nav button.active { color: var(--text); border-bottom-color: var(--gold); }
-    .status { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 13px; }
+    nav button { background: none; border: none; padding: 6px 16px; color: var(--text-dim); font-weight: 500; }
+    nav button:hover:not(:disabled) { color: var(--text); background: var(--bg-hover); }
+    nav button.active, nav button.active:hover:not(:disabled) {
+      color: var(--on-accent); background: var(--accent); font-weight: 600; box-shadow: 0 2px 14px var(--accent-glow);
+    }
+    .status {
+      display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 13px;
+      padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg-hover);
+    }
     .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); }
     .status.on .dot { background: var(--win); box-shadow: 0 0 8px var(--win); }
-    .status .who { color: var(--text); padding-left: 10px; border-left: 1px solid var(--line-strong); }
+    .status .who { color: var(--text); font-weight: 600; padding-left: 10px; border-left: 1px solid var(--line-strong); }
     .demo-bar { background: var(--gold-soft); color: var(--gold); font-size: 12.5px; padding: 6px 20px; }
     .demo-bar code { font-family: var(--mono); }
     .update-bar {
       display: flex; align-items: center; gap: 12px;
       padding: 8px 20px; font-size: 13px;
-      background: var(--gold-soft); color: var(--text);
+      background: var(--accent-soft); color: var(--text);
       border-bottom: 1px solid var(--line);
     }
     .update-bar span:first-child { flex: 1; }
-    .update-bar.bad { background: rgba(224, 100, 108, 0.14); }
-    main { flex: 1; overflow: auto; padding: 20px; }
+    .update-bar.bad { background: rgba(241, 91, 108, 0.14); }
+    main { flex: 1; overflow: auto; padding: 24px; }
   `,
 })
 export class Shell implements OnInit {

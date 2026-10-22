@@ -110,18 +110,12 @@ let autoLane: string | null = null;
     .top input { width: 220px; }
     .controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     .hint { flex: 1; min-width: 200px; }
-    .seg { display: flex; }
-    .seg button { border-radius: 0; padding: 5px 12px; }
-    .seg button:first-child { border-radius: 8px 0 0 8px; }
-    .seg button:last-child { border-radius: 0 8px 8px 0; }
-    .seg button + button { border-left: none; }
-    .seg button.on { background: var(--gold-soft); border-color: var(--gold); color: var(--gold); }
-    .note { color: var(--gold); background: var(--gold-soft); border-radius: 8px; padding: 8px 12px; }
+    .note { color: var(--gold); background: var(--gold-soft); border-radius: var(--radius-sm); padding: 8px 12px; }
     .rows { display: flex; flex-direction: column; gap: 8px; transition: opacity 0.15s; }
     .rows.stale { opacity: 0.55; }
-    .row { display: flex; gap: 10px; align-items: stretch; background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; }
+    .row { display: flex; gap: 10px; align-items: stretch; background: var(--glass), var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; }
     .letter {
-      flex: none; width: 46px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+      flex: none; width: 50px; border-radius: 12px; box-shadow: 0 0 18px -4px var(--tc); display: flex; align-items: center; justify-content: center;
       font-size: 22px; font-weight: 800; color: #10131c;
     }
     .t-S { --tc: #ff8a5c; }
@@ -131,14 +125,14 @@ let autoLane: string | null = null;
     .t-D { --tc: #9aa3b8; }
     .letter { background: var(--tc); }
     .champs { flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); gap: 4px; }
-    .champ { display: flex; align-items: center; gap: 8px; text-align: left; padding: 4px 8px; background: var(--bg-sunken); border-color: transparent; }
+    .champ { display: flex; align-items: center; gap: 8px; text-align: left; padding: 5px 10px; border-radius: var(--radius-sm); background: var(--bg-sunken); border-color: transparent; }
     .champ:disabled { opacity: 1; }
     .champ.dim { opacity: 0.25; }
     .rank { width: 18px; text-align: right; font-size: 11px; }
     .info { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
     .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
     .stats { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
-    .label { font-size: 11px; font-weight: 700; color: var(--tc); border: 1px solid var(--tc); border-radius: 5px; padding: 0 5px; min-width: 24px; text-align: center; }
+    .label { font-size: 11px; font-weight: 700; color: var(--tc); border: 1px solid var(--tc); border-radius: 999px; padding: 0 6px; min-width: 24px; text-align: center; }
     .move { font-size: 10px; width: 24px; }
     .win { color: var(--win); }
     .loss { color: var(--loss); }

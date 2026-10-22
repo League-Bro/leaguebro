@@ -23,6 +23,7 @@ import {
   TierList,
   TierSource,
 } from './models';
+import { championSplash } from './assets';
 import { demoCacheInfo, demoChampSelect, demoConfig, demoPatch, demoPatchList, demoPostGame, demoRec, demoSnapshot, demoStatic, demoTierList } from './demo';
 
 export function inTauri(): boolean {
@@ -129,6 +130,12 @@ export class RiftService {
 
   champName(id: number): string {
     return this.champById().get(id) ?? (id > 0 ? `#${id}` : '');
+  }
+
+  /** Base-skin splash art for hero cards; '' for League Classic copies and unknown ids. */
+  champSplash(id: number): string {
+    const c = this.statics()?.champions.find((x) => x.id === id);
+    return c && !c.classic ? championSplash(c.alias) : '';
   }
 
   async saveConfig(config: Config): Promise<void> {

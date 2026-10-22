@@ -16,6 +16,9 @@ import { championIcon, clock, positionLabel } from '../core/assets';
       </div>
     } @else if (rift.champSelect(); as cs) {
       <section class="hero card">
+        @if (rift.champSplash(cs.myChampionId); as splash) {
+          <div class="splash"><img [src]="splash" alt="" /></div>
+        }
         @if (cs.myChampionId > 0) {
           <img class="big" [src]="icon(cs.myChampionId)" alt="" />
         } @else {
@@ -128,9 +131,11 @@ import { championIcon, clock, positionLabel } from '../core/assets';
   styles: `
     .empty { max-width: 560px; margin: 60px auto; text-align: center; }
     .empty h2 { font-size: 18px; margin-bottom: 6px; }
-    .hero { display: flex; align-items: center; gap: 18px; margin-bottom: 8px; }
-    .hero .big { width: 72px; height: 72px; border-radius: 12px; border: 2px solid var(--gold); background: var(--bg-sunken); }
-    .hero h2 { font-size: 20px; }
+    .hero { position: relative; display: flex; align-items: center; gap: 20px; margin-bottom: 8px; padding: 24px; min-height: 132px; }
+    .hero > :not(.splash) { position: relative; }
+    .hero .big { width: 80px; height: 80px; border-radius: 18px; border: 2px solid var(--accent); background: var(--bg-sunken); box-shadow: 0 0 22px var(--accent-glow); }
+    .hero h2 { font-size: 26px; }
+    .ingame .clock { text-shadow: 0 0 14px var(--accent-glow); }
     .grow { flex: 1; gap: 6px; }
     .import { font-size: 13px; color: var(--win); }
     .import.bad { color: var(--loss); }
@@ -141,7 +146,7 @@ import { championIcon, clock, positionLabel } from '../core/assets';
     .picks { align-items: flex-start; gap: 48px; }
     .banned { filter: grayscale(1) brightness(0.6); }
     .ingame { gap: 22px; flex-wrap: wrap; }
-    .clock { font-size: 22px; font-weight: 600; color: var(--gold); }
+    .clock { font-size: 22px; font-weight: 600; color: var(--accent); }
     .timer { font-size: 13px; display: flex; gap: 6px; }
     .head .section { margin-bottom: 0; }
   `,

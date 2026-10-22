@@ -6,6 +6,12 @@ export function championIcon(id: number): string {
   return id > 0 ? `${CDRAGON}/v1/champion-icons/${id}.png` : '';
 }
 
+/** Base-skin splash art. The folder is the champion's alias, lowercased (MonkeyKing, KaiSa…). */
+export function championSplash(alias: string): string {
+  const a = alias.toLowerCase();
+  return a ? `${CDRAGON}/assets/characters/${a}/skins/base/images/${a}_splash_uncentered_0.jpg` : '';
+}
+
 /** Converts a client asset path like /lol-game-data/assets/ASSETS/Items/... */
 export function assetUrl(path: string | undefined | null): string {
   if (!path) return '';

@@ -80,18 +80,18 @@ import { championIcon, formatTier, positionLabel, tierClass } from '../core/asse
       align-items: center;
       gap: 14px;
       padding: 10px 14px;
+      background: var(--glass), var(--bg-raised); border: 1px solid var(--line);
       border-left: 3px solid var(--ally);
-      background: var(--bg-raised);
-      border-radius: 8px;
+      border-radius: 12px;
       min-height: 62px;
     }
     .player.enemy { border-left-color: var(--enemy); }
-    .player.me { background: linear-gradient(90deg, var(--gold-soft), var(--bg-raised) 60%); border-left-color: var(--gold); }
+    .player.me { background: linear-gradient(90deg, var(--accent-soft), transparent 60%), var(--bg-raised); border-left-color: var(--accent); }
     .who { display: flex; align-items: center; gap: 10px; min-width: 0; }
     .names { min-width: 0; }
     .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .sub { font-size: 12.5px; }
-    .you { font-size: 10px; font-weight: 700; color: var(--gold); border: 1px solid var(--gold); border-radius: 4px; padding: 0 4px; margin-left: 6px; vertical-align: 2px; }
+    .you { font-size: 10px; font-weight: 700; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 0 6px; margin-left: 6px; vertical-align: 2px; }
     .rank, .form { display: flex; flex-direction: column; font-size: 13px; gap: 1px; }
     .rank span:first-child { font-weight: 600; }
     .strip { display: flex; gap: 2px; margin-top: 3px; }
@@ -99,7 +99,7 @@ import { championIcon, formatTier, positionLabel, tierClass } from '../core/asse
     .strip span.w { background: var(--win); }
     .mains { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .main { display: flex; align-items: center; gap: 3px; font-size: 12px; }
-    .otp { font-size: 11px; color: var(--gold); background: var(--gold-soft); border-radius: 4px; padding: 1px 6px; }
+    .otp { font-size: 11px; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; }
     .loading { grid-column: 2 / -1; font-size: 13px; }
   `,
 })

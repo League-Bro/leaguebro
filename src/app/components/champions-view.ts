@@ -42,6 +42,9 @@ const ROLES = [
       <div class="main">
         @if (pick(); as p) {
           <section class="card head">
+            @if (rift.champSplash(p.championId); as splash) {
+              <div class="splash"><img [src]="splash" alt="" /></div>
+            }
             <img class="big" [src]="icon(p.championId)" alt="" />
             <div class="stack grow">
               <div>
@@ -160,31 +163,28 @@ const ROLES = [
     .layout { display: grid; grid-template-columns: 240px 1fr; gap: 16px; align-items: start; }
     aside { position: sticky; top: 0; display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 140px); }
     .filter { width: 100%; }
+    .seg.game { display: flex; }
     .seg.game button { flex: 1; padding: 5px 6px; white-space: nowrap; font-size: 12.5px; }
     .classic-tag {
       margin-left: 10px; vertical-align: middle; font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
-      color: var(--text-dim); background: var(--bg-sunken); border: 1px solid var(--line-strong); border-radius: 5px; padding: 2px 7px;
+      color: var(--text-dim); background: var(--bg-sunken); border: 1px solid var(--line-strong); border-radius: 999px; padding: 2px 9px;
     }
     .classic-note { margin-top: 16px; }
     .classic-note p { margin: 0; }
     .list { display: flex; flex-direction: column; gap: 1px; overflow: auto; margin: 0 -6px; padding: 0 6px; }
     .champ { display: flex; align-items: center; gap: 9px; background: none; border-color: transparent; text-align: left; padding: 4px 6px; }
     .champ:hover { background: var(--bg-sunken); }
-    .champ.active { background: var(--gold-soft); border-color: var(--gold); }
+    .champ.active { background: var(--accent-soft); border-color: transparent; color: var(--accent); font-weight: 600; }
     .cname { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .mark { font-size: 10px; font-weight: 700; color: var(--gold); background: var(--gold-soft); border-radius: 4px; padding: 0 4px; }
+    .mark { font-size: 10px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 0 6px; }
     .main { min-width: 0; }
-    .head { display: flex; align-items: center; gap: 16px; }
-    .big { width: 64px; height: 64px; border-radius: 12px; border: 2px solid var(--gold); }
+    .head { position: relative; display: flex; align-items: center; gap: 18px; padding: 22px; }
+    .head > :not(.splash) { position: relative; }
+    .head h2 { font-size: 24px; }
+    .big { width: 72px; height: 72px; border-radius: 18px; border: 2px solid var(--accent); box-shadow: 0 0 22px var(--accent-glow); }
     .grow { flex: 1; min-width: 0; }
     .head .grow { gap: 8px; }
     .controls { gap: 12px; flex-wrap: wrap; }
-    .seg { display: flex; }
-    .seg button { border-radius: 0; padding: 5px 12px; }
-    .seg button:first-child { border-radius: 8px 0 0 8px; }
-    .seg button:last-child { border-radius: 0 8px 8px 0; }
-    .seg button + button { border-left: none; }
-    .seg button.on { background: var(--gold-soft); border-color: var(--gold); color: var(--gold); }
     .note { margin: 10px 0 0; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; align-items: start; }
     .card.stack { gap: 8px; }
@@ -195,7 +195,7 @@ const ROLES = [
     .perks { display: flex; gap: 3px; margin-top: 6px; flex-wrap: wrap; }
     .perks img { width: 22px; height: 22px; }
     .items { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
-    .items li { display: flex; align-items: center; gap: 10px; padding: 5px 8px; background: var(--bg-sunken); border-radius: 8px; }
+    .items li { display: flex; align-items: center; gap: 10px; padding: 5px 8px; background: var(--bg-sunken); border-radius: 10px; }
     .items img, .results img { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--line-strong); }
     .idx { width: 16px; text-align: right; }
     .add input { width: 100%; }

@@ -1,20 +1,32 @@
+/* Theme: charcoal glass panels, pill controls, hextech-teal accent with gold
+   for highlights (warnings, "adjusted", rank). Based on the most popular
+   League app shots on Dribbble. */
 :root {
-  --bg: #0b0f1a;
-  --bg-raised: #121827;
-  --bg-sunken: #080b13;
-  --line: #1f2840;
-  --line-strong: #2c3757;
-  --text: #e6e9f2;
-  --text-dim: #8d96ad;
-  --text-faint: #5d6680;
-  --gold: #d9ad55;
-  --gold-soft: rgba(217, 173, 85, 0.14);
-  --win: #4fc28b;
-  --loss: #e0646c;
-  --ally: #4b9df0;
-  --enemy: #e0646c;
-  --radius: 10px;
+  --bg: #0d0e12;
+  --bg-raised: #16181e;
+  --bg-sunken: #0a0b0e;
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --glass: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
+  --line: rgba(255, 255, 255, 0.07);
+  --line-strong: rgba(255, 255, 255, 0.13);
+  --text: #f1f2f5;
+  --text-dim: #9ba0ad;
+  --text-faint: #636875;
+  --accent: #2fd4c4;
+  --accent-soft: rgba(47, 212, 196, 0.13);
+  --accent-glow: rgba(47, 212, 196, 0.35);
+  --on-accent: #04201d;
+  --gold: #e4b75e;
+  --gold-soft: rgba(228, 183, 94, 0.14);
+  --win: #3ccf8e;
+  --loss: #f15b6c;
+  --ally: #4ea4ff;
+  --enemy: #f15b6c;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
   --font: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --display: 'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --mono: 'Cascadia Mono', 'Consolas', ui-monospace, monospace;
   color-scheme: dark;
 }
@@ -24,7 +36,10 @@
 html, body {
   margin: 0;
   height: 100%;
-  background: var(--bg);
+  background:
+    radial-gradient(900px 500px at 0% 0%, rgba(47, 212, 196, 0.07), transparent 60%),
+    radial-gradient(700px 500px at 100% 100%, rgba(78, 164, 255, 0.05), transparent 60%),
+    var(--bg);
   color: var(--text);
   font: 14px/1.45 var(--font);
   -webkit-font-smoothing: antialiased;
@@ -37,44 +52,60 @@ html.overlay-window, body.overlay-window {
   overflow: hidden;
 }
 
-h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: 0.01em; }
+h1, h2, h3 { margin: 0; font-family: var(--display); font-weight: 700; letter-spacing: -0.005em; }
+h1 { letter-spacing: -0.015em; }
 h2 { font-size: 15px; }
-h3 { font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; }
+h3 { font-size: 11.5px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em; }
 
 button {
   font: inherit;
   color: var(--text);
-  background: var(--bg-raised);
+  background: var(--bg-hover);
   border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  padding: 6px 12px;
+  border-radius: 999px;
+  padding: 6px 14px;
   cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
 }
-button:hover:not(:disabled) { border-color: var(--gold); }
+button:hover:not(:disabled) { border-color: var(--accent); background: rgba(255, 255, 255, 0.08); }
 button:disabled { opacity: 0.45; cursor: default; }
-button.primary { background: var(--gold); color: #1a1405; border-color: var(--gold); font-weight: 600; }
-button.primary:hover:not(:disabled) { filter: brightness(1.08); }
-button.ghost { background: transparent; border-color: transparent; color: var(--text-dim); padding: 4px 8px; }
-button.ghost:hover:not(:disabled) { color: var(--text); border-color: var(--line-strong); }
+button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; box-shadow: 0 4px 18px var(--accent-glow); }
+button.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
+button.ghost { background: transparent; border-color: transparent; color: var(--text-dim); padding: 4px 10px; }
+button.ghost:hover:not(:disabled) { color: var(--text); background: var(--bg-hover); border-color: transparent; }
 
 input[type='text'], input[type='number'], select {
   font: inherit;
   color: var(--text);
   background: var(--bg-sunken);
   border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  padding: 7px 12px;
   user-select: text;
 }
-input:focus, select:focus { outline: 2px solid var(--gold-soft); border-color: var(--gold); }
+input:focus, select:focus { outline: 3px solid var(--accent-soft); border-color: var(--accent); }
 input[type='number'] { width: 90px; }
 
 .card {
-  background: var(--bg-raised);
+  background: var(--glass), var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 16px;
+  box-shadow: var(--shadow);
+  padding: 18px;
 }
+
+/* Pill segmented control: <div class="seg"><button class="on">…</button>… */
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.seg button { border: none; background: none; color: var(--text-dim); padding: 5px 13px; }
+.seg button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+.seg button.on, .seg button.on:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
 .muted { color: var(--text-dim); }
 .faint { color: var(--text-faint); }
@@ -88,32 +119,44 @@ input[type='number'] { width: 90px; }
 .champ-icon {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--bg-sunken);
   border: 1px solid var(--line-strong);
   object-fit: cover;
   flex: none;
 }
-.champ-icon.sm { width: 22px; height: 22px; border-radius: 5px; }
-.champ-icon.md { width: 30px; height: 30px; border-radius: 6px; }
+.champ-icon.sm { width: 22px; height: 22px; border-radius: 7px; }
+.champ-icon.md { width: 30px; height: 30px; border-radius: 9px; }
+
+/* Champion splash art behind a hero card. Put .splash first inside a
+   position: relative card; content after it sits on top. */
+.splash {
+  position: absolute; inset: 0; z-index: 0;
+  border-radius: inherit; overflow: hidden; pointer-events: none;
+}
+.splash img { width: 100%; height: 100%; object-fit: cover; object-position: 70% 20%; opacity: 0.55; }
+.splash::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, var(--bg-raised) 18%, rgba(22, 24, 30, 0.75) 55%, rgba(22, 24, 30, 0.2));
+}
 
 /* Toggle switch */
 .toggle { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; padding: 6px 0; }
 .toggle input { display: none; }
 .toggle .track {
   flex: none;
-  width: 36px; height: 20px; border-radius: 10px;
+  width: 38px; height: 22px; border-radius: 11px;
   background: var(--line-strong);
-  position: relative; transition: background 0.15s;
+  position: relative; transition: background 0.15s, box-shadow 0.15s;
   margin-top: 1px;
 }
 .toggle .track::after {
   content: ''; position: absolute; top: 3px; left: 3px;
-  width: 14px; height: 14px; border-radius: 50%;
+  width: 16px; height: 16px; border-radius: 50%;
   background: var(--text); transition: transform 0.15s;
 }
-.toggle input:checked + .track { background: var(--gold); }
-.toggle input:checked + .track::after { transform: translateX(16px); background: #1a1405; }
+.toggle input:checked + .track { background: var(--accent); box-shadow: 0 0 12px var(--accent-glow); }
+.toggle input:checked + .track::after { transform: translateX(16px); background: var(--on-accent); }
 .toggle .label b { display: block; font-weight: 500; }
 .toggle .label span { color: var(--text-dim); font-size: 12.5px; }
 

@@ -11,6 +11,9 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     @let g = game();
     @if (me(); as m) {
       <section class="hero card" [class]="g.result">
+        @if (rift.champSplash(m.championId); as splash) {
+          <div class="splash"><img [src]="splash" alt="" /></div>
+        }
         <img class="big" [src]="icon(m.championId)" alt="" />
         <div class="stack grow">
           <div class="title">
@@ -77,13 +80,16 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     }
   `,
   styles: `
-    .hero { display: flex; align-items: center; gap: 18px; border-left: 3px solid var(--text-faint); }
-    .hero.win { border-left-color: var(--win); background: linear-gradient(90deg, rgba(98, 196, 140, 0.1), var(--bg-raised) 50%); }
-    .hero.loss { border-left-color: var(--loss); background: linear-gradient(90deg, rgba(224, 100, 108, 0.1), var(--bg-raised) 50%); }
-    .big { width: 72px; height: 72px; border-radius: 12px; border: 2px solid var(--gold); }
+    .hero { position: relative; display: flex; align-items: center; gap: 20px; padding: 24px; border-left: 3px solid var(--text-faint); }
+    .hero > :not(.splash) { position: relative; }
+    .hero.win { border-left-color: var(--win); }
+    .hero.loss { border-left-color: var(--loss); }
+    .hero.win .big { border-color: var(--win); box-shadow: 0 0 22px rgba(60, 207, 142, 0.35); }
+    .hero.loss .big { border-color: var(--loss); box-shadow: 0 0 22px rgba(241, 91, 108, 0.35); }
+    .big { width: 80px; height: 80px; border-radius: 18px; border: 2px solid var(--accent); }
     .grow { flex: 1; gap: 10px; min-width: 0; }
     .title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-    .title h2 { font-size: 22px; }
+    .title h2 { font-size: 28px; }
     .hero.win h2 { color: var(--win); }
     .hero.loss h2 { color: var(--loss); }
     .line { display: flex; gap: 26px; flex-wrap: wrap; }
@@ -107,18 +113,18 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .row-p {
       display: grid; align-items: center; gap: 12px;
       grid-template-columns: minmax(170px, 1.6fr) 72px 44px minmax(90px, 1fr) 48px 32px auto;
-      padding: 6px 12px; border-radius: 8px; background: var(--bg-raised);
+      padding: 7px 14px; border-radius: 12px; background: var(--glass), var(--bg-raised); border: 1px solid var(--line);
       border-left: 3px solid var(--ally); font-size: 13px;
     }
     .row-p.enemy { border-left-color: var(--enemy); }
-    .row-p.me { background: linear-gradient(90deg, var(--gold-soft), var(--bg-raised) 60%); border-left-color: var(--gold); }
+    .row-p.me { background: linear-gradient(90deg, var(--accent-soft), transparent 60%), var(--bg-raised); border-left-color: var(--accent); }
     .who { display: flex; align-items: center; gap: 8px; min-width: 0; }
     .lvl { font-size: 11px; color: var(--text-faint); width: 16px; }
     .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .dmg { display: flex; align-items: center; gap: 8px; }
     .dmg .mono { width: 40px; }
-    .bar { flex: 1; height: 6px; border-radius: 3px; background: var(--bg-sunken); overflow: hidden; }
-    .bar span { display: block; height: 100%; background: var(--gold); opacity: 0.75; }
+    .bar { flex: 1; height: 6px; border-radius: 999px; background: var(--bg-sunken); overflow: hidden; }
+    .bar span { display: block; height: 100%; background: var(--accent); opacity: 0.75; }
     .row-p.enemy .bar span { background: var(--enemy); }
   `,
 })
