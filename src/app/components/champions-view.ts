@@ -94,7 +94,7 @@ const ROLES = [
                   <button class="ghost" (click)="removePage(p.championId)">Remove</button>
                 </div>
               } @else {
-                <p class="muted small">None saved, so League Buddy imports OP.GG's page. To use your own, select it in the client's rune editor, then save it here.</p>
+                <p class="muted small">None saved, so League Bro imports OP.GG's page. To use your own, select it in the client's rune editor, then save it here.</p>
               }
               <div>
                 <button [disabled]="!rift.status().connected" (click)="savePage(p.championId)">

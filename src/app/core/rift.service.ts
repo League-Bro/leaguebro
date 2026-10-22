@@ -21,11 +21,7 @@ import {
   StaticData,
   Status,
 } from './models';
-<<<<<<< HEAD
-import { demoChampSelect, demoConfig, demoPatch, demoPatchList, demoPostGame, demoRec, demoSnapshot, demoStatic } from './demo';
-=======
-import { demoCacheInfo, demoChampSelect, demoConfig, demoPatch, demoPatchList, demoPostGame, demoSnapshot, demoStatic } from './demo';
->>>>>>> 2b3c7d15a5d8eb55f88d18b41e50faac7541d1b0
+import { demoCacheInfo, demoChampSelect, demoConfig, demoPatch, demoPatchList, demoPostGame, demoRec, demoSnapshot, demoStatic } from './demo';
 
 export function inTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -143,11 +139,7 @@ export class RiftService {
   }
 
   importRunesNow(): Promise<string> {
-<<<<<<< HEAD
-    if (this.demo) return Promise.resolve('Set "League Buddy: Ahri Mid" (OP.GG) · Flash + Ignite · build added to the shop');
-=======
-    if (this.demo) return Promise.resolve('Set "League Bro: Ahri Mid" (OP.GG) · Flash + Ignite');
->>>>>>> 2b3c7d15a5d8eb55f88d18b41e50faac7541d1b0
+    if (this.demo) return Promise.resolve('Set "League Bro: Ahri Mid" (OP.GG) · Flash + Ignite · build added to the shop');
     return invoke<string>('import_runes_now');
   }
 

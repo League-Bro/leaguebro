@@ -80,11 +80,7 @@ export function demoSnapshot(): Snapshot {
       profile('e4', '', '', 0, 0, 0, [145, 222]),
       profile('e5', 'SILVER', 'I', 91, 30, 37, [555, 412]),
     ],
-<<<<<<< HEAD
-    lastImport: { ok: true, championId: 103, message: 'Set "League Buddy: Ahri Mid" (OP.GG) · Flash + Ignite · build added to the shop' },
-=======
-    lastImport: { ok: true, championId: 103, message: 'Set "League Bro: Ahri Mid" (OP.GG) · Flash + Ignite' },
->>>>>>> 2b3c7d15a5d8eb55f88d18b41e50faac7541d1b0
+    lastImport: { ok: true, championId: 103, message: 'Set "League Bro: Ahri Mid" (OP.GG) · Flash + Ignite · build added to the shop' },
     overlay: {
       gameTime: 742,
       gameMode: 'CLASSIC',

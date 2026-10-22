@@ -9,7 +9,7 @@
   "queueId": 420,
   "participantIdentities": [
     { "participantId": 1, "player": { "gameName": "Me", "tagLine": "NA1", "puuid": "me-puuid" } },
-    { "participantId": 2, "player": { "gameName": "Buddy", "tagLine": "EUW", "puuid": "ally-puuid" } },
+    { "participantId": 2, "player": { "gameName": "Bro", "tagLine": "EUW", "puuid": "ally-puuid" } },
     { "participantId": 6, "player": { "gameName": "Rival", "tagLine": "NA1", "puuid": "enemy-puuid" } },
     { "participantId": 7, "player": { "gameName": "", "tagLine": "", "puuid": "" } }
   ],

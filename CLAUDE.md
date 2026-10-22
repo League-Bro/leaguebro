@@ -1,6 +1,6 @@
 # League Bro: notes for Claude
 
-An ad-free, lightweight League of Legends companion for Windows (a personal alternative to Blitz). Dom (GitHub `doliaro`) owns it and shares it with a few friends through GitHub Releases. Repo: https://github.com/doliaro/leaguebuddy (the repo keeps its old name; the app was renamed from League Buddy to League Bro in issue 5).
+An ad-free, lightweight League of Legends companion for Windows (a personal alternative to Blitz). Dom (GitHub `doliaro`) owns it and shares it with a few friends through GitHub Releases. Repo: https://github.com/doliaro/leaguebro. The repo and app were renamed in issue 5; GitHub redirects the old repo URL, which installs from before the rename use for updates, so never create a new repo under the old name.
 
 Stack: **Tauri 2** (Rust backend, `src-tauri/`) + **Angular 21** (standalone components, signals, zoneless, `src/`). Windows only.
 
@@ -49,12 +49,8 @@ The Rust side runs one background loop (`engine.rs`, 1 s tick) that pushes state
    - `position` must be `top|jungle|mid|adc|support`. `all` and `none` are rejected for ranked **and** ARAM. ARAM and other modes take any lane value and ignore it, so the code sends `mid`.
    - `game_mode`: `ranked|flex|urf|aram|nexus_blitz`, picked from the queue/map (`game_mode_for`). Arena gets no recommendation.
    - Below `MIN_GAMES` (20) the data is noise (e.g. off-role picks). Runes and spells then fall back to the League client's recommended page.
-<<<<<<< HEAD
-   - Results are cached in memory for 6 h per champion+position+mode.
    - The Champions tab uses the `lookup_rec` command (any champion, `ranked` + role or `aram`). It returns the recommendation directly and doesn't touch `sh.rec`, which belongs to champ select. `RecCard` shows champ select's rec unless given a `lookup` input. The tab is also where saved rune pages (`runeOverrides`) and builds (`builds`) are edited; the old Runes and Builds tabs are gone, and their auto-import switches are in Settings → Rune import.
-=======
    - Results are saved to disk (`%LOCALAPPDATA%\dev.dom.leaguebro\opgg`, one file per champion+position+mode) and expire on the patch cycle (`expires_at`): every 24 h for the week after a patch's notes come out, then every 7 days, and always when the next notes are due (`patch::notes_releases_around`, from `PATCH_SCHEDULE`). If OP.GG can't be reached, an expired answer is used only if it was fetched since the latest patch notes; otherwise runes fall back to the client. Bump `opgg::CACHE_FORMAT` when `Recommendation` or `extract` changes.
->>>>>>> 2b3c7d15a5d8eb55f88d18b41e50faac7541d1b0
    - The `scripts/opgg-probe*.mjs` scripts (if present locally) call the endpoint and save raw responses to `scripts/probe-output/` (git-ignored). Use them to see the real format; Claude's cloud sandbox couldn't reach op.gg.
 4. **CommunityDragon** (`raw.communitydragon.org`) for champion, item, rune and spell icons (`assets.ts`). Client asset paths are lowercased and mapped there.
 5. **Riot patch notes** (`www.leagueoflegends.com`) for the Patch Notes tab (`patch.rs`). The site is Next.js, so `patch.rs` reads the JSON in `<script id="__NEXT_DATA__">`: the patch-notes tag page for the list, then each article's `richText.body` HTML, parsed with `scraper` into buffs, nerfs and adjustments. Only fetched when the Patch Notes tab is opened. Both are saved to disk (`%LOCALAPPDATA%\dev.dom.leaguebro\patch-notes`): a patch's notes are downloaded once and never again; the list is re-checked only when the next patch's notes are due (the day before that patch in `PATCH_SCHEDULE`, Riot's published dates; newest notes + 14 days once the table runs out), then at most every 6 h until they appear. **Add each new year's dates to `PATCH_SCHEDULE`** from https://support.riotgames.com/league-of-legends/gameplay/patch-schedule-league-of-legends. Bump `CACHE_FORMAT` when the parser or saved shapes change. `get_patch` only fetches URLs under `https://www.leagueoflegends.com/`. Fixtures: `tests/fixtures/patch_list.html`, `patch_article.html`.
@@ -63,10 +59,10 @@ The Rust side runs one background loop (`engine.rs`, 1 s tick) that pushes state
 
 - Rune page: the user's saved page for the champion (`runeOverrides`), then OP.GG (if ≥ `MIN_GAMES`), then the client's recommended page.
 - Overlay build: the user's saved build (`builds`), then OP.GG's `build_order` (if enabled).
-- Shop item set: on lock-in (same rules as spells: OP.GG, ≥ `MIN_GAMES`, `setItemSets` on), one set titled `League Buddy: <Champ> <Role>` for that champion and map, blocks Starter / Boots / Core build / 4th-6th item options. Any other `League Buddy:` set is replaced; the user's own sets are never touched.
+- Shop item set: on lock-in (same rules as spells: OP.GG, ≥ `MIN_GAMES`, `setItemSets` on), one set titled `League Bro: <Champ> <Role>` for that champion and map, blocks Starter / Boots / Core build / 4th-6th item options. Any other `League Bro:` set is replaced; the user's own sets are never touched.
 - Summoner spells: `arrange_spells` keeps each recommended spell in the slot where the player already has it, so Flash stays on their usual key.
 - Overlay mouse handling: locked = click-through, except over the padlock button. `watch_overlay_cursor` (engine.rs, 50 ms) hit-tests the cursor against the button rect the overlay reports (`set_overlay_button`, CSS px) and toggles `set_ignore_cursor_events`. Unlocked = whole window takes input; dragging uses `data-tauri-drag-region`, which needs `core:window:allow-start-dragging` in `capabilities/default.json` and only fires on the exact element carrying the attribute (hence the full-panel `.drag-layer`). Locking saves the position; a fresh show (game start) always re-locks.
-- League Bro owns exactly one rune page, named `League Bro: <Champ> <Role>` and kept to 25 characters or fewer (`page_name`). It deletes and recreates that page each time, and also cleans up old `Riftlight:`, `League Buddy:` and `LB:` pages (`is_ours` matches the prefix plus `:`). It never touches the user's other pages unless "reuse the selected page when full" is on.
+- League Bro owns exactly one rune page, named `League Bro: <Champ> <Role>` and kept to 25 characters or fewer (`page_name`). It deletes and recreates that page each time, and also cleans up old `Riftlight:` and `LB:` pages (`is_ours` matches the prefix plus `:`). It never touches the user's other pages unless "reuse the selected page when full" is on.
 
 ## Riot rules (hard constraints)
 
@@ -117,14 +113,14 @@ Adding a setting: add it to `config.rs` (with a default; `#[serde(default)]` kee
 ## Status (October 2026)
 
 - Released: v0.1.0 (named "Riftlight", obsolete). v0.1.2 (rename + auto-updates) needs a release run if it hasn't happened yet. Dom and his friend need to install the first updater-enabled version manually once.
-- Renamed League Buddy → League Bro (identifier `dev.dom.leaguebuddy` → `dev.dom.leaguebro`). `Config::migrate_old_settings` copies the old `settings.json` on first run. Because the NSIS install folder and uninstall entry follow `productName`, updating from League Buddy installs League Bro alongside it; users should uninstall League Buddy afterwards. The old `%LOCALAPPDATA%\dev.dom.leaguebuddy` cache is left behind.
+- Renamed to League Bro in issue 5 (identifier now `dev.dom.leaguebro`). Settings are **not** carried over from the old identifier, pages and item sets made under the old name are not cleaned up, and since the NSIS install folder and uninstall entry follow `productName`, updating an old install puts League Bro next to it. Users should uninstall the old copy and delete its leftover rune page.
 - Written but **not yet tested in a real game**, so verify when Dom plays:
   - OP.GG recommendations in champ select (card, rune import, spell setting), and the in-game recommendation fetch if the app starts mid-game.
   - Overlay skill hint ("Level up Q") and the OP.GG build reminder.
   - Rune lookup for ARAM / blind pick, and inhibitor lane labels (`Barracks_T1_L1` → Top, `C` → Mid, `R` → Bot).
   - Objective spawn timings (editable in Settings).
   - Post-game summary after a full 10-player game, and the live view resetting when the game ends.
-  - The League Buddy item set showing in the in-game shop (written on lock-in).
+  - The League Bro item set showing in the in-game shop (written on lock-in).
   - Overlay padlock (hover-to-click while locked) and dragging.
 - Known gap: blind pick with no assigned role has no OP.GG position. The UI shows an error and runes fall back to the client.
 

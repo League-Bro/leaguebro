@@ -1,5 +1,5 @@
 //! Puts the recommended build into the in-game shop as a League client item
-//! set (`/lol-item-sets/v1/item-sets/{summonerId}/sets`). League Buddy owns
+//! set (`/lol-item-sets/v1/item-sets/{summonerId}/sets`). League Bro owns
 //! one set, replaced on each lock-in; the user's own sets are left alone.
 
 use crate::lcu::Lcu;
@@ -7,7 +7,7 @@ use crate::opgg::{ItemSet, Recommendation};
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
 
-const TITLE_PREFIX: &str = "League Buddy:";
+const TITLE_PREFIX: &str = "League Bro:";
 
 fn block(label: &str, set: &ItemSet) -> Option<Value> {
     let mut items: Vec<(i64, u32)> = Vec::new();
@@ -72,7 +72,7 @@ pub fn build_set(rec: &Recommendation, champion_name: &str, role_label: &str, ma
     }))
 }
 
-/// Replaces League Buddy's set in the client's item-set list, keeping every other set.
+/// Replaces League Bro's set in the client's item-set list, keeping every other set.
 pub fn merge(mut existing: Value, set: Value, now_ms: u64) -> Value {
     let mut sets: Vec<Value> = existing
         .get("itemSets")
@@ -131,7 +131,7 @@ mod tests {
     #[test]
     fn blocks_in_shop_order() {
         let s = build_set(&rec(), "Ahri", "Mid", 11, "u").unwrap();
-        assert_eq!(s["title"], "League Buddy: Ahri Mid");
+        assert_eq!(s["title"], "League Bro: Ahri Mid");
         assert_eq!(s["map"], "SR");
         assert_eq!(s["associatedChampions"], json!([103]));
         let blocks = s["blocks"].as_array().unwrap();
@@ -151,17 +151,17 @@ mod tests {
     fn merge_keeps_your_sets_and_replaces_ours() {
         let existing = json!({ "accountId": 7, "timestamp": 1, "itemSets": [
             { "title": "My Ahri set" },
-            { "title": "League Buddy: Zed Mid" },
+            { "title": "League Bro: Zed Mid" },
         ]});
-        let out = merge(existing, json!({ "title": "League Buddy: Ahri Mid" }), 99);
+        let out = merge(existing, json!({ "title": "League Bro: Ahri Mid" }), 99);
         let titles: Vec<&str> = out["itemSets"].as_array().unwrap().iter().map(|s| s["title"].as_str().unwrap()).collect();
-        assert_eq!(titles, ["League Buddy: Ahri Mid", "My Ahri set"]);
+        assert_eq!(titles, ["League Bro: Ahri Mid", "My Ahri set"]);
         assert_eq!((out["accountId"].as_i64(), out["timestamp"].as_u64()), (Some(7), Some(99)));
     }
 
     #[test]
     fn merge_into_empty_client() {
-        let out = merge(json!({ "accountId": 0, "itemSets": [], "timestamp": 0 }), json!({ "title": "League Buddy: Ahri" }), 5);
+        let out = merge(json!({ "accountId": 0, "itemSets": [], "timestamp": 0 }), json!({ "title": "League Bro: Ahri" }), 5);
         assert_eq!(out["itemSets"].as_array().unwrap().len(), 1);
     }
 }

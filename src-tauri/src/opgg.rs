@@ -502,7 +502,7 @@ impl OpGg {
     pub fn new(version: &str, cache_dir: Option<PathBuf>) -> OpGg {
         OpGg {
             http: reqwest::Client::builder()
-                .user_agent(format!("LeagueBro/{version} (+https://github.com/doliaro/leaguebuddy)"))
+                .user_agent(format!("LeagueBro/{version} (+https://github.com/doliaro/leaguebro)"))
                 .timeout(Duration::from_secs(12))
                 .build()
                 .expect("http client"),
