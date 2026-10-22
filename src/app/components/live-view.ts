@@ -5,6 +5,7 @@ import { PlayerCard } from './player-card';
 import { RecCard } from './rec-card';
 import { PostGameView } from './post-game';
 import { championIcon, clock, positionLabel } from '../core/assets';
+import { ImportEvent } from '../core/models';
 
 @Component({
   selector: 'rl-live',
@@ -125,6 +126,37 @@ import { championIcon, clock, positionLabel } from '../core/assets';
         <h2>Game over</h2>
         <p class="muted">Getting your game summary from the League client…</p>
       </div>
+    } @else if (rift.swiftplay().length) {
+      <section class="card swift">
+        <div class="row">
+          <div class="grow stack">
+            <h2>Swiftplay</h2>
+            <span class="muted">{{ swiftAutoText() }}</span>
+          </div>
+          <button class="primary" [disabled]="busy() || !swiftHasChamp()" (click)="importSwiftplay()">Import runes</button>
+        </div>
+        @if (swiftError(); as err) {
+          <div class="import bad">{{ err }}</div>
+        }
+        <div class="stack tight slots">
+          @for (s of rift.swiftplay(); track $index) {
+            <div class="slot row">
+              @if (s.championId > 0) {
+                <img class="champ-icon md" [src]="icon(s.championId)" alt="" />
+              } @else {
+                <div class="champ-icon md"></div>
+              }
+              <div class="stack grow">
+                <b>{{ rift.champName(s.championId) || 'No champion yet' }}</b>
+                <span class="muted">{{ pos(s.position) || 'Any role' }}</span>
+              </div>
+              @if (slotImport(s.championId); as li) {
+                <span class="import" [class.bad]="!li.ok">{{ li.message }}</span>
+              }
+            </div>
+          }
+        </div>
+      </section>
     } @else {
       <div class="empty card">
         <h2>{{ rift.status().summoner?.name || 'Connected' }}</h2>
@@ -150,6 +182,12 @@ import { championIcon, clock, positionLabel } from '../core/assets';
     .section.ally { color: var(--ally); }
     .section.enemy { color: var(--enemy); }
     .tight { gap: 6px; }
+    .swift { padding: 24px; }
+    .swift h2 { font-size: 22px; }
+    .swift .row { align-items: center; gap: 14px; }
+    .slots { margin-top: 18px; }
+    .slot { padding: 10px 12px; border-radius: 12px; background: var(--bg-sunken); }
+    .slot .import { text-align: right; max-width: 50%; }
     .picks { align-items: flex-start; gap: 48px; }
     .banned { filter: grayscale(1) brightness(0.6); }
     .ingame { gap: 22px; flex-wrap: wrap; }
@@ -181,6 +219,23 @@ export class LiveView {
     const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0];
     return `${list.charAt(0).toUpperCase()}${list.slice(1)} are set automatically when you lock in.`;
   });
+  /** Results of the Swiftplay button, by champion (cleared after a few seconds). */
+  protected readonly swiftResults = signal<Record<number, ImportEvent>>({});
+  protected readonly swiftError = signal<string | null>(null);
+  protected readonly swiftHasChamp = computed(() => this.rift.swiftplay().some((s) => s.championId > 0));
+  protected readonly swiftAutoText = computed(() => {
+    const c = this.rift.config();
+    if (!c?.autoImportRunes) return 'Auto-import is off. Pick your champions here, then import their runes.';
+    const spells = c.recSource === 'opgg' && c.setSummonerSpells;
+    return (spells ? 'Runes and summoner spells are' : 'Runes are') + ' set automatically when you pick a champion here.';
+  });
+  protected slotImport(championId: number): ImportEvent | null {
+    if (!championId) return null;
+    const manual = this.swiftResults()[championId];
+    if (manual) return manual;
+    const li = this.rift.lastImport();
+    return li && li.championId === championId ? li : null;
+  }
   protected readonly visiblePostGame = computed(() => {
     const pg = this.rift.postGame();
     return pg && pg.gameId !== this.rift.closedPostGame() ? pg : null;
@@ -204,6 +259,23 @@ export class LiveView {
   protected pos = positionLabel;
   protected time = clock;
   protected abs = Math.abs;
+
+  async importSwiftplay(): Promise<void> {
+    this.busy.set(true);
+    this.swiftError.set(null);
+    try {
+      const events = await this.rift.importSwiftplayNow();
+      this.swiftResults.set(Object.fromEntries(events.map((e) => [e.championId, e])));
+    } catch (e) {
+      this.swiftError.set(String(e));
+    } finally {
+      this.busy.set(false);
+      setTimeout(() => {
+        this.swiftResults.set({});
+        this.swiftError.set(null);
+      }, 8000);
+    }
+  }
 
   async importNow(): Promise<void> {
     this.busy.set(true);

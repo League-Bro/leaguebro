@@ -20,11 +20,12 @@ import {
   Recommendation,
   Snapshot,
   StaticData,
+  SwiftplaySlot,
   Status,
   TierList,
   TierSource,
 } from './models';
-import { championSplash } from './assets';
+import { championSplash, positionLabel } from './assets';
 import {
   demoCacheInfo,
   demoChampSelect,
@@ -36,6 +37,7 @@ import {
   demoRec,
   demoSnapshot,
   demoStatic,
+  demoSwiftplay,
   demoTierList,
 } from './demo';
 
@@ -50,6 +52,8 @@ export class RiftService {
   readonly loading = signal<LoadingView | null>(null);
   readonly profiles = signal<Record<string, Profile>>({});
   readonly lastImport = signal<ImportEvent | null>(null);
+  /** Your Swiftplay lobby slots (empty outside a Swiftplay lobby). */
+  readonly swiftplay = signal<SwiftplaySlot[]>([]);
   readonly overlay = signal<OverlayState | null>(null);
   readonly rec = signal<RecState | null>(null);
   readonly postGame = signal<PostGame | null>(null);
@@ -96,6 +100,14 @@ export class RiftService {
         snap.overlay = null;
         snap.champSelect = demoChampSelect();
       }
+      if (new URLSearchParams(location.search).get('scene') === 'swiftplay') {
+        snap.status.phase = 'Lobby';
+        snap.loading = null;
+        snap.overlay = null;
+        snap.rec = null;
+        snap.lastImport = null;
+        snap.swiftplay = demoSwiftplay();
+      }
       if (new URLSearchParams(location.search).get('scene') === 'postgame') {
         snap.status.phase = 'EndOfGame';
         snap.loading = null;
@@ -115,6 +127,7 @@ export class RiftService {
       listen<LoadingView | null>('loading', (e) => this.loading.set(e.payload)),
       listen<Profile>('scout', (e) => this.profiles.update((p) => ({ ...p, [e.payload.puuid]: e.payload }))),
       listen<ImportEvent>('rune-import', (e) => this.lastImport.set(e.payload)),
+      listen<SwiftplaySlot[]>('swiftplay', (e) => this.swiftplay.set(e.payload)),
       listen<OverlayState | null>('overlay', (e) => this.overlay.set(e.payload)),
       listen<RecState | null>('recommendation', (e) => this.rec.set(e.payload)),
       listen<PostGame | null>('post-game', (e) => this.postGame.set(e.payload)),
@@ -133,6 +146,7 @@ export class RiftService {
     this.champSelect.set(s.champSelect);
     this.loading.set(s.loading);
     this.lastImport.set(s.lastImport);
+    this.swiftplay.set(s.swiftplay);
     this.overlay.set(s.overlay);
     this.rec.set(s.rec);
     this.postGame.set(s.postGame);
@@ -175,6 +189,20 @@ export class RiftService {
   importRunesNow(): Promise<string> {
     if (this.demo) return Promise.resolve('Set "League Bro: Ahri Mid" (OP.GG) · Flash + Ignite · build added to the shop');
     return invoke<string>('import_runes_now');
+  }
+
+  /** Imports runes (and spells, if on) into every Swiftplay lobby slot with a champion. */
+  importSwiftplayNow(): Promise<ImportEvent[]> {
+    if (this.demo) {
+      return Promise.resolve(
+        this.swiftplay().filter((s) => s.championId).map((s) => ({
+          ok: true,
+          championId: s.championId,
+          message: 'Swiftplay ' + positionLabel(s.position) + ' runes (OP.GG) · Flash + Ignite',
+        })),
+      );
+    }
+    return invoke<ImportEvent[]>('import_swiftplay_now');
   }
 
   /** OP.GG's recommendation for any champion (Champions tab). Position: top|jungle|middle|bottom|utility. */

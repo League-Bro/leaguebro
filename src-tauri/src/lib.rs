@@ -54,6 +54,11 @@ async fn import_runes_now(app: AppHandle) -> Result<String, String> {
     engine::import_for(&app, champion, &position).await
 }
 
+#[tauri::command]
+async fn import_swiftplay_now(app: AppHandle) -> Result<Vec<engine::ImportEvent>, String> {
+    engine::import_swiftplay_now(&app).await
+}
+
 /// Your rank, recent matches and insights (the Profile page).
 #[tauri::command]
 async fn get_my_profile(state: State<'_, AppState>) -> Result<profile::MyProfile, String> {
@@ -275,6 +280,7 @@ pub fn run() {
             get_config,
             save_config,
             import_runes_now,
+            import_swiftplay_now,
             lookup_rec,
             get_my_profile,
             get_match,

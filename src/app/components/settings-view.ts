@@ -122,7 +122,7 @@ type BoolKey =
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.autoImportRunes" (change)="setBool('autoImportRunes', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Import runes in champ select</b><span>Creates one page called "League Bro: …" and replaces it each game. Your own page for a champion (Champions tab) comes first.</span></span>
+            <span class="label"><b>Import runes</b><span>In champ select, creates one page called "League Bro: …" and replaces it each game. In a Swiftplay lobby, sets the runes of each champion you pick there.</span></span>
           </label>
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.importOnHover" (change)="setBool('importOnHover', $any($event.target).checked)" />

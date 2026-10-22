@@ -174,6 +174,13 @@ export interface Profile {
   error: string | null;
 }
 
+/** A Swiftplay lobby slot: the champion picked for one of your two positions. */
+export interface SwiftplaySlot {
+  championId: number;
+  /** Lowercase client position, e.g. "utility". */
+  position: string;
+}
+
 export interface ImportEvent {
   ok: boolean;
   championId: number;
@@ -285,6 +292,7 @@ export interface Snapshot {
   overlay: OverlayState | null;
   rec: RecState | null;
   postGame: PostGame | null;
+  swiftplay: SwiftplaySlot[];
 }
 
 export interface PostPlayer {

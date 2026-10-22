@@ -130,6 +130,38 @@ pub struct ImportResult {
     pub source: &'static str,
 }
 
+/// OP.GG's page (with enough games), else the client's recommended page.
+pub async fn choose_page(
+    lcu: &Lcu,
+    champion_id: i64,
+    position: &str,
+    map_id: i64,
+    rec: Option<&RuneRec>,
+) -> Result<(RunePage, &'static str)> {
+    let from_rec = rec.filter(|r| r.games >= MIN_GAMES).map(|r| RunePage {
+        name: String::new(),
+        primary_style_id: r.primary_style_id,
+        sub_style_id: r.sub_style_id,
+        selected_perk_ids: r.perk_ids.clone(),
+    });
+    Ok(match from_rec {
+        Some(p) => (p, "OP.GG"),
+        None => (recommended_page(lcu, champion_id, position, map_id).await?, "client recommendation"),
+    })
+}
+
+/// A Swiftplay lobby slot's `perks` value: JSON inside a string, e.g.
+/// `{"perkIds":[...],"perkStyle":8100,"perkSubStyle":8200}` (checked against
+/// the client in October 2026).
+pub fn slot_perks(page: &RunePage) -> String {
+    json!({
+        "perkIds": page.selected_perk_ids,
+        "perkStyle": page.primary_style_id,
+        "perkSubStyle": page.sub_style_id,
+    })
+    .to_string()
+}
+
 /// Creates (or replaces) the League Bro rune page and makes it current.
 pub async fn import(
     lcu: &Lcu,
@@ -140,16 +172,7 @@ pub async fn import(
     map_id: i64,
     rec: Option<&RuneRec>,
 ) -> Result<ImportResult> {
-    let from_rec = rec.filter(|r| r.games >= MIN_GAMES).map(|r| RunePage {
-        name: String::new(),
-        primary_style_id: r.primary_style_id,
-        sub_style_id: r.sub_style_id,
-        selected_perk_ids: r.perk_ids.clone(),
-    });
-    let (mut page, source) = match from_rec {
-        Some(p) => (p, "OP.GG"),
-        None => (recommended_page(lcu, champion_id, position, map_id).await?, "client recommendation"),
-    };
+    let (mut page, source) = choose_page(lcu, champion_id, position, map_id, rec).await?;
     let label = position_label(position);
     page.name = page_name(champion_name, label);
     let body = json!({
@@ -241,6 +264,21 @@ mod tests {
         assert!(page_name("Twisted Fate Extended", "Support").chars().count() <= 25);
         assert!(is_ours("Riftlight: Ahri Mid") && is_ours("LB: Jinx Bot") && !is_ours("My Ahri page"));
         assert!(is_ours("League Bro: Ahri") && !is_ours("League Brownie"));
+    }
+
+    #[test]
+    fn swiftplay_slot_perks() {
+        let page = RunePage {
+            name: String::new(),
+            primary_style_id: 8100,
+            sub_style_id: 8200,
+            selected_perk_ids: vec![9923, 8126, 8140, 8106, 8224, 8234, 5008, 5010, 5001],
+        };
+        let v: Value = serde_json::from_str(&slot_perks(&page)).unwrap();
+        assert_eq!(
+            v,
+            json!({"perkIds": [9923, 8126, 8140, 8106, 8224, 8234, 5008, 5010, 5001], "perkStyle": 8100, "perkSubStyle": 8200})
+        );
     }
 
     #[test]

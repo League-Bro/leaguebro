@@ -1,6 +1,7 @@
 //! Puts the recommended build into the in-game shop as a League client item
 //! set (`/lol-item-sets/v1/item-sets/{summonerId}/sets`). League Bro owns
-//! one set, replaced on each lock-in; the user's own sets are left alone.
+//! one set, replaced on each lock-in (in Swiftplay, one per lobby slot); the
+//! user's own sets are left alone.
 
 use crate::lcu::Lcu;
 use crate::opgg::{ItemSet, Recommendation};
@@ -72,8 +73,8 @@ pub fn build_set(rec: &Recommendation, champion_name: &str, role_label: &str, ma
     }))
 }
 
-/// Replaces League Bro's set in the client's item-set list, keeping every other set.
-pub fn merge(mut existing: Value, set: Value, now_ms: u64) -> Value {
+/// Replaces League Bro's sets in the client's item-set list, keeping every other set.
+pub fn merge(mut existing: Value, ours: Vec<Value>, now_ms: u64) -> Value {
     let mut sets: Vec<Value> = existing
         .get("itemSets")
         .and_then(Value::as_array)
@@ -82,7 +83,7 @@ pub fn merge(mut existing: Value, set: Value, now_ms: u64) -> Value {
         .into_iter()
         .filter(|s| !s.get("title").and_then(Value::as_str).unwrap_or("").starts_with(TITLE_PREFIX))
         .collect();
-    sets.insert(0, set);
+    sets.splice(0..0, ours);
     if !existing.is_object() {
         existing = json!({ "accountId": 0 });
     }
@@ -91,22 +92,35 @@ pub fn merge(mut existing: Value, set: Value, now_ms: u64) -> Value {
     existing
 }
 
-fn uid(now_ms: u64) -> String {
+fn uid(now_ms: u64, n: usize) -> String {
     // The client only needs a unique id; shaped like a UUID to match its own.
-    format!("1eadb0d1-0000-4000-8000-{:012x}", now_ms & 0xffff_ffff_ffff)
+    format!("1eadb0d1-0000-4000-{:04x}-{:012x}", 0x8000 + n, now_ms & 0xffff_ffff_ffff)
 }
 
 /// Writes the set to the client. Returns the set's title.
 pub async fn apply(lcu: &Lcu, rec: &Recommendation, champion_name: &str, role_label: &str, map_id: i64) -> Result<Option<String>> {
+    Ok(apply_many(lcu, &[(rec, champion_name, role_label)], map_id).await?.into_iter().next())
+}
+
+/// Writes one set per (recommendation, champion name, role label), replacing
+/// League Bro's earlier sets. Returns the titles written.
+pub async fn apply_many(lcu: &Lcu, recs: &[(&Recommendation, &str, &str)], map_id: i64) -> Result<Vec<String>> {
     let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
-    let Some(set) = build_set(rec, champion_name, role_label, map_id, &uid(now_ms)) else { return Ok(None) };
-    let title = set["title"].as_str().unwrap_or("").to_string();
+    let sets: Vec<Value> = recs
+        .iter()
+        .enumerate()
+        .filter_map(|(n, (rec, name, role))| build_set(rec, name, role, map_id, &uid(now_ms, n)))
+        .collect();
+    if sets.is_empty() {
+        return Ok(Vec::new());
+    }
+    let titles = sets.iter().map(|s| s["title"].as_str().unwrap_or("").to_string()).collect();
     let me = lcu.get_req("/lol-summoner/v1/current-summoner").await?;
     let summoner_id = me.get("summonerId").and_then(Value::as_i64).context("no summonerId")?;
     let path = format!("/lol-item-sets/v1/item-sets/{summoner_id}/sets");
     let existing = lcu.get(&path).await?.unwrap_or(Value::Null);
-    lcu.put(&path, &merge(existing, set, now_ms)).await?;
-    Ok(Some(title))
+    lcu.put(&path, &merge(existing, sets, now_ms)).await?;
+    Ok(titles)
 }
 
 #[cfg(test)]
@@ -153,7 +167,7 @@ mod tests {
             { "title": "My Ahri set" },
             { "title": "League Bro: Zed Mid" },
         ]});
-        let out = merge(existing, json!({ "title": "League Bro: Ahri Mid" }), 99);
+        let out = merge(existing, vec![json!({ "title": "League Bro: Ahri Mid" })], 99);
         let titles: Vec<&str> = out["itemSets"].as_array().unwrap().iter().map(|s| s["title"].as_str().unwrap()).collect();
         assert_eq!(titles, ["League Bro: Ahri Mid", "My Ahri set"]);
         assert_eq!((out["accountId"].as_i64(), out["timestamp"].as_u64()), (Some(7), Some(99)));
@@ -161,7 +175,7 @@ mod tests {
 
     #[test]
     fn merge_into_empty_client() {
-        let out = merge(json!({ "accountId": 0, "itemSets": [], "timestamp": 0 }), json!({ "title": "League Bro: Ahri" }), 5);
+        let out = merge(json!({ "accountId": 0, "itemSets": [], "timestamp": 0 }), vec![json!({ "title": "League Bro: Ahri" })], 5);
         assert_eq!(out["itemSets"].as_array().unwrap().len(), 1);
     }
 }

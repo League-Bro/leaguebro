@@ -19,6 +19,7 @@ import {
   RecState,
   Snapshot,
   StaticData,
+  SwiftplaySlot,
   TierEntry,
   TierList,
   TierSource,
@@ -114,7 +115,16 @@ export function demoSnapshot(): Snapshot {
     },
     rec: demoRec(),
     postGame: null,
+    swiftplay: [],
   };
+}
+
+/** A Swiftplay lobby with a champion picked for one of the two positions. */
+export function demoSwiftplay(): SwiftplaySlot[] {
+  return [
+    { championId: 103, position: 'middle' },
+    { championId: 0, position: 'jungle' },
+  ];
 }
 
 export function demoProfile(): MyProfile {

@@ -143,6 +143,15 @@ pub struct ImportEvent {
     pub message: String,
 }
 
+/// A Swiftplay lobby slot: the champion picked for one of your two positions.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SwiftplaySlot {
+    pub champion_id: i64,
+    /// Lowercase client position, e.g. "utility".
+    pub position: String,
+}
+
 /// The current champion's recommendation, as shown in the UI.
 #[derive(Debug, Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -170,6 +179,8 @@ pub struct Shared {
     pub overlay: Option<OverlayState>,
     pub overlay_preview: bool,
     pub post_game: Option<PostGame>,
+    /// Slots of the Swiftplay lobby you're in (empty otherwise).
+    pub swiftplay: Vec<SwiftplaySlot>,
 }
 
 pub struct AppState {
@@ -210,6 +221,7 @@ pub struct Snapshot {
     pub overlay: Option<OverlayState>,
     pub rec: Option<RecState>,
     pub post_game: Option<PostGame>,
+    pub swiftplay: Vec<SwiftplaySlot>,
 }
 
 // ---------- parsing helpers ----------
@@ -545,6 +557,8 @@ struct Engine {
     last_connect_try: Option<Instant>,
     last_import_key: Option<(i64, String)>,
     last_rec_key: Option<(i64, String)>,
+    /// Swiftplay lobby slots (champion, position) already imported.
+    last_slot_keys: Vec<(i64, String)>,
     requested: HashSet<String>,
     loading_game_id: Option<i64>,
     overlay_shown: bool,
@@ -624,6 +638,7 @@ impl Engine {
             sh.lcu = None;
             sh.champ_select = None;
         }
+        self.set_swiftplay(Vec::new()).await;
         self.hide_overlay().await;
         self.set_status(false, "", None, "Waiting for the League client").await;
     }
@@ -649,6 +664,7 @@ impl Engine {
         }
         match phase.as_str() {
             "ChampSelect" => self.champ_select(&lcu).await,
+            "Lobby" => self.lobby(&lcu).await,
             "GameStart" | "InProgress" | "Reconnect" => {
                 self.loading(&lcu).await;
                 if phase != "GameStart" {
@@ -745,6 +761,9 @@ impl Engine {
                 sh.queue_id = queue_id;
             }
         }
+        if prev == "Lobby" && phase != "Lobby" {
+            self.set_swiftplay(Vec::new()).await;
+        }
         if prev == "ChampSelect" && phase != "ChampSelect" {
             let state = self.state();
             let mut sh = state.shared.lock().await;
@@ -822,6 +841,45 @@ impl Engine {
                     publish_import(&app, champ, result).await;
                 }
             });
+        }
+    }
+
+    /// Swiftplay has no champ select: champions, runes and spells are picked
+    /// per position slot in the lobby, so the import goes into those slots.
+    /// Other lobbies have no slots.
+    async fn lobby(&mut self, lcu: &Lcu) {
+        let Ok(Some(slots)) = lcu.get(PLAYER_SLOTS).await else { return };
+        let keys = slot_keys(&slots);
+        self.set_swiftplay(keys.iter().map(|(c, p)| SwiftplaySlot { champion_id: *c, position: p.clone() }).collect())
+            .await;
+        if keys == self.last_slot_keys || !self.state().config().auto_import_runes {
+            return;
+        }
+        // Only slots that changed, so runes you edit by hand afterwards stay.
+        let changed: Vec<(usize, i64, String)> = keys
+            .iter()
+            .enumerate()
+            .filter(|(i, k)| k.0 != 0 && self.last_slot_keys.get(*i) != Some(*k))
+            .map(|(i, k)| (i, k.0, k.1.clone()))
+            .collect();
+        self.last_slot_keys = keys;
+        if changed.is_empty() {
+            return;
+        }
+        let app = self.app.clone();
+        let lcu = lcu.clone();
+        tauri::async_runtime::spawn(async move {
+            import_slots(&app, &lcu, changed).await;
+        });
+    }
+
+    async fn set_swiftplay(&self, slots: Vec<SwiftplaySlot>) {
+        let state = self.state();
+        let mut sh = state.shared.lock().await;
+        if sh.swiftplay != slots {
+            sh.swiftplay = slots.clone();
+            drop(sh);
+            let _ = self.app.emit("swiftplay", slots);
         }
     }
 
@@ -984,13 +1042,182 @@ pub async fn import_for(app: &AppHandle, champion_id: i64, position: &str) -> Re
     Ok(format!("{result}{spells}{items}"))
 }
 
-async fn publish_import(app: &AppHandle, champion_id: i64, result: Result<String, String>) {
+async fn publish_import(app: &AppHandle, champion_id: i64, result: Result<String, String>) -> ImportEvent {
     let ev = match result {
         Ok(m) => ImportEvent { ok: true, champion_id, message: m },
         Err(m) => ImportEvent { ok: false, champion_id, message: m },
     };
     app.state::<AppState>().shared.lock().await.last_import = Some(ev.clone());
-    let _ = app.emit("rune-import", ev);
+    let _ = app.emit("rune-import", ev.clone());
+    ev
+}
+
+const PLAYER_SLOTS: &str = "/lol-lobby/v1/lobby/members/localMember/player-slots";
+
+/// (champion, position) per Swiftplay lobby slot, e.g. (267, "utility").
+fn slot_keys(slots: &Value) -> Vec<(i64, String)> {
+    slots
+        .as_array()
+        .map(|a| a.iter().map(|s| (i(s, "championId"), st(s, "positionPreference").to_ascii_lowercase())).collect())
+        .unwrap_or_default()
+}
+
+/// Sets runes (and spells, if that's on) in the given Swiftplay lobby slots.
+/// Swiftplay is on Summoner's Rift, so OP.GG's ranked stats apply.
+pub async fn import_slots(app: &AppHandle, lcu: &Lcu, wanted: Vec<(usize, i64, String)>) -> Vec<ImportEvent> {
+    static IMPORTING: Mutex<()> = Mutex::const_new(());
+    let _importing = IMPORTING.lock().await;
+    let state = app.state::<AppState>();
+    let cfg = state.config();
+    let mut events = Vec::new();
+    let mut picks = Vec::new();
+    for (slot, champ, pos) in wanted {
+        // OP.GG has no League Classic stats.
+        let alias = {
+            let sh = state.shared.lock().await;
+            let c = sh.statics.as_ref().and_then(|s| s.champions.iter().find(|c| c.id == champ && !c.classic));
+            c.map(|c| c.alias.clone())
+        };
+        let rec = match alias.filter(|_| cfg.rec_source == "opgg") {
+            Some(alias) => state.opgg.recommend(champ, &alias, &pos, "ranked", Some(lcu)).await.ok(),
+            None => None,
+        };
+        match runes::choose_page(lcu, champ, &pos, 11, rec.as_ref().and_then(|r| r.runes.as_ref())).await {
+            Ok((page, source)) => picks.push((slot, champ, pos, page, source, rec)),
+            Err(e) => events.push(publish_import(app, champ, Err(format!("{e:#}"))).await),
+        }
+    }
+    if picks.is_empty() {
+        return events;
+    }
+    // Read again: the slots may have changed during the OP.GG lookups, and the
+    // PUT replaces all of them.
+    let Ok(Some(mut slots)) = lcu.get(PLAYER_SLOTS).await else { return events };
+    let spell_names: HashMap<i64, String> = state
+        .shared
+        .lock()
+        .await
+        .statics
+        .as_ref()
+        .map(|s| s.spells.iter().map(|p| (p.id, p.name.clone())).collect())
+        .unwrap_or_default();
+    let mut done = Vec::new();
+    for (slot, champ, pos, page, source, rec) in picks {
+        let Some(s) = slots.get_mut(slot) else { continue };
+        if (i(s, "championId"), st(s, "positionPreference").to_ascii_lowercase()) != (champ, pos.clone()) {
+            continue; // changed meanwhile; the next tick picks it up
+        }
+        let perks = runes::slot_perks(&page);
+        s["perks"] = Value::String(perks.clone());
+        let mut msg = format!("Swiftplay {} runes ({source})", runes::position_label(&pos));
+        let spells = rec.as_ref().filter(|r| cfg.set_summoner_spells && r.games >= opgg::MIN_GAMES && r.spells.len() == 2);
+        if let Some(r) = spells {
+            let (s1, s2) = arrange_spells(&r.spells, (i(s, "spell1"), i(s, "spell2")));
+            s["spell1"] = s1.into();
+            s["spell2"] = s2.into();
+            let label = |id: i64| spell_names.get(&id).cloned().unwrap_or_else(|| format!("spell {id}"));
+            msg.push_str(&format!(" · {} + {}", label(s1), label(s2)));
+        }
+        done.push((slot, champ, pos, perks, msg, rec));
+    }
+    if done.is_empty() {
+        return events;
+    }
+    // The PUT sets the spells. It doesn't keep the runes: the perks plugin
+    // keeps its own Swiftplay runes per champion and position and puts them
+    // back, so the runes go through the per-slot endpoint below.
+    if let Err(e) = lcu.put(PLAYER_SLOTS, &slots).await {
+        for (_, champ, ..) in done {
+            let err = format!("couldn't update the Swiftplay slots: {e:#}");
+            events.push(publish_import(app, champ, Err(err)).await);
+        }
+        return events;
+    }
+    let mut failed: HashMap<usize, String> = HashMap::new();
+    for (slot, _, _, perks, ..) in &done {
+        let path = format!("{PLAYER_SLOTS}/{slot}/{}", path_encode(perks));
+        if let Err(e) = lcu.post(&path, &Value::Null).await {
+            failed.insert(*slot, format!("{e:#}"));
+        }
+    }
+    let items = if cfg.set_item_sets { slot_item_sets(app, lcu, &done).await } else { String::new() };
+    // Check that the client kept them.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let after = lcu.get(PLAYER_SLOTS).await.ok().flatten().unwrap_or(Value::Null);
+    for (slot, champ, _, perks, msg, _) in done {
+        let kept = after.get(slot).is_some_and(|s| same_perks(st(s, "perks"), &perks));
+        let r = match failed.remove(&slot) {
+            _ if kept => Ok(format!("{msg}{items}")),
+            Some(e) => Err(format!("couldn't set Swiftplay runes: {e}")),
+            None => Err("the League client kept its own runes for this slot".to_string()),
+        };
+        events.push(publish_import(app, champ, r).await);
+    }
+    events
+}
+
+/// Writes the shop builds for the imported Swiftplay slots (one set per
+/// champion) and returns the note for the import message.
+async fn slot_item_sets(
+    app: &AppHandle,
+    lcu: &Lcu,
+    done: &[(usize, i64, String, String, String, Option<Recommendation>)],
+) -> String {
+    let names: HashMap<i64, String> = {
+        let state = app.state::<AppState>();
+        let sh = state.shared.lock().await;
+        sh.statics.as_ref().map(|s| s.champions.iter().map(|c| (c.id, c.name.clone())).collect()).unwrap_or_default()
+    };
+    let recs: Vec<(&Recommendation, &str, &str)> = done
+        .iter()
+        .filter_map(|(_, champ, pos, _, _, rec)| {
+            let r = rec.as_ref().filter(|r| r.games >= opgg::MIN_GAMES)?;
+            Some((r, names.get(champ).map(String::as_str).unwrap_or(""), runes::position_label(pos)))
+        })
+        .collect();
+    if recs.is_empty() {
+        return String::new();
+    }
+    match itemsets::apply_many(lcu, &recs, 11).await {
+        Ok(t) if !t.is_empty() => " · build added to the shop".to_string(),
+        Ok(_) => String::new(),
+        Err(e) => format!(" · couldn't add the build to the shop: {e:#}"),
+    }
+}
+
+/// Percent-encodes a value for a URL path segment (the slot runes endpoint
+/// takes the runes JSON in the path).
+fn path_encode(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+/// Whether two slot `perks` strings are the same runes (key order and spacing aside).
+fn same_perks(a: &str, b: &str) -> bool {
+    match (serde_json::from_str::<Value>(a), serde_json::from_str::<Value>(b)) {
+        (Ok(a), Ok(b)) => !["perkIds", "perkStyle", "perkSubStyle"].iter().any(|k| a.get(k) != b.get(k)),
+        _ => false,
+    }
+}
+
+/// The Swiftplay "Import runes" button: imports every slot with a champion.
+pub async fn import_swiftplay_now(app: &AppHandle) -> Result<Vec<ImportEvent>, String> {
+    let lcu = app.state::<AppState>().shared.lock().await.lcu.clone().ok_or("Not connected to the League client")?;
+    let slots = lcu.get(PLAYER_SLOTS).await.map_err(|e| format!("{e:#}"))?.unwrap_or(Value::Null);
+    let wanted: Vec<_> = slot_keys(&slots)
+        .into_iter()
+        .enumerate()
+        .filter(|(_, k)| k.0 != 0)
+        .map(|(i, (c, p))| (i, c, p))
+        .collect();
+    if wanted.is_empty() {
+        return Err("Pick a champion for your Swiftplay positions first".into());
+    }
+    Ok(import_slots(app, &lcu, wanted).await)
 }
 
 /// Puts each recommended spell where you already have it (so Flash stays on
@@ -1113,6 +1340,7 @@ pub async fn snapshot(app: &AppHandle) -> Snapshot {
         overlay: sh.overlay.clone(),
         rec: sh.rec.clone(),
         post_game: sh.post_game.clone(),
+        swiftplay: sh.swiftplay.clone(),
     }
 }
 
@@ -1125,6 +1353,7 @@ pub async fn run(app: AppHandle) {
         last_connect_try: None,
         last_import_key: None,
         last_rec_key: None,
+        last_slot_keys: Vec::new(),
         requested: HashSet::new(),
         loading_game_id: None,
         overlay_shown: false,
@@ -1148,6 +1377,25 @@ pub async fn run(app: AppHandle) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn swiftplay_perks_helpers() {
+        assert_eq!(path_encode(r#"{"perkIds":[1, 2]}"#), "%7B%22perkIds%22%3A%5B1%2C%202%5D%7D");
+        let a = r#"{"perkIds":[8214,8226],"perkStyle":8200,"perkSubStyle":8400}"#;
+        assert!(same_perks(a, r#"{"perkSubStyle":8400, "perkStyle":8200, "perkIds":[8214,8226]}"#));
+        assert!(!same_perks(a, r#"{"perkIds":[8112,8226],"perkStyle":8200,"perkSubStyle":8400}"#));
+        assert!(!same_perks(a, ""));
+    }
+
+    #[test]
+    fn swiftplay_slot_keys() {
+        let slots = json!([
+            {"championId": 267, "positionPreference": "UTILITY", "perks": "{}", "spell1": 4, "spell2": 14},
+            {"championId": 0, "positionPreference": "JUNGLE", "perks": "", "spell1": 4, "spell2": 11}
+        ]);
+        assert_eq!(slot_keys(&slots), vec![(267, "utility".to_string()), (0, "jungle".to_string())]);
+        assert!(slot_keys(&json!([])).is_empty());
+    }
 
     #[test]
     fn champ_select_hides_names_and_detects_lock() {
