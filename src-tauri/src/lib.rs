@@ -1,4 +1,5 @@
 mod config;
+mod cache;
 mod engine;
 mod lcu;
 mod opgg;
@@ -95,6 +96,44 @@ async fn get_patch(state: State<'_, AppState>, url: String) -> Result<patch::Pat
     state.patches.notes(&url).await.map_err(|e| format!("{e:#}"))
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CacheInfo {
+    patch_notes: cache::CacheUsage,
+    runes: cache::CacheUsage,
+}
+
+/// The caches Settings can clear; matches `CacheName` in models.ts.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum CacheName {
+    PatchNotes,
+    /// OP.GG recommendations.
+    Runes,
+}
+
+async fn cache_usage(state: &AppState) -> CacheInfo {
+    CacheInfo { patch_notes: state.patches.usage().await, runes: state.opgg.usage().await }
+}
+
+/// What's saved in each cache, for the Settings page. Async so the folder
+/// scan runs off the main thread (Tauri runs plain commands on it).
+#[tauri::command]
+async fn cache_info(state: State<'_, AppState>) -> Result<CacheInfo, String> {
+    Ok(cache_usage(&state).await)
+}
+
+/// Deletes one cache and returns what's left in both.
+#[tauri::command]
+async fn clear_cache(state: State<'_, AppState>, which: CacheName) -> Result<CacheInfo, String> {
+    match which {
+        CacheName::PatchNotes => state.patches.clear().await,
+        CacheName::Runes => state.opgg.clear().await,
+    }
+    .map_err(|e| format!("{e:#}"))?;
+    Ok(cache_usage(&state).await)
+}
+
 /// The overlay reports where its lock button is so it stays clickable while
 /// the rest of the overlay is click-through.
 #[tauri::command]
@@ -135,7 +174,10 @@ pub fn run() {
                 config: std::sync::RwLock::new(config),
                 config_path,
                 shared: Mutex::new(Shared::default()),
-                opgg: opgg::OpGg::new(env!("CARGO_PKG_VERSION")),
+                opgg: opgg::OpGg::new(
+                    env!("CARGO_PKG_VERSION"),
+                    app.path().app_cache_dir().ok().map(|d| d.join("opgg")),
+                ),
                 patches: patch::PatchNotesClient::new(
                     env!("CARGO_PKG_VERSION"),
                     app.path().app_cache_dir().ok().map(|d| d.join("patch-notes")),
@@ -169,6 +211,8 @@ pub fn run() {
             set_overlay_locked,
             list_patches,
             get_patch,
+            cache_info,
+            clear_cache,
             set_overlay_button
         ])
         .run(tauri::generate_context!())

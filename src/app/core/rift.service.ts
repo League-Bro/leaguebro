@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
+  CacheInfo,
+  CacheName,
   ChampSelectView,
   Config,
   ImportEvent,
@@ -18,7 +20,7 @@ import {
   StaticData,
   Status,
 } from './models';
-import { demoChampSelect, demoConfig, demoPatch, demoPatchList, demoPostGame, demoSnapshot, demoStatic } from './demo';
+import { demoCacheInfo, demoChampSelect, demoConfig, demoPatch, demoPatchList, demoPostGame, demoSnapshot, demoStatic } from './demo';
 
 export function inTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -161,6 +163,22 @@ export class RiftService {
   getPatch(url: string): Promise<PatchNotes> {
     if (this.demo) return Promise.resolve(demoPatch(url));
     return invoke<PatchNotes>('get_patch', { url });
+  }
+
+  private demoCache: CacheInfo = demoCacheInfo();
+
+  cacheInfo(): Promise<CacheInfo> {
+    if (this.demo) return Promise.resolve(structuredClone(this.demoCache));
+    return invoke<CacheInfo>('cache_info');
+  }
+
+  /** Deletes one cache and returns what's left in both. */
+  clearCache(which: CacheName): Promise<CacheInfo> {
+    if (this.demo) {
+      this.demoCache[which] = { files: 0, bytes: 0, inMemory: 0 };
+      return this.cacheInfo();
+    }
+    return invoke<CacheInfo>('clear_cache', { which });
   }
 
   private lastButtonRect = '';
