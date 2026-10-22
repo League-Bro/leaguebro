@@ -9,9 +9,13 @@
 //!   `tier` index into `LOLALYTICS_TIERS` (1 = S+ … 15 = D-), and the list
 //!   holds every champion played in the lane, so off-role picks are dropped
 //!   (`MIN_LANE_SHARE`, `MIN_PICK_RATE`).
-//! - **OP.GG**: the `lol_list_lane_meta_champions` tool on the MCP endpoint
-//!   `opgg.rs` already uses. The most visited site, tiers 1 (OP) to 5, rates
-//!   rounded to whole percents, no rank filter. One call returns all lanes.
+//! - **OP.GG**: `lol-api-champion.op.gg/api/global/champions/ranked`, the
+//!   JSON behind op.gg/lol/champions. The most visited site, current patch,
+//!   tiers OP (0, a lane's standout picks; not always present) then 1 to 5,
+//!   the same rank filters (default Emerald+). One call
+//!   returns every champion with a `positions` entry per lane it's ranked in,
+//!   so it fills all five lanes. (The MCP tool `lol_list_lane_meta_champions`
+//!   gives the same tiers but has no rank filter and rounds the rates.)
 //!
 //! U.GG was checked too (October 2026): its JSON has the stats but computes
 //! tiers in the page's own script, so they can't be matched.
@@ -23,23 +27,29 @@
 use anyhow::{bail, Context, Result};
 use crate::cache::now_secs;
 use crate::engine::is_league_classic;
-use crate::opgg::{parse_compact, OpGg};
+use crate::opgg::MIN_GAMES;
 use crate::patch::notes_releases_around;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
 use tokio::sync::Mutex;
 
 const LOLALYTICS: &str = "https://a1.lolalytics.com/mega/";
+const OPGG: &str = "https://lol-api-champion.op.gg/api/global/champions/ranked";
 /// Champion names when the League client isn't open.
 const CHAMPION_SUMMARY: &str =
     "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-summary.json";
 /// Lolalytics' tier labels by index, from the site's own script.
 const LOLALYTICS_TIERS: [&str; 16] =
     ["", "S+", "S", "S-", "A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D+", "D", "D-"];
-/// Rank filters Lolalytics accepts (checked October 2026).
-pub const RANKS: &[&str] = &["all", "gold_plus", "platinum_plus", "emerald_plus", "diamond_plus", "master_plus"];
+/// Rank filters both sites accept, with the same names (checked October
+/// 2026). Lolalytics also takes `d2_plus`, `grandmaster_plus` and `1trick`,
+/// which OP.GG rejects, so they're left out.
+pub const RANKS: &[&str] = &[
+    "all", "gold_plus", "platinum_plus", "emerald_plus", "diamond_plus", "master_plus",
+    "iron", "bronze", "silver", "gold", "platinum", "emerald", "diamond", "master", "grandmaster", "challenger",
+];
 /// Lolalytics lists every champion seen in the lane. Below these (percent of
 /// the champion's games in this lane, and of all games in the lane) it's an
 /// off-role pick, not part of the lane's tier list.
@@ -58,12 +68,11 @@ pub enum Source {
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TierEntry {
-    /// 0 when the name didn't match a known champion.
     pub champion_id: i64,
     pub name: String,
     /// The row it goes in: S, A, B, C or D.
     pub tier: String,
-    /// The source's own label: "S+" … "D-" (Lolalytics) or "1" … "5" (OP.GG).
+    /// The source's own label: "S+" … "D-" (Lolalytics) or "OP", "1" … "5" (OP.GG).
     pub label: String,
     /// 1 = best in the lane.
     pub rank: i64,
@@ -82,18 +91,16 @@ pub struct TierList {
     pub source: Source,
     /// top | jungle | middle | bottom | utility (the client's names).
     pub position: String,
-    /// The rank filter, e.g. "emerald_plus". None for OP.GG, which has none.
-    pub rank: Option<String>,
-    /// Games the source analysed for this list (Lolalytics only).
+    /// The rank filter, e.g. "emerald_plus".
+    pub rank: String,
+    /// The patch the stats are from, e.g. "16.21" (OP.GG only; Lolalytics
+    /// doesn't say, but defaults to the current patch too).
+    pub patch: Option<String>,
+    /// Games the source analysed for this list.
     pub games_analysed: Option<i64>,
     pub fetched_at: u64,
     /// Best first.
     pub entries: Vec<TierEntry>,
-}
-
-/// Lower-case letters and digits only, so "Nunu & Willump" and "NunuWillump" match.
-fn name_key(name: &str) -> String {
-    name.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
 }
 
 fn f(v: &Value, k: &str) -> f64 {
@@ -111,9 +118,26 @@ fn lolalytics_lane(position: &str) -> Option<&'static str> {
     }
 }
 
-/// The client's position name for each lane in OP.GG's `Positions`.
+/// OP.GG's position name for each of the client's lanes.
 const OPGG_LANES: [(&str, &str); 5] =
-    [("top", "top"), ("jungle", "jungle"), ("mid", "middle"), ("adc", "bottom"), ("support", "utility")];
+    [("TOP", "top"), ("JUNGLE", "jungle"), ("MID", "middle"), ("ADC", "bottom"), ("SUPPORT", "utility")];
+
+fn champion_name(names: &HashMap<i64, String>, id: i64) -> String {
+    names.get(&id).cloned().unwrap_or_else(|| format!("#{id}"))
+}
+
+/// Drops champions with too few games to say anything (in Challenger, or
+/// early in a patch, some have 3), sorts by the source's rank, and numbers
+/// what's left 1, 2, 3…; the source's ranks count the dropped champions
+/// too. `rank_change` stays as the source reported it.
+fn finish(mut entries: Vec<TierEntry>) -> Vec<TierEntry> {
+    entries.retain(|e| e.games >= MIN_GAMES);
+    entries.sort_by_key(|e| e.rank);
+    for (i, e) in entries.iter_mut().enumerate() {
+        e.rank = i as i64 + 1;
+    }
+    entries
+}
 
 /// Reads Lolalytics' `ep=list` answer. `names` maps champion id to name.
 pub fn parse_lolalytics(body: &Value, position: &str, rank: &str, names: &HashMap<i64, String>) -> Result<TierList> {
@@ -121,7 +145,7 @@ pub fn parse_lolalytics(body: &Value, position: &str, rank: &str, names: &HashMa
         bail!("Lolalytics rejected the request");
     }
     let champs = body.get("cid").and_then(Value::as_object).context("Lolalytics' answer has no champion list")?;
-    let mut entries: Vec<TierEntry> = champs
+    let entries: Vec<TierEntry> = champs
         .iter()
         .filter(|(_, c)| f(c, "pctLane") >= MIN_LANE_SHARE && f(c, "pr") >= MIN_PICK_RATE)
         .filter_map(|(id, c)| {
@@ -129,7 +153,7 @@ pub fn parse_lolalytics(body: &Value, position: &str, rank: &str, names: &HashMa
             let label = *LOLALYTICS_TIERS.get(usize::try_from(c.get("tier")?.as_i64()?).ok()?).filter(|l| !l.is_empty())?;
             Some(TierEntry {
                 champion_id: id,
-                name: names.get(&id).cloned().unwrap_or_else(|| format!("#{id}")),
+                name: champion_name(names, id),
                 tier: label[..1].to_string(),
                 label: label.to_string(),
                 rank: c.get("rank").and_then(Value::as_i64).unwrap_or(0),
@@ -141,71 +165,81 @@ pub fn parse_lolalytics(body: &Value, position: &str, rank: &str, names: &HashMa
             })
         })
         .collect();
-    entries.sort_by_key(|e| e.rank);
+    let entries = finish(entries);
     Ok(TierList {
         source: Source::Lolalytics,
         position: position.to_string(),
-        rank: Some(rank.to_string()),
+        rank: rank.to_string(),
+        patch: None,
         games_analysed: body.get("analysed").and_then(Value::as_i64),
         fetched_at: now_secs(),
         entries,
     })
 }
 
-/// Reads OP.GG's `lol_list_lane_meta_champions` answer (already through
-/// `parse_compact`) into one list per lane. `ids` maps `name_key` to champion id.
-pub fn parse_opgg(parsed: &Value, ids: &HashMap<String, i64>) -> Result<Vec<TierList>> {
-    let positions = parsed.pointer("/data/positions").context("OP.GG's answer has no lanes")?;
+/// Reads OP.GG's champions answer into one list per lane. `names` maps
+/// champion id to name.
+pub fn parse_opgg(body: &Value, rank: &str, names: &HashMap<i64, String>) -> Result<Vec<TierList>> {
+    let champs = body.get("data").and_then(Value::as_array).context("OP.GG's answer has no champion list")?;
     let now = now_secs();
     let lists: Vec<TierList> = OPGG_LANES
         .iter()
-        .filter_map(|(opgg, position)| {
-            let rows = positions.get(*opgg)?.as_array()?;
-            let mut entries: Vec<TierEntry> = rows
+        .map(|(opgg, position)| {
+            let entries: Vec<TierEntry> = champs
                 .iter()
-                .filter(|r| r.get("is_rip").and_then(Value::as_bool) != Some(true))
-                .filter_map(|r| {
-                    let name = r.get("champion")?.as_str()?.to_string();
-                    let tier = r.get("tier")?.as_i64()?;
-                    let row = ["S", "A", "B", "C", "D"].get(usize::try_from(tier - 1).ok()?)?;
-                    let rank = r.get("rank").and_then(Value::as_i64).unwrap_or(0);
+                .filter(|c| c.get("is_rip").and_then(Value::as_bool) != Some(true))
+                .filter_map(|c| {
+                    let id = c.get("id")?.as_i64()?;
+                    let lane = c
+                        .get("positions")?
+                        .as_array()?
+                        .iter()
+                        .find(|p| p.get("name").and_then(Value::as_str) == Some(*opgg))?;
+                    let stats = lane.get("stats")?;
+                    let tier_data = stats.get("tier_data")?;
+                    let tier = tier_data.get("tier")?.as_i64()?;
+                    // 0 is OP.GG's "OP" tier, above tier 1 (seen in Challenger,
+                    // October 2026); it goes in the S row with tier 1.
+                    let row = ["S", "S", "A", "B", "C", "D"].get(usize::try_from(tier).ok()?)?;
+                    let rank = tier_data.get("rank").and_then(Value::as_i64).unwrap_or(0);
                     Some(TierEntry {
-                        champion_id: ids.get(&name_key(&name)).copied().unwrap_or(0),
-                        name,
+                        champion_id: id,
+                        name: champion_name(names, id),
                         tier: row.to_string(),
-                        label: tier.to_string(),
+                        label: if tier == 0 { "OP".to_string() } else { tier.to_string() },
                         rank,
-                        rank_change: r.get("rank_prev").and_then(Value::as_i64).map(|p| p - rank),
-                        win_rate: f(r, "win_rate") * 100.0,
-                        pick_rate: f(r, "pick_rate") * 100.0,
-                        ban_rate: f(r, "ban_rate") * 100.0,
-                        games: r.get("play").and_then(Value::as_i64).unwrap_or(0),
+                        rank_change: tier_data.get("rank_prev").and_then(Value::as_i64).map(|p| p - rank),
+                        win_rate: f(stats, "win_rate") * 100.0,
+                        pick_rate: f(stats, "pick_rate") * 100.0,
+                        ban_rate: f(stats, "ban_rate") * 100.0,
+                        games: stats.get("play").and_then(Value::as_i64).unwrap_or(0),
                     })
                 })
                 .collect();
-            entries.sort_by_key(|e| e.rank);
-            Some(TierList {
+            let entries = finish(entries);
+            TierList {
                 source: Source::Opgg,
                 position: position.to_string(),
-                rank: None,
-                games_analysed: None,
+                rank: rank.to_string(),
+                patch: body.pointer("/meta/version").and_then(Value::as_str).map(str::to_string),
+                games_analysed: body.pointer("/meta/match_count").and_then(Value::as_i64),
                 fetched_at: now,
                 entries,
-            })
+            }
         })
         .collect();
-    if lists.is_empty() {
-        bail!("OP.GG's answer has no lanes");
+    if lists.iter().all(|l| l.entries.is_empty()) {
+        bail!("OP.GG's answer has no ranked champions");
     }
     Ok(lists)
 }
 
-/// OP.GG has no rank filter, so its lists are kept per lane only.
 fn cache_key(source: Source, position: &str, rank: &str) -> String {
-    match source {
-        Source::Lolalytics => format!("lolalytics:{position}:{rank}"),
-        Source::Opgg => format!("opgg:{position}"),
-    }
+    let source = match source {
+        Source::Lolalytics => "lolalytics",
+        Source::Opgg => "opgg",
+    };
+    format!("{source}:{position}:{rank}")
 }
 
 fn is_fresh(list: &TierList, now: u64) -> bool {
@@ -238,16 +272,14 @@ impl TierLists {
     /// League client; None fetches the names from CommunityDragon instead.
     pub async fn get(
         &self,
-        opgg: &OpGg,
         source: Source,
         position: &str,
         rank: &str,
         champions: Option<Vec<(i64, String)>>,
     ) -> Result<TierList> {
-        if lolalytics_lane(position).is_none() {
-            bail!("Unknown lane {position}");
-        }
-        if source == Source::Lolalytics && !RANKS.contains(&rank) {
+        // Every client lane has a Lolalytics name, so this also checks OP.GG's.
+        let Some(lane) = lolalytics_lane(position) else { bail!("Unknown lane {position}") };
+        if !RANKS.contains(&rank) {
             bail!("Unknown rank filter {rank}");
         }
         let key = cache_key(source, position, rank);
@@ -261,20 +293,32 @@ impl TierLists {
             None => match self.champion_names().await {
                 Ok(c) => c,
                 // Offline: an older list still beats none.
-                Err(e) => return cached.ok_or(e),
+                Err(e) => match cached {
+                    Some(list) => return Ok(list),
+                    // Names are only for display; the list still works with "#id".
+                    None => {
+                        eprintln!("tier list without champion names: {e:#}");
+                        Vec::new()
+                    }
+                },
             },
         };
+        let names: HashMap<i64, String> = champions.into_iter().collect();
         let fetched = match source {
-            Source::Lolalytics => self.fetch_lolalytics(position, rank, &champions).await.map(|l| vec![l]),
-            Source::Opgg => self.fetch_opgg(opgg, &champions).await,
+            Source::Lolalytics => self.fetch_lolalytics(lane, position, rank, &names).await.map(|l| vec![l]),
+            Source::Opgg => self.fetch_opgg(rank, &names).await,
         };
         match fetched {
             Ok(lists) => {
-                let mut cache = self.lists.lock().await;
-                for l in lists {
-                    cache.insert(cache_key(l.source, &l.position, rank), l);
+                let wanted = lists.iter().find(|l| l.position == position).cloned();
+                // A list without names isn't kept, so the next visit tries for them again.
+                if !names.is_empty() {
+                    let mut cache = self.lists.lock().await;
+                    for l in lists {
+                        cache.insert(cache_key(l.source, &l.position, rank), l);
+                    }
                 }
-                cache.get(&key).cloned().with_context(|| format!("no {position} list in the answer"))
+                wanted.with_context(|| format!("no {position} list in the answer"))
             }
             // Offline: an older list still beats none.
             Err(e) => cached.ok_or(e),
@@ -309,8 +353,8 @@ impl TierLists {
         Ok(names)
     }
 
-    async fn fetch_lolalytics(&self, position: &str, rank: &str, champions: &[(i64, String)]) -> Result<TierList> {
-        let lane = lolalytics_lane(position).unwrap_or("middle");
+    /// `lane` is Lolalytics' name for `position`.
+    async fn fetch_lolalytics(&self, lane: &str, position: &str, rank: &str, names: &HashMap<i64, String>) -> Result<TierList> {
         let body: Value = self
             .http
             .get(LOLALYTICS)
@@ -322,21 +366,22 @@ impl TierLists {
             .json()
             .await
             .context("couldn't read Lolalytics' answer")?;
-        let names: HashMap<i64, String> = champions.iter().cloned().collect();
-        parse_lolalytics(&body, position, rank, &names)
+        parse_lolalytics(&body, position, rank, names)
     }
 
-    async fn fetch_opgg(&self, opgg: &OpGg, champions: &[(i64, String)]) -> Result<Vec<TierList>> {
-        let fields: Vec<String> = OPGG_LANES
-            .iter()
-            .map(|(lane, _)| format!("data.positions.{lane}[].{{ban_rate,champion,is_rip,pick_rate,play,rank,rank_prev,tier,win_rate}}"))
-            .collect();
-        let text = opgg
-            .call_tool("lol_list_lane_meta_champions", json!({"lang": "en_US", "position": "all", "desired_output_fields": fields}))
-            .await?;
-        let parsed = parse_compact(&text).context("couldn't read OP.GG's answer")?;
-        let ids: HashMap<String, i64> = champions.iter().map(|(id, name)| (name_key(name), *id)).collect();
-        parse_opgg(&parsed, &ids)
+    async fn fetch_opgg(&self, rank: &str, names: &HashMap<i64, String>) -> Result<Vec<TierList>> {
+        let body: Value = self
+            .http
+            .get(OPGG)
+            .query(&[("tier", rank)])
+            .send()
+            .await
+            .context("couldn't reach OP.GG")?
+            .error_for_status()?
+            .json()
+            .await
+            .context("couldn't read OP.GG's answer")?;
+        parse_opgg(&body, rank, names)
     }
 }
 
@@ -358,7 +403,8 @@ mod tests {
         assert!(list.games_analysed.unwrap() > 1_000_000);
         // Off-role picks are dropped; a normal lane has 40-80 champions.
         assert!((30..90).contains(&list.entries.len()), "{} entries", list.entries.len());
-        assert!(list.entries.windows(2).all(|w| w[0].rank <= w[1].rank));
+        // Numbered 1, 2, 3… after the off-role picks are dropped.
+        assert!(list.entries.iter().enumerate().all(|(i, e)| e.rank == i as i64 + 1));
         let first = &list.entries[0];
         assert_eq!(first.tier, "S");
         assert!(first.label.starts_with('S'));
@@ -372,27 +418,37 @@ mod tests {
 
     #[test]
     fn opgg_all_lanes() {
-        // Real answer for position "all" (October 2026).
-        let parsed = parse_compact(&fixture("opgg_lane_meta.txt")).unwrap();
-        let ids = HashMap::from([(name_key("Malphite"), 54), (name_key("Nunu & Willump"), 20)]);
-        let lists = parse_opgg(&parsed, &ids).unwrap();
+        // Real answer for Emerald+, patch 16.21 (October 2026), with the
+        // counters and role breakdowns left out to keep the fixture small.
+        let body: Value = serde_json::from_str(&fixture("opgg_champions_emerald.json")).unwrap();
+        let names = HashMap::from([(412, "Thresh".to_string()), (103, "Ahri".to_string())]);
+        let lists = parse_opgg(&body, "emerald_plus", &names).unwrap();
         let positions: Vec<&str> = lists.iter().map(|l| l.position.as_str()).collect();
         assert_eq!(positions, ["top", "jungle", "middle", "bottom", "utility"]);
-        let top = &lists[0];
-        let first = &top.entries[0];
-        assert_eq!((first.name.as_str(), first.champion_id, first.rank), ("Malphite", 54, 1));
-        assert_eq!((first.tier.as_str(), first.label.as_str()), ("S", "1"));
-        assert!((first.win_rate - 51.0).abs() < 0.01);
-        assert_eq!(first.rank_change, Some(0));
-        assert!(lists.iter().all(|l| l.entries.len() > 20));
-        assert!(lists.iter().flat_map(|l| &l.entries).any(|e| e.champion_id == 20));
+        assert!(lists.iter().all(|l| l.entries.len() > 30 && l.entries.windows(2).all(|w| w[0].rank <= w[1].rank)));
+        assert_eq!(lists[0].patch.as_deref(), Some("16.21"));
+        assert!(lists[0].games_analysed.unwrap() > 1_000_000);
+        let thresh = &lists[4].entries[0];
+        assert_eq!((thresh.name.as_str(), thresh.champion_id, thresh.rank), ("Thresh", 412, 1));
+        assert_eq!((thresh.tier.as_str(), thresh.label.as_str()), ("S", "1"));
+        assert!((thresh.win_rate - 51.91).abs() < 0.01);
+        let ahri = lists[2].entries.iter().find(|e| e.champion_id == 103).unwrap();
+        assert_eq!((ahri.rank, ahri.rank_change), (1, Some(0)));
+        // Ahri is only ranked in mid.
+        assert!(!lists[0].entries.iter().any(|e| e.champion_id == 103));
     }
 
     #[test]
-    fn names_match_across_spellings() {
-        assert_eq!(name_key("Nunu & Willump"), name_key("NunuWillump"));
-        assert_eq!(name_key("Kai'Sa"), "kaisa");
-        assert_eq!(name_key("Dr. Mundo"), "drmundo");
+    fn opgg_op_tier() {
+        // Shape from a real Challenger answer (October 2026): tier 0 = "OP".
+        let body = serde_json::json!({"meta": {"version": "16.21", "match_count": 5133}, "data": [
+            {"id": 64, "positions": [{"name": "JUNGLE", "stats": {"play": 79, "win_rate": 0.43, "pick_rate": 0.14, "ban_rate": 0.19,
+                "tier_data": {"tier": 0, "rank": 1, "rank_prev": 1}}}]},
+            {"id": 254, "positions": [{"name": "JUNGLE", "stats": {"play": 60, "win_rate": 0.55, "pick_rate": 0.1, "ban_rate": 0.01,
+                "tier_data": {"tier": 1, "rank": 2, "rank_prev": 3}}}]}]});
+        let lists = parse_opgg(&body, "challenger", &HashMap::new()).unwrap();
+        let jungle: Vec<(&str, &str)> = lists[1].entries.iter().map(|e| (e.tier.as_str(), e.label.as_str())).collect();
+        assert_eq!(jungle, [("S", "OP"), ("S", "1")]);
     }
 
     /// Calls the real sites: `cargo test live_tier_lists -- --ignored --nocapture`
@@ -401,13 +457,44 @@ mod tests {
     fn live_tier_lists() {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let tiers = TierLists::new("test");
-        let opgg = OpGg::new("test", None);
-        for source in [Source::Lolalytics, Source::Opgg] {
-            let list = rt.block_on(tiers.get(&opgg, source, "utility", "emerald_plus", None)).unwrap();
+        for (source, rank) in [
+            (Source::Lolalytics, "emerald_plus"),
+            (Source::Lolalytics, "silver"),
+            (Source::Opgg, "emerald_plus"),
+            (Source::Opgg, "master_plus"),
+            (Source::Opgg, "silver"),
+            (Source::Lolalytics, "challenger"),
+            (Source::Opgg, "challenger"),
+        ] {
+            let list = rt.block_on(tiers.get(source, "utility", rank, None)).unwrap();
             let top: Vec<String> = list.entries.iter().take(5).map(|e| format!("{} {} ({})", e.label, e.name, e.champion_id)).collect();
-            println!("{source:?}: {} champions, {:?} games; {}", list.entries.len(), list.games_analysed, top.join(", "));
-            assert!(list.entries.len() > 20 && list.entries.iter().all(|e| (1..60000).contains(&e.champion_id)));
+            println!("{source:?} {rank}: {} champions, {:?} games; {}", list.entries.len(), list.games_analysed, top.join(", "));
+            assert!(list.entries.iter().all(|e| (1..60000).contains(&e.champion_id)));
+            // Lolalytics doesn't rate champions in Challenger (too few games).
+            if (source, rank) != (Source::Lolalytics, "challenger") {
+                assert!(list.entries.len() > 10);
+            }
         }
+    }
+
+    #[test]
+    fn tiny_samples_are_dropped_and_ranks_renumbered() {
+        let entry = |rank, games| TierEntry {
+            champion_id: rank,
+            name: String::new(),
+            tier: "S".into(),
+            label: "1".into(),
+            rank,
+            rank_change: Some(2),
+            win_rate: 50.0,
+            pick_rate: 1.0,
+            ban_rate: 0.0,
+            games,
+        };
+        let out = finish(vec![entry(9, 400), entry(2, 3), entry(4, MIN_GAMES)]);
+        let ranks: Vec<(i64, i64)> = out.iter().map(|e| (e.champion_id, e.rank)).collect();
+        assert_eq!(ranks, [(4, 1), (9, 2)]);
+        assert!(out.iter().all(|e| e.rank_change == Some(2)));
     }
 
     #[test]
@@ -415,7 +502,8 @@ mod tests {
         let list = TierList {
             source: Source::Opgg,
             position: "top".into(),
-            rank: None,
+            rank: "emerald_plus".into(),
+            patch: None,
             games_analysed: None,
             fetched_at: 1_800_000_000,
             entries: vec![],

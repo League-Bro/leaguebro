@@ -145,7 +145,7 @@ async fn get_patch(state: State<'_, AppState>, url: String) -> Result<patch::Pat
 }
 
 /// One lane's tier list from Lolalytics or OP.GG (the Tier List tab).
-/// `rank` is a Lolalytics filter like "emerald_plus"; OP.GG ignores it.
+/// `rank` is a filter like "emerald_plus" (`tierlist::RANKS`).
 #[tauri::command]
 async fn get_tier_list(
     state: State<'_, AppState>,
@@ -156,7 +156,7 @@ async fn get_tier_list(
     let champions = state.shared.lock().await.statics.as_ref().map(|s| {
         s.champions.iter().filter(|c| !c.classic).map(|c| (c.id, c.name.clone())).collect()
     });
-    state.tiers.get(&state.opgg, source, &position, &rank, champions).await.map_err(|e| format!("{e:#}"))
+    state.tiers.get(source, &position, &rank, champions).await.map_err(|e| format!("{e:#}"))
 }
 
 #[derive(serde::Serialize)]

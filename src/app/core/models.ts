@@ -455,12 +455,11 @@ export interface Config {
 export type TierSource = 'lolalytics' | 'opgg';
 
 export interface TierEntry {
-  /** 0 when the name didn't match a known champion. */
   championId: number;
   name: string;
   /** The row it goes in. */
   tier: 'S' | 'A' | 'B' | 'C' | 'D';
-  /** The source's own label: "S+" … "D-" (Lolalytics) or "1" … "5" (OP.GG). */
+  /** The source's own label: "S+" … "D-" (Lolalytics) or "OP", "1" … "5" (OP.GG). */
   label: string;
   rank: number;
   /** Places moved up (negative = down) since the source's previous ranking. */
@@ -476,8 +475,10 @@ export interface TierList {
   source: TierSource;
   /** top | jungle | middle | bottom | utility */
   position: string;
-  /** Lolalytics rank filter, e.g. "emerald_plus"; null for OP.GG. */
-  rank: string | null;
+  /** Rank filter, e.g. "emerald_plus". */
+  rank: string;
+  /** e.g. "16.21" (OP.GG only; Lolalytics uses the current patch but doesn't say which). */
+  patch: string | null;
   gamesAnalysed: number | null;
   fetchedAt: number;
   entries: TierEntry[];

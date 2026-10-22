@@ -224,7 +224,7 @@ export class RiftService {
     return invoke<PatchNotes>('get_patch', { url });
   }
 
-  /** One lane's tier list. Position: top|jungle|middle|bottom|utility; rank is a Lolalytics filter like "emerald_plus". */
+  /** One lane's tier list. Position: top|jungle|middle|bottom|utility; rank is a filter like "emerald_plus" for either source. */
   async getTierList(source: TierSource, position: string, rank: string): Promise<TierList> {
     if (this.demo) {
       await new Promise((r) => setTimeout(r, 250));

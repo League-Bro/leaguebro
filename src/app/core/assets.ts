@@ -45,7 +45,15 @@ export function positionLabel(pos: string | null | undefined): string {
   return POSITION_LABELS[(pos ?? '').toLowerCase()] ?? '';
 }
 
-const TIER_ORDER = ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER'];
+const CRESTS = 'https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images/ranked-mini-crests';
+
+/** The client's small rank crest (SVG). Takes "EMERALD", "emerald" or a tier list filter like "emerald_plus"; anything else gets the unranked crest. */
+export function rankCrest(tier: string | undefined | null): string {
+  const t = (tier ?? '').toLowerCase().replace(/_plus$/, '');
+  return `${CRESTS}/${TIER_ORDER.includes(t.toUpperCase()) ? t : 'unranked'}.svg`;
+}
+
+const TIER_ORDER =['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER'];
 
 export function tierClass(tier: string | undefined): string {
   const t = (tier ?? '').toUpperCase();

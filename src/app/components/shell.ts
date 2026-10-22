@@ -30,13 +30,13 @@ const PHASE_LABELS: Record<string, string> = {
   imports: [LiveView, ChampionsView, TierListView, PatchView, SettingsView, ProfileView],
   template: `
     <header>
-      <button class="brand" [class.active]="tab() === 'profile'" title="Your profile and match history" (click)="tab.set('profile')">
+      <button class="brand" [class.active]="tab() === 'profile'" title="Your profile and match history" (click)="go('profile')">
         <img src="favicon.png" alt="" />
         <span>League Bro</span>
       </button>
       <nav>
         @for (t of tabs; track t.id) {
-          <button [class.active]="tab() === t.id" (click)="tab.set(t.id)">{{ t.label }}</button>
+          <button [class.active]="tab() === t.id" (click)="go(t.id)">{{ t.label }}</button>
         }
       </nav>
       <div class="spacer"></div>
@@ -44,7 +44,7 @@ const PHASE_LABELS: Record<string, string> = {
         <span class="dot"></span>
         <span>{{ statusText() }}</span>
         @if (rift.status().summoner; as s) {
-          <button class="who" title="Your profile and match history" (click)="tab.set('profile')">{{ s.name }}</button>
+          <button class="who" title="Your profile and match history" (click)="go('profile')">{{ s.name }}</button>
         }
       </div>
     </header>
@@ -76,6 +76,9 @@ const PHASE_LABELS: Record<string, string> = {
       }
     }
     <main>
+      @if (backTo(); as b) {
+        <button class="back" title="Back (Alt+←)" (click)="back()">← Back to {{ label(b) }}</button>
+      }
       @switch (tab()) {
         @case ('live') { <rl-live /> }
         @case ('champions') { <rl-champions /> }
@@ -86,6 +89,10 @@ const PHASE_LABELS: Record<string, string> = {
       }
     </main>
   `,
+  host: {
+    '(document:keydown.alt.arrowleft)': 'back()',
+    '(document:mouseup)': 'mouseBack($event)',
+  },
   styles: `
     :host { display: flex; flex-direction: column; height: 100vh; }
     header {
@@ -132,6 +139,11 @@ const PHASE_LABELS: Record<string, string> = {
     .update-bar span:first-child { flex: 1; }
     .update-bar.bad { background: rgba(241, 91, 108, 0.14); }
     main { flex: 1; overflow: auto; padding: 24px; }
+    .back {
+      display: inline-flex; align-items: center; gap: 6px; margin: -8px 0 14px;
+      background: none; border: none; padding: 4px 10px 4px 6px; color: var(--text-dim); font-weight: 500;
+    }
+    .back:hover:not(:disabled) { color: var(--accent); background: var(--accent-soft); }
   `,
 })
 export class Shell implements OnInit {
@@ -149,10 +161,36 @@ export class Shell implements OnInit {
     this.updates.start();
   }
 
+  /** The screen a link brought you here from, for the Back button. Cleared when you pick a tab yourself. */
+  protected readonly backTo = signal<Tab | null>(null);
+
+  protected go(t: Tab): void {
+    this.backTo.set(null);
+    this.tab.set(t);
+  }
+
+  protected back(): void {
+    const b = this.backTo();
+    if (b) this.go(b);
+  }
+
+  /** The mouse's back button (button 3) goes back too. */
+  protected mouseBack(e: MouseEvent): void {
+    if (e.button === 3 && this.backTo()) {
+      e.preventDefault();
+      this.back();
+    }
+  }
+
+  protected label(t: Tab): string {
+    return t === 'profile' ? 'Profile' : (this.tabs.find((x) => x.id === t)?.label ?? t);
+  }
+
   /** From the Tier List: show that champion's ranked build for the lane. */
   protected openChampion(e: { championId: number; position: string }): void {
     this.rift.championsGame.set('league');
     this.rift.championsPick.set({ championId: e.championId, position: e.position, mode: 'ranked' });
+    this.backTo.set(this.tab());
     this.tab.set('champions');
   }
 
