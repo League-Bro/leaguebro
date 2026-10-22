@@ -48,7 +48,7 @@ The Rust side runs one background loop (`engine.rs`, 1 s tick) that pushes state
    - `position` must be `top|jungle|mid|adc|support`. `all` and `none` are rejected for ranked **and** ARAM. ARAM and other modes take any lane value and ignore it, so the code sends `mid`.
    - `game_mode`: `ranked|flex|urf|aram|nexus_blitz`, picked from the queue/map (`game_mode_for`). Arena gets no recommendation.
    - Below `MIN_GAMES` (20) the data is noise (e.g. off-role picks). Runes and spells then fall back to the League client's recommended page.
-   - Results are cached in memory for 6 h per champion+position+mode.
+   - Results are saved to disk (`%LOCALAPPDATA%\dev.dom.leaguebuddy\opgg`, one file per champion+position+mode) and expire on the patch cycle (`expires_at`): every 24 h for the week after a patch's notes come out, then every 7 days, and always when the next notes are due (`patch::notes_releases_around`, from `PATCH_SCHEDULE`). If OP.GG can't be reached, an expired answer is used only if it was fetched since the latest patch notes; otherwise runes fall back to the client. Bump `opgg::CACHE_FORMAT` when `Recommendation` or `extract` changes.
    - The `scripts/opgg-probe*.mjs` scripts (if present locally) call the endpoint and save raw responses to `scripts/probe-output/` (git-ignored). Use them to see the real format; Claude's cloud sandbox couldn't reach op.gg.
 4. **CommunityDragon** (`raw.communitydragon.org`) for champion, item, rune and spell icons (`assets.ts`). Client asset paths are lowercased and mapped there.
 5. **Riot patch notes** (`www.leagueoflegends.com`) for the Patch Notes tab (`patch.rs`). The site is Next.js, so `patch.rs` reads the JSON in `<script id="__NEXT_DATA__">`: the patch-notes tag page for the list, then each article's `richText.body` HTML, parsed with `scraper` into buffs, nerfs and adjustments. Only fetched when the Patch Notes tab is opened. Both are saved to disk (`%LOCALAPPDATA%\dev.dom.leaguebuddy\patch-notes`): a patch's notes are downloaded once and never again; the list is re-checked only when the next patch's notes are due (the day before that patch in `PATCH_SCHEDULE`, Riot's published dates; newest notes + 14 days once the table runs out), then at most every 6 h until they appear. **Add each new year's dates to `PATCH_SCHEDULE`** from https://support.riotgames.com/league-of-legends/gameplay/patch-schedule-league-of-legends. Bump `CACHE_FORMAT` when the parser or saved shapes change. `get_patch` only fetches URLs under `https://www.leagueoflegends.com/`. Fixtures: `tests/fixtures/patch_list.html`, `patch_article.html`.
@@ -83,7 +83,8 @@ src-tauri/src/
   lcu.rs        League client discovery + HTTP
   runes.rs      rune page choice/naming/import
   opgg.rs       OP.GG client, compact-format parser, Recommendation model
-  patch.rs      Riot patch notes: list + article parsing into buffs/nerfs
+  patch.rs      Riot patch notes: list + article parsing into buffs/nerfs, PATCH_SCHEDULE
+  cache.rs      on-disk cache folders (patch notes, OP.GG), usage + clearing for Settings
   scout.rs      rank + match history summaries
   live.rs       live game: timers, next items, skill hint, overlay state
   postgame.rs   post-game summary from the match-history record

@@ -2,6 +2,7 @@
 // instead of inside the Tauri app, so the layout can be worked on
 // without League running.
 import {
+  CacheInfo,
   ChampSelectView,
   Config,
   ItemInfo,
@@ -289,6 +290,13 @@ export function demoRec(): RecState {
 }
 
 const PATCH_URL = 'https://www.leagueoflegends.com/en-us/news/game-updates/league-of-legends-patch-26-21-notes';
+
+export function demoCacheInfo(): CacheInfo {
+  return {
+    patchNotes: { files: 4, bytes: 186_400, inMemory: 2 },
+    runes: { files: 23, bytes: 97_300, inMemory: 1 },
+  };
+}
 
 export function demoPatchList(): PatchInfo[] {
   return [
