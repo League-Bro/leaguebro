@@ -6,6 +6,7 @@ import {
   AbilityKeys,
   CacheInfo,
   CacheName,
+  GlobalSets,
   ChampSelectView,
   Config,
   ImportEvent,
@@ -234,6 +235,25 @@ export class RiftService {
   /** One lane's tier list. Position: top|jungle|middle|bottom|utility; rank is a filter like "emerald_plus" for either source. */
   getTierList(source: TierSource, position: string, rank: string): Promise<TierList> {
     return this.call('get_tier_list', { source, position, rank }, () => demoTierList(source, position, rank), 250);
+  }
+
+  private demoGlobal: GlobalSets = { found: ['Blitz: Bruiser Sylas', 'Blitz: AP Sylas'], moved: [] };
+
+  /** Other apps' item sets that show in the shop for every champion. */
+  globalItemSets(): Promise<GlobalSets> {
+    return this.call('global_item_sets', {}, () => structuredClone(this.demoGlobal));
+  }
+  moveGlobalItemSets(): Promise<GlobalSets> {
+    return this.call('move_global_item_sets', {}, () => {
+      this.demoGlobal = { found: [], moved: [...this.demoGlobal.moved, ...this.demoGlobal.found] };
+      return structuredClone(this.demoGlobal);
+    });
+  }
+  restoreGlobalItemSets(): Promise<GlobalSets> {
+    return this.call('restore_global_item_sets', {}, () => {
+      this.demoGlobal = { found: [...this.demoGlobal.found, ...this.demoGlobal.moved], moved: [] };
+      return structuredClone(this.demoGlobal);
+    });
   }
 
   private demoCache: CacheInfo = demoCacheInfo();

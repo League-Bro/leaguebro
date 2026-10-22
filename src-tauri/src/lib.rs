@@ -82,6 +82,37 @@ async fn get_match(state: State<'_, AppState>, game_id: i64, queue_name: String)
     postgame::parse(&game, puuid, &queue_name).ok_or_else(|| "Couldn't read this game".to_string())
 }
 
+/// League's install folder: from the client, else the one set in Settings.
+async fn league_install_dir(state: &State<'_, AppState>) -> Result<std::path::PathBuf, String> {
+    let configured = state.config().install_dir;
+    let lcu = state.shared.lock().await.lcu.clone();
+    let found = match lcu {
+        Some(lcu) => itemsets::install_dir(&lcu, configured.as_deref()).await,
+        None => configured.filter(|d| !d.trim().is_empty()).map(Into::into),
+    };
+    found.ok_or_else(|| "Open the League client so League Bro can find League's folder".to_string())
+}
+
+/// Other apps' item sets that show in the shop for every champion (Settings).
+#[tauri::command]
+async fn global_item_sets(state: State<'_, AppState>) -> Result<itemsets::GlobalSets, String> {
+    Ok(itemsets::scan_global(&league_install_dir(&state).await?))
+}
+
+#[tauri::command]
+async fn move_global_item_sets(state: State<'_, AppState>) -> Result<itemsets::GlobalSets, String> {
+    let dir = league_install_dir(&state).await?;
+    itemsets::move_global_aside(&dir).map_err(msg)?;
+    Ok(itemsets::scan_global(&dir))
+}
+
+#[tauri::command]
+async fn restore_global_item_sets(state: State<'_, AppState>) -> Result<itemsets::GlobalSets, String> {
+    let dir = league_install_dir(&state).await?;
+    itemsets::restore_global(&dir).map_err(msg)?;
+    Ok(itemsets::scan_global(&dir))
+}
+
 /// OP.GG's recommendation for any champion, role and mode (the Champions tab).
 /// Unlike champ select's lookup this doesn't change the current recommendation.
 #[tauri::command]
@@ -270,6 +301,8 @@ pub fn run() {
             // Closing the main window quits the app (the overlay is hidden, not a real window to close).
             if window.label() == "main" {
                 if let tauri::WindowEvent::CloseRequested { .. } = event {
+                    // Its shop files show for every champion, so they don't outlive the app.
+                    itemsets::remove_written_global();
                     window.app_handle().exit(0);
                 }
             }
@@ -282,6 +315,9 @@ pub fn run() {
             import_runes_now,
             import_swiftplay_now,
             lookup_rec,
+            global_item_sets,
+            move_global_item_sets,
+            restore_global_item_sets,
             get_my_profile,
             get_match,
             preview_overlay,

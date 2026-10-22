@@ -392,6 +392,14 @@ export interface CacheUsage {
   inMemory: number;
 }
 
+/** Item sets other apps put in League's Config\Global\Recommended (shown for every champion). */
+export interface GlobalSets {
+  /** Titles currently shown for every champion. */
+  found: string[];
+  /** Titles League Bro moved aside earlier. */
+  moved: string[];
+}
+
 export interface CacheInfo {
   patchNotes: CacheUsage;
   /** OP.GG recommendations: rune pages, spells, skill order, builds. */

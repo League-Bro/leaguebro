@@ -757,6 +757,14 @@ impl Engine {
         let prev = std::mem::replace(&mut self.phase, phase.to_string());
         let summoner = self.state().shared.lock().await.status.summoner.clone();
         self.set_status(true, phase, summoner, "").await;
+        // League Bro's shop files show for every champion: clear the last build when a
+        // new champ select starts, and leftovers (a crash) when first connecting outside a game.
+        if phase == "ChampSelect" || (prev.is_empty() && !in_game(phase)) {
+            let configured = self.state().config().install_dir;
+            if let Some(dir) = itemsets::install_dir(lcu, configured.as_deref()).await {
+                let _ = itemsets::remove_own_global(&dir);
+            }
+        }
         if in_game(&prev) && !in_game(phase) {
             self.end_game(lcu).await;
         } else if prev.is_empty() && matches!(phase, "PreEndOfGame" | "EndOfGame") {

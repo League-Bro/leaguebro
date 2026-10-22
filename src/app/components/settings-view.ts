@@ -2,7 +2,7 @@ import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { UpdateService } from '../core/update.service';
 import { FullscreenHint } from './fullscreen-hint';
-import { AbilityKeys, CacheInfo, CacheName, Config } from '../core/models';
+import { AbilityKeys, CacheInfo, CacheName, Config, GlobalSets } from '../core/models';
 
 type BoolKey =
   | 'scoutInChampSelect'
@@ -101,8 +101,31 @@ type BoolKey =
             <label class="toggle">
               <input type="checkbox" [checked]="cfg.setItemSets" (change)="setRec('setItemSets', $any($event.target).checked)" />
               <span class="track"></span>
-              <span class="label"><b>Add the build to the in-game shop</b><span>On lock-in, as a "League Bro" item set under Item Sets in the shop. Your own item sets aren't touched.</span></span>
+              <span class="label"><b>Add the build to the in-game shop</b><span>On lock-in, as a "League Bro" item set listed first under Item Sets, so the shop opens on it. Your own item sets aren't touched.</span></span>
             </label>
+          }
+          @if (global(); as gs) {
+            @if (gs.found.length || gs.moved.length) {
+              <div class="global-sets">
+                @if (gs.found.length) {
+                  <b>Other apps' item sets are in every game's shop</b>
+                  <p class="faint small">
+                    {{ gs.found.join(', ') }}. Another app saved {{ gs.found.length === 1 ? 'this' : 'these' }} for every
+                    champion, so {{ gs.found.length === 1 ? 'it shows' : 'they show' }} first in the shop and can push League Bro's
+                    build out of the list. Moving them aside keeps a copy you can put back.
+                  </p>
+                  <div class="row">
+                    <button [disabled]="globalBusy()" (click)="moveGlobal()">Move them aside</button>
+                  </div>
+                }
+                @if (gs.moved.length) {
+                  <p class="faint small">
+                    Moved aside: {{ gs.moved.join(', ') }}.
+                    <button class="link" [disabled]="globalBusy()" (click)="restoreGlobal()">Put them back</button>
+                  </p>
+                }
+              </div>
+            }
           }
         </section>
 
@@ -208,6 +231,13 @@ type BoolKey =
       font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
     }
     .toggle.off { opacity: 0.55; }
+    .global-sets {
+      display: flex; flex-direction: column; gap: 6px; margin-top: 4px; padding: 10px 12px;
+      border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg-sunken);
+    }
+    .global-sets .small { line-height: 1.45; }
+    .link { background: none; border: none; padding: 0; margin-left: 4px; color: var(--accent); font: inherit; cursor: pointer; }
+    .link:disabled { opacity: 0.5; cursor: default; }
     .cache-row { display: flex; align-items: center; gap: 12px; }
     .cache-row .label { flex: 1; display: flex; flex-direction: column; gap: 2px; }
     .cache-row .label span { font-size: 12.5px; color: var(--text-faint); }
@@ -227,6 +257,10 @@ export class SettingsView {
     { key: 'runes', label: 'Rune pages', hint: 'OP.GG runes, spells, skill order and builds.' },
   ];
 
+  /** Other apps' global item sets; null until loaded or while League isn't found. */
+  protected readonly global = signal<GlobalSets | null>(null);
+  protected readonly globalBusy = signal(false);
+
   constructor() {
     // Reloaded whenever a recommendation arrives, since that's when the rune
     // cache grows. Patch notes only change on the Patch Notes tab, and coming
@@ -235,6 +269,33 @@ export class SettingsView {
       this.rift.rec();
       untracked(() => this.refreshCache());
     });
+    // Needs League's folder, which comes from the client once connected.
+    effect(() => {
+      if (this.rift.status().connected) untracked(() => this.refreshGlobal());
+    });
+  }
+
+  private refreshGlobal(): void {
+    // Not finding League's folder isn't worth an error here; the section just stays hidden.
+    this.rift.globalItemSets().then((g) => this.global.set(g), () => this.global.set(null));
+  }
+
+  async moveGlobal(): Promise<void> {
+    await this.globalAction(() => this.rift.moveGlobalItemSets());
+  }
+  async restoreGlobal(): Promise<void> {
+    await this.globalAction(() => this.rift.restoreGlobalItemSets());
+  }
+  private async globalAction(run: () => Promise<GlobalSets>): Promise<void> {
+    this.globalBusy.set(true);
+    this.error.set('');
+    try {
+      this.global.set(await run());
+    } catch (e) {
+      this.error.set(String(e));
+    } finally {
+      this.globalBusy.set(false);
+    }
   }
 
   private refreshCache(): void {
