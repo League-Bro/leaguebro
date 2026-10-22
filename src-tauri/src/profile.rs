@@ -400,7 +400,7 @@ mod tests {
             "participants": [{ "championId": champ, "spell1Id": 4, "spell2Id": 14, "stats": {
                 "win": win, "gameEndedInEarlySurrender": remake, "kills": k, "deaths": d, "assists": a,
                 "totalMinionsKilled": 200, "neutralMinionsKilled": 10, "goldEarned": 12000,
-                "totalDamageDealtToChampions": 24000, "visionScore": 20,
+                "totalDamageDealtToChampions": 24000, "visionScore": 20, "champLevel": 16,
                 "item0": 3020, "item1": 0, "item2": 0, "item3": 0, "item4": 0, "item5": 0, "item6": 3340
             }}]
         })
@@ -423,7 +423,7 @@ mod tests {
         let m = parse_matches(&history());
         assert_eq!(m.iter().map(|m| m.game_id).collect::<Vec<_>>(), vec![4, 2, 3, 1]);
         assert_eq!(m[0].result, "remake");
-        assert_eq!((m[1].line.cs, m[1].line.items.len(), m[1].line.spells), (210, 7, [4, 14]));
+        assert_eq!((m[1].line.cs, m[1].line.level, m[1].line.items.len(), m[1].line.spells), (210, 16, 7, [4, 14]));
     }
 
     #[test]

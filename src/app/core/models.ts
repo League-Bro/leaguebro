@@ -68,6 +68,8 @@ export interface MatchLine {
   duration: number;
   result: 'win' | 'loss' | 'remake';
   championId: number;
+  /** Champion level at the end of the game. */
+  level: number;
   kills: number;
   deaths: number;
   assists: number;

@@ -50,15 +50,25 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
         <span class="faint mono">{{ objectives(t) }}</span>
       </div>
       <div class="board">
+        <div class="row-p head" aria-hidden="true">
+          <span>Player</span>
+          <span>Level</span>
+          <span>KDA</span>
+          <span>CS</span>
+          <span>Damage</span>
+          <span>Gold</span>
+          <span>Vision</span>
+          <span>Build</span>
+        </div>
         @for (p of t.players; track $index) {
           <div class="row-p" [class.me]="p.isMe" [class.enemy]="!t.isMine">
             <div class="who">
               <img class="champ-icon sm" [src]="icon(p.championId)" [title]="rift.champName(p.championId)" alt="" />
-              <span class="lvl mono">{{ p.level }}</span>
               <span class="name">
                 @if (p.name) { {{ p.name }} } @else { <span class="faint">{{ rift.champName(p.championId) }}</span> }
               </span>
             </div>
+            <span class="mono muted">{{ p.level }}</span>
             <span class="mono">{{ p.kills }}/{{ p.deaths }}/{{ p.assists }}</span>
             <span class="mono muted">{{ p.cs }}</span>
             <div class="dmg" [title]="p.damage + ' damage to champions'">
@@ -78,8 +88,81 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
         }
       </div>
     }
+
+    <section class="graphs">
+      <div class="graphs-head">
+        <h3>Graphs</h3>
+        @if (g.teams.length > 1) {
+          <span class="legend">
+            <span><i class="sw ally"></i>Your team</span>
+            <span><i class="sw enemy"></i>Enemy team</span>
+          </span>
+        }
+      </div>
+      <div class="charts">
+        @for (c of charts; track c.key) {
+          <div class="chart">
+            <div class="chart-title">{{ c.title }}</div>
+            @for (t of g.teams; track t.teamId) {
+              <div class="group" [class.ally]="t.isMine" [class.enemy]="!t.isMine">
+                @for (p of t.players; track $index) {
+                  <div class="bar-row" [class.me]="p.isMe" [title]="tip(c.key, p, t)">
+                    <img class="bar-icon" [src]="icon(p.championId)" alt="" />
+                    <span class="bar-name">
+                      {{ p.name ?? rift.champName(p.championId) }}
+                      @if (p.isMe) { <span class="you">You</span> }
+                    </span>
+                    <span class="gtrack">
+                      <span class="gbar" [style.width]="barWidth(c.key, p)"></span>
+                      <span class="gval mono">{{ k(p[c.key]) }}</span>
+                    </span>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </section>
   `,
   styles: `
+    /* Chart colors: validated for the dark surface (dataviz validator, OKLCH L
+       0.48-0.67, CVD ΔE 26.8). Kept apart from the win/loss status colors. */
+    .graphs { --team-ally: #3987e5; --team-enemy: #d95926; margin-top: 26px; }
+    .graphs-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 10px; }
+    .graphs-head h3 { margin: 0; }
+    .legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-dim); }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+    .sw.ally { background: var(--team-ally); }
+    .sw.enemy { background: var(--team-enemy); }
+    .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; }
+    .chart {
+      display: flex; flex-direction: column; gap: 10px; padding: 14px 16px;
+      background: var(--glass), var(--bg-raised); border: 1px solid var(--line); border-radius: 14px;
+    }
+    .chart-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
+    .group { display: flex; flex-direction: column; gap: 3px; }
+    .bar-row {
+      display: grid; grid-template-columns: 18px minmax(90px, 128px) 1fr; align-items: center; gap: 8px;
+      padding: 2px 4px; margin: 0 -4px; border-radius: 6px; font-size: 12.5px;
+    }
+    .bar-row:hover { background: var(--bg-hover); }
+    .bar-icon { width: 18px; height: 18px; border-radius: 5px; }
+    .bar-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-dim); }
+    .bar-row.me .bar-name { color: var(--text); font-weight: 600; }
+    .you {
+      margin-left: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text); background: var(--bg-hover); border-radius: 4px; padding: 0 4px;
+    }
+    /* One baseline on the left; the value sits just past each bar's tip. */
+    .gtrack { display: flex; align-items: center; gap: 6px; min-width: 0; border-left: 1px solid var(--line-strong); }
+    .gbar { display: block; height: 10px; border-radius: 0 4px 4px 0; flex: none; min-width: 2px; }
+    .group.ally .gbar { background: var(--team-ally); }
+    .group.enemy .gbar { background: var(--team-enemy); }
+    .gval { font-size: 11.5px; color: var(--text-dim); flex: none; }
+    .bar-row.me .gval { color: var(--text); }
+
     .hero { position: relative; display: flex; align-items: center; gap: 20px; padding: 24px; border-left: 3px solid var(--text-faint); }
     .hero > :not(.splash) { position: relative; }
     .hero.win { border-left-color: var(--win); }
@@ -112,14 +195,17 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .board { display: flex; flex-direction: column; gap: 4px; }
     .row-p {
       display: grid; align-items: center; gap: 12px;
-      grid-template-columns: minmax(170px, 1.6fr) 72px 44px minmax(90px, 1fr) 48px 32px auto;
+      grid-template-columns: minmax(150px, 1.6fr) 36px 72px 40px minmax(90px, 1fr) 46px 44px 182px;
       padding: 7px 14px; border-radius: 12px; background: var(--glass), var(--bg-raised); border: 1px solid var(--line);
       border-left: 3px solid var(--ally); font-size: 13px;
+    }
+    .row-p.head {
+      background: none; border-color: transparent; padding-top: 0; padding-bottom: 0;
+      font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
     }
     .row-p.enemy { border-left-color: var(--enemy); }
     .row-p.me { background: linear-gradient(90deg, var(--accent-soft), transparent 60%), var(--bg-raised); border-left-color: var(--accent); }
     .who { display: flex; align-items: center; gap: 8px; min-width: 0; }
-    .lvl { font-size: 11px; color: var(--text-faint); width: 16px; }
     .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .dmg { display: flex; align-items: center; gap: 8px; }
     .dmg .mono { width: 40px; }
@@ -146,8 +232,34 @@ export class PostGameView {
     return Math.round(((m.kills + m.assists) / team.kills) * 100);
   });
 
+  protected readonly charts: { key: 'gold' | 'damage'; title: string; unit: string }[] = [
+    { key: 'gold', title: 'Gold earned', unit: 'gold' },
+    { key: 'damage', title: 'Damage to champions', unit: 'damage' },
+  ];
+  /** Largest value per chart; every bar in a chart shares one scale. */
+  private readonly chartMax = computed(() => {
+    const players = this.game().teams.flatMap((t) => t.players);
+    return {
+      gold: Math.max(1, ...players.map((p) => p.gold)),
+      damage: Math.max(1, ...players.map((p) => p.damage)),
+    };
+  });
+
   protected icon = championIcon;
   protected time = clock;
+
+  /** Bar length; 44px is kept free past the tip for the value label. */
+  barWidth(key: 'gold' | 'damage', p: PostPlayer): string {
+    const f = p[key] / this.chartMax()[key];
+    return `calc((100% - 44px) * ${f.toFixed(4)})`;
+  }
+  tip(key: 'gold' | 'damage', p: PostPlayer, t: PostTeam): string {
+    const total = t.players.reduce((a, x) => a + x[key], 0);
+    const share = total > 0 ? Math.round((p[key] / total) * 100) : 0;
+    const who = p.name ?? this.rift.champName(p.championId);
+    const unit = this.charts.find((c) => c.key === key)!.unit;
+    return `${who} (${this.rift.champName(p.championId)}): ${p[key].toLocaleString()} ${unit}, ${share}% of ${t.isMine ? 'your' : 'their'} team`;
+  }
 
   kda = (p: PostPlayer) => kdaRatio(p.kills, p.deaths, p.assists);
   perMin(n: number): string {

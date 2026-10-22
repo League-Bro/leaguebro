@@ -162,7 +162,7 @@ export function demoProfile(): MyProfile {
   const matches: MatchLine[] = rows.map(([queueId, championId, result, kills, deaths, assists, cs, min, lane], i) => ({
     gameId: 1000 + i, queueId, gameMode: queueId === 450 ? 'ARAM' : queueId === 480 ? 'SWIFTPLAY' : 'CLASSIC',
     created: Date.now() - (i * 5 + 1) * 3_600_000, duration: min * 60, result, championId, kills, deaths, assists, cs,
-    gold: min * 420, damage: min * 850 + kills * 600, vision: Math.round(min * 0.8),
+    gold: min * 420, damage: min * 850 + kills * 600, vision: Math.round(min * 0.8), level: Math.min(18, 6 + Math.round(min / 3)),
     items: [...(builds[championId] ?? []), 0, 0, 0, 0, 0, 0].slice(0, 6).concat(3340), spells: [4, 14],
     laneOpponent: lane, enemies: enemies(i, lane),
   }));

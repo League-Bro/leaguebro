@@ -154,8 +154,26 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
         <p class="faint">No games yet.</p>
       }
       <div class="matches">
-        @for (m of matches(); track m.gameId) {
-          <button class="match" [class]="m.result" [class.open]="openId() === m.gameId" (click)="toggle(m)">
+        @if (matches().length) {
+          <div class="match-head" aria-hidden="true">
+            <span></span>
+            <span>Game</span>
+            <span>KDA</span>
+            <span>Level</span>
+            <span>CS</span>
+            <span class="c-dmg">Damage</span>
+            <span>Gold</span>
+            <span class="c-build">Build</span>
+          </div>
+        }
+        @for (day of days(); track day.key) {
+          <div class="day">
+            <span class="day-label">{{ day.label }}</span>
+            <span class="faint">{{ day.summary }}</span>
+          </div>
+          @for (m of day.matches; track m.gameId) {
+          <div class="item" [class.open]="openId() === m.gameId">
+          <button class="match" [class]="m.result" [attr.aria-expanded]="openId() === m.gameId" (click)="toggle(m)">
             <img class="champ-icon" [src]="champIcon(m.championId)" [title]="rift.champName(m.championId)" alt="" />
             <div class="what">
               <div class="res">{{ resultLabel(m) }}</div>
@@ -166,19 +184,24 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
                 }
               </div>
             </div>
-            <div class="kda-col">
+            <div>
               <div class="mono">{{ m.kills }} / {{ m.deaths }} / {{ m.assists }}</div>
               <div class="faint small mono">{{ ratio(m.kills, m.deaths, m.assists) }} KDA</div>
             </div>
-            <div class="stat-col">
-              <div class="mono">{{ m.cs }} <span class="faint">CS</span></div>
+            <div class="mono">{{ m.level }}</div>
+            <div>
+              <div class="mono">{{ m.cs }}</div>
               <div class="faint small mono">{{ m.cs / (m.duration / 60 || 1) | number: '1.1-1' }}/min</div>
             </div>
-            <div class="stat-col">
+            <div class="c-dmg">
               <div class="mono">{{ m.damage | number }}</div>
-              <div class="faint small">damage</div>
+              <div class="faint small mono">{{ m.damage / (m.duration / 60 || 1) | number: '1.0-0' }}/min</div>
             </div>
-            <div class="items">
+            <div>
+              <div class="mono">{{ m.gold | number }}</div>
+              <div class="faint small mono">{{ m.gold / (m.duration / 60 || 1) | number: '1.0-0' }}/min</div>
+            </div>
+            <div class="items c-build">
               @for (id of m.items; track $index) {
                 <span class="slot">@if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }</span>
               }
@@ -194,6 +217,8 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
                 <p class="muted small">Loading the full scoreboard…</p>
               }
             </div>
+          }
+          </div>
           }
         }
       </div>
@@ -230,16 +255,33 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .bar { width: 90px; height: 6px; border-radius: 999px; background: var(--bg-sunken); overflow: hidden; }
     .bar span { display: block; height: 100%; background: var(--accent); opacity: 0.8; }
     .history-head { align-items: baseline; gap: 12px; margin: 24px 0 10px; flex-wrap: wrap; }
-    .matches { display: flex; flex-direction: column; gap: 6px; }
-    .match {
-      display: grid; grid-template-columns: 44px minmax(150px, 1.3fr) 96px 80px 80px auto; align-items: center; gap: 14px;
-      text-align: left; padding: 8px 14px; background: var(--glass), var(--bg-raised); border: 1px solid var(--line);
-      border-left: 3px solid var(--text-faint); border-radius: 12px; color: var(--text);
+    .matches { display: flex; flex-direction: column; gap: 10px; }
+    .day {
+      display: flex; align-items: baseline; gap: 12px; margin-top: 14px; padding: 0 2px 6px;
+      border-bottom: 1px solid var(--line); font-size: 12.5px;
+    }
+    .match-head + .day { margin-top: 2px; }
+    .day-label { font-weight: 700; color: var(--text-dim); letter-spacing: 0.02em; }
+    /* An opened match: its row and scoreboard framed as one card. The negative
+       margin keeps the row lined up with the column headers; the frame is an
+       outline so it takes no space and can't throw that off. */
+    .item.open {
+      margin: 4px -8px; padding: 8px; border-radius: 18px;
+      outline: 1px solid var(--accent); outline-offset: -1px;
+      background: var(--bg-sunken); box-shadow: 0 0 0 4px var(--accent-soft);
+    }
+    .match, .match-head {
+      display: grid; grid-template-columns: 44px minmax(150px, 1.3fr) 92px 40px 64px 76px 68px 190px; align-items: center; gap: 14px;
+      padding: 8px 14px; border: 1px solid var(--line); border-left: 3px solid var(--text-faint); border-radius: 12px;
+    }
+    .match { width: 100%; text-align: left; background: var(--glass), var(--bg-raised); color: var(--text); }
+    .match-head {
+      padding-top: 0; padding-bottom: 2px; border-color: transparent;
+      font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
     }
     .match:hover { border-color: var(--line-strong); }
     .match.win { border-left-color: var(--win); }
     .match.loss { border-left-color: var(--loss); }
-    .match.open { border-color: var(--accent); }
     .match.win .res { color: var(--win); }
     .match.loss .res { color: var(--loss); }
     .match.remake .res { color: var(--text-dim); }
@@ -248,8 +290,11 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .slot { width: 24px; height: 24px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line-strong); background: var(--bg-sunken); flex: none; }
     .slot img { display: block; width: 100%; height: 100%; }
     .slot:last-child { border-radius: 50%; margin-left: 3px; }
-    .detail { padding: 4px 0 12px; }
-    @media (max-width: 1000px) { .match { grid-template-columns: 44px 1fr 96px 80px; } .match .items, .match .stat-col:last-of-type { display: none; } }
+    .detail { padding: 10px 4px 4px; }
+    @media (max-width: 1000px) {
+      .match, .match-head { grid-template-columns: 44px 1fr 92px 40px 64px 68px; }
+      .match .c-dmg, .match .c-build, .match-head .c-dmg, .match-head .c-build { display: none; }
+    }
   `,
 })
 export class ProfileView {
@@ -271,6 +316,28 @@ export class ProfileView {
     const m = this.mode();
     return m === 'all' ? p?.insights : p?.modes.find((q) => q.queueId === m)?.insights;
   });
+  /** Matches grouped by local calendar day, newest first. */
+  protected readonly days = computed(() => {
+    const groups: { key: string; label: string; summary: string; matches: MatchLine[] }[] = [];
+    for (const m of this.matches()) {
+      const d = new Date(m.created);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      let g = groups.at(-1);
+      if (!g || g.key !== key) {
+        g = { key, label: this.dayLabel(d), summary: '', matches: [] };
+        groups.push(g);
+      }
+      g.matches.push(m);
+    }
+    for (const g of groups) {
+      const wins = g.matches.filter((m) => m.result === 'win').length;
+      const losses = g.matches.filter((m) => m.result === 'loss').length;
+      const n = g.matches.length;
+      g.summary = `${n} ${n === 1 ? 'game' : 'games'} · ${wins}W ${losses}L`;
+    }
+    return groups;
+  });
+
   protected readonly matches = computed(() => {
     const all = this.profile()?.matches ?? [];
     const m = this.mode();
@@ -360,6 +427,14 @@ export class ProfileView {
   }
   mins(s: number): string {
     return `${Math.round(s / 60)} min`;
+  }
+  private dayLabel(d: Date): string {
+    const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const daysAgo = Math.round((startOf(new Date()) - startOf(d)) / 86_400_000);
+    if (daysAgo === 0) return 'Today';
+    if (daysAgo === 1) return 'Yesterday';
+    const sameYear = d.getFullYear() === new Date().getFullYear();
+    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: sameYear ? undefined : 'numeric' });
   }
   ago(ms: number): string {
     const h = (Date.now() - ms) / 3_600_000;
