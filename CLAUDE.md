@@ -35,10 +35,11 @@ The Rust side runs one background loop (`engine.rs`, 1 s tick) that pushes state
 1. **League Client API (LCU):** local HTTPS on `127.0.0.1:<random port>` with basic auth `riot:<token>`. `lcu.rs` gets the port and token from the `LeagueClientUx` process command line, falling back to the `lockfile`. The certificate is self-signed, so the client accepts invalid certs for localhost only. Endpoints used:
    - `lol-gameflow/v1/gameflow-phase`, `lol-gameflow/v1/session` (queue/map, loading-screen teams)
    - `lol-champ-select/v1/session`, plus `PATCH lol-champ-select/v1/session/my-selection` for summoner spells
+   - `GET`/`PUT lol-item-sets/v1/item-sets/{summonerId}/sets` (shop build, `itemsets.rs`). `PUT` replaces the whole list, so read, swap our set, write back. Item `id`s are strings. Format checked with a real write and read-back in October 2026; block headers are kept ASCII because the in-game shop draws them.
    - `lol-perks/v1/pages`, `currentpage`, `recommended-pages/champion/{id}/position/{pos}/map/{map}`
    - `lol-ranked/v1/ranked-stats/{puuid}`, `lol-match-history/v1/products/lol/{puuid}/matches` (scouting)
    - `lol-match-history/v1/games/{gameId}` (post-game summary, `postgame.rs`). When a game ends (`in_game` → not), `end_game` clears the live state and the engine retries this every 3 s for up to 3 min, because the record shows up a few seconds after the game. Format checked against a real response in October 2026. `lol-end-of-game/v1/eog-stats-block` only exists on the post-game screen and its `stats` keys are untyped, so it isn't used.
-   - `lol-game-data/assets/v1/{champion-summary,items,perks,perkstyles,summoner-spells}.json` (static data)
+   - `lol-game-data/assets/v1/{champion-summary,items,perks,perkstyles,summoner-spells}.json` (static data). `champion-summary` also lists League Classic copies of ~80 champions: same name, id = 60000 + the normal id, alias `Jade_…` (checked October 2026). `ChampInfo.classic` marks them (`is_league_classic`); the Champions tab lists them separately, and OP.GG lookups and the live-game name match skip them.
    - The schema reference is the swagger at https://github.com/dysolix/hasagi-types (`swagger.json`).
 2. **Live Client Data API:** `https://127.0.0.1:2999/liveclientdata/allgamedata`, served while a game is running. `live.rs` uses it for objective timers, the next-item reminder and the skill-point hint. Its `scores.creepScore` only updates in steps of 10, so CS was removed from the overlay (Dom saw it not change in game); the game's own scoreboard shows the exact number.
 3. **OP.GG MCP endpoint:** `https://mcp-api.op.gg/mcp`, JSON-RPC over HTTP (MCP streamable HTTP). It's public, needs no key, and is unofficial for apps, so it could change. `opgg.rs` does:
@@ -49,6 +50,7 @@ The Rust side runs one background loop (`engine.rs`, 1 s tick) that pushes state
    - `game_mode`: `ranked|flex|urf|aram|nexus_blitz`, picked from the queue/map (`game_mode_for`). Arena gets no recommendation.
    - Below `MIN_GAMES` (20) the data is noise (e.g. off-role picks). Runes and spells then fall back to the League client's recommended page.
    - Results are cached in memory for 6 h per champion+position+mode.
+   - The Champions tab uses the `lookup_rec` command (any champion, `ranked` + role or `aram`). It returns the recommendation directly and doesn't touch `sh.rec`, which belongs to champ select. `RecCard` shows champ select's rec unless given a `lookup` input. The tab is also where saved rune pages (`runeOverrides`) and builds (`builds`) are edited; the old Runes and Builds tabs are gone, and their auto-import switches are in Settings → Rune import.
    - The `scripts/opgg-probe*.mjs` scripts (if present locally) call the endpoint and save raw responses to `scripts/probe-output/` (git-ignored). Use them to see the real format; Claude's cloud sandbox couldn't reach op.gg.
 4. **CommunityDragon** (`raw.communitydragon.org`) for champion, item, rune and spell icons (`assets.ts`). Client asset paths are lowercased and mapped there.
 5. **Riot patch notes** (`www.leagueoflegends.com`) for the Patch Notes tab (`patch.rs`). The site is Next.js, so `patch.rs` reads the JSON in `<script id="__NEXT_DATA__">`: the patch-notes tag page for the list, then each article's `richText.body` HTML, parsed with `scraper` into buffs, nerfs and adjustments. Only fetched when the Patch Notes tab is opened. Both are saved to disk (`%LOCALAPPDATA%\dev.dom.leaguebuddy\patch-notes`): a patch's notes are downloaded once and never again; the list is re-checked only when the next patch's notes are due (the day before that patch in `PATCH_SCHEDULE`, Riot's published dates; newest notes + 14 days once the table runs out), then at most every 6 h until they appear. **Add each new year's dates to `PATCH_SCHEDULE`** from https://support.riotgames.com/league-of-legends/gameplay/patch-schedule-league-of-legends. Bump `CACHE_FORMAT` when the parser or saved shapes change. `get_patch` only fetches URLs under `https://www.leagueoflegends.com/`. Fixtures: `tests/fixtures/patch_list.html`, `patch_article.html`.
@@ -57,6 +59,7 @@ The Rust side runs one background loop (`engine.rs`, 1 s tick) that pushes state
 
 - Rune page: the user's saved page for the champion (`runeOverrides`), then OP.GG (if ≥ `MIN_GAMES`), then the client's recommended page.
 - Overlay build: the user's saved build (`builds`), then OP.GG's `build_order` (if enabled).
+- Shop item set: on lock-in (same rules as spells: OP.GG, ≥ `MIN_GAMES`, `setItemSets` on), one set titled `League Buddy: <Champ> <Role>` for that champion and map, blocks Starter / Boots / Core build / 4th-6th item options. Any other `League Buddy:` set is replaced; the user's own sets are never touched.
 - Summoner spells: `arrange_spells` keeps each recommended spell in the slot where the player already has it, so Flash stays on their usual key.
 - Overlay mouse handling: locked = click-through, except over the padlock button. `watch_overlay_cursor` (engine.rs, 50 ms) hit-tests the cursor against the button rect the overlay reports (`set_overlay_button`, CSS px) and toggles `set_ignore_cursor_events`. Unlocked = whole window takes input; dragging uses `data-tauri-drag-region`, which needs `core:window:allow-start-dragging` in `capabilities/default.json` and only fires on the exact element carrying the attribute (hence the full-panel `.drag-layer`). Locking saves the position; a fresh show (game start) always re-locks.
 - League Buddy owns exactly one rune page, named `League Buddy: <Champ> <Role>` and kept to 25 characters or fewer (`page_name`). It deletes and recreates that page each time, and also cleans up old `Riftlight:` and `LB:` pages. It never touches the user's other pages unless "reuse the selected page when full" is on.
@@ -82,6 +85,7 @@ src-tauri/src/
   engine.rs     main loop, shared state, champ select/loading/live handling, rune import + spells, ensure_rec
   lcu.rs        League client discovery + HTTP
   runes.rs      rune page choice/naming/import
+  itemsets.rs   OP.GG build as a client item set (in-game shop)
   opgg.rs       OP.GG client, compact-format parser, Recommendation model
   patch.rs      Riot patch notes: list + article parsing into buffs/nerfs
   scout.rs      rank + match history summaries
@@ -89,8 +93,8 @@ src-tauri/src/
   postgame.rs   post-game summary from the match-history record
   config.rs     settings (%APPDATA%\dev.dom.leaguebuddy\settings.json), serde defaults for new fields
 src-tauri/tauri.conf.json   windows (main + transparent overlay), CSP, updater pubkey + endpoint, version
-src/app/core/   rift.service.ts (events/commands), update.service.ts (auto-update), models.ts, demo.ts, assets.ts
-src/app/components/  shell, live-view, post-game, rec-card, player-card, runes-view, builds-view, settings-view, overlay, champ-picker
+src/app/core/   rift.service.ts (events/commands), update.service.ts (auto-update), models.ts, demo.ts, assets.ts, why.ts (recommendation explanations)
+src/app/components/  shell, live-view, post-game, champions-view, rec-card, player-card, patch-view, settings-view, overlay
 .github/workflows/build-windows.yml   release workflow (tauri-action, signs updates, publishes latest.json)
 scripts/setup-dev.ps1 (+ .cmd)        dev environment setup
 ```
@@ -114,6 +118,7 @@ Adding a setting: add it to `config.rs` (with a default; `#[serde(default)]` kee
   - Rune lookup for ARAM / blind pick, and inhibitor lane labels (`Barracks_T1_L1` → Top, `C` → Mid, `R` → Bot).
   - Objective spawn timings (editable in Settings).
   - Post-game summary after a full 10-player game, and the live view resetting when the game ends.
+  - The League Buddy item set showing in the in-game shop (written on lock-in).
   - Overlay padlock (hover-to-click while locked) and dragging.
 - Known gap: blind pick with no assigned role has no OP.GG position. The UI shows an error and runes fall back to the client.
 

@@ -33,7 +33,7 @@ import { championIcon, clock, positionLabel } from '../core/assets';
             @if (importMsg()) {
               {{ importMsg() }}
             } @else if (rift.config()?.autoImportRunes) {
-              <span class="muted">Runes{{ rift.config()?.setSummonerSpells && rift.config()?.recSource === 'opgg' ? ' and summoner spells' : '' }} import automatically when you lock in.</span>
+              <span class="muted">{{ autoImportText() }}</span>
             } @else {
               <span class="muted">Auto-import is off.</span>
             }
@@ -158,6 +158,16 @@ export class LiveView {
     const cs = this.rift.champSelect();
     if (li && cs && li.championId === cs.myChampionId) return li.message;
     return null;
+  });
+  protected readonly autoImportText = computed(() => {
+    const c = this.rift.config();
+    const parts = ['runes'];
+    if (c?.recSource === 'opgg') {
+      if (c.setSummonerSpells) parts.push('summoner spells');
+      if (c.setItemSets) parts.push('your shop build');
+    }
+    const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0];
+    return `${list.charAt(0).toUpperCase()}${list.slice(1)} are set automatically when you lock in.`;
   });
   protected readonly visiblePostGame = computed(() => {
     const pg = this.rift.postGame();

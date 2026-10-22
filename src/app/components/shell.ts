@@ -2,12 +2,11 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { UpdateService } from '../core/update.service';
 import { LiveView } from './live-view';
-import { RunesView } from './runes-view';
-import { BuildsView } from './builds-view';
+import { ChampionsView } from './champions-view';
 import { SettingsView } from './settings-view';
 import { PatchView } from './patch-view';
 
-type Tab = 'live' | 'runes' | 'builds' | 'patch' | 'settings';
+type Tab = 'live' | 'champions' | 'patch' | 'settings';
 
 const PHASE_LABELS: Record<string, string> = {
   None: 'In client',
@@ -25,7 +24,7 @@ const PHASE_LABELS: Record<string, string> = {
 
 @Component({
   selector: 'rl-shell',
-  imports: [LiveView, RunesView, BuildsView, PatchView, SettingsView],
+  imports: [LiveView, ChampionsView, PatchView, SettingsView],
   template: `
     <header>
       <div class="brand">
@@ -76,8 +75,7 @@ const PHASE_LABELS: Record<string, string> = {
     <main>
       @switch (tab()) {
         @case ('live') { <rl-live /> }
-        @case ('runes') { <rl-runes /> }
-        @case ('builds') { <rl-builds /> }
+        @case ('champions') { <rl-champions /> }
         @case ('patch') { <rl-patch /> }
         @case ('settings') { <rl-settings /> }
       }
@@ -123,8 +121,7 @@ export class Shell implements OnInit {
   protected readonly tab = signal<Tab>('live');
   protected readonly tabs: { id: Tab; label: string }[] = [
     { id: 'live', label: 'Live' },
-    { id: 'runes', label: 'Runes' },
-    { id: 'builds', label: 'Builds' },
+    { id: 'champions', label: 'Champions' },
     { id: 'patch', label: 'Patch Notes' },
     { id: 'settings', label: 'Settings' },
   ];

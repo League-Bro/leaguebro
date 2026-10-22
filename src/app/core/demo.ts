@@ -79,7 +79,7 @@ export function demoSnapshot(): Snapshot {
       profile('e4', '', '', 0, 0, 0, [145, 222]),
       profile('e5', 'SILVER', 'I', 91, 30, 37, [555, 412]),
     ],
-    lastImport: { ok: true, championId: 103, message: 'Set "League Buddy: Ahri Mid" (OP.GG) · Flash + Ignite' },
+    lastImport: { ok: true, championId: 103, message: 'Set "League Buddy: Ahri Mid" (OP.GG) · Flash + Ignite · build added to the shop' },
     overlay: {
       gameTime: 742,
       gameMode: 'CLASSIC',
@@ -160,7 +160,13 @@ function demoItem(id: number, name: string, priceTotal: number, file: string, st
 
 export function demoStatic(): StaticData {
   return {
-    champions: champs.map(([id, name]) => ({ id, name, alias: name.replace(/[^A-Za-z]/g, ''), roles: roles[id] ?? [] })),
+    champions: [
+      ...champs.map(([id, name]) => ({ id, name, alias: name.replace(/[^A-Za-z]/g, ''), roles: roles[id] ?? [], classic: false })),
+      // League Classic copies, as the client lists them (id + 60000, alias Jade_…).
+      ...champs
+        .filter(([id]) => [1, 64, 84, 89, 99, 103].includes(id))
+        .map(([id, name]) => ({ id: 60000 + id, name, alias: `Jade_${name.replace(/[^A-Za-z]/g, '')}`, roles: roles[id] ?? [], classic: true })),
+    ],
     items: [
       demoItem(3020, "Sorcerer's Shoes", 1100, '3020_Mage_T2_SorcererShoes.png', ['12 Magic Penetration', '45 Move Speed'], '', ['Boots', 'MagicPenetration']),
       demoItem(6655, "Luden's Companion", 2850, '6655_Mage_T4_LudensCompanion.png', ['100 Ability Power', '600 Mana', '10 Ability Haste'], 'Echo\nDamaging abilities fire bonus magic damage at the target and nearby enemies.', ['SpellDamage', 'Mana', 'AbilityHaste']),
@@ -208,6 +214,7 @@ export function demoConfig(): Config {
     builds: {},
     recSource: 'opgg',
     setSummonerSpells: true,
+    setItemSets: true,
     useRecommendedBuilds: true,
     showSkillHint: true,
     scoutInChampSelect: true,

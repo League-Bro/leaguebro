@@ -13,12 +13,13 @@ import {
   PostGame,
   Profile,
   RecState,
+  Recommendation,
   RunePage,
   Snapshot,
   StaticData,
   Status,
 } from './models';
-import { demoChampSelect, demoConfig, demoPatch, demoPatchList, demoPostGame, demoSnapshot, demoStatic } from './demo';
+import { demoChampSelect, demoConfig, demoPatch, demoPatchList, demoPostGame, demoRec, demoSnapshot, demoStatic } from './demo';
 
 export function inTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -36,6 +37,9 @@ export class RiftService {
   readonly postGame = signal<PostGame | null>(null);
   /** Game id of a summary the user closed. */
   readonly closedPostGame = signal<number | null>(null);
+  /** Champions tab selection, kept across tab switches. */
+  readonly championsPick = signal<{ championId: number; position: string; mode: 'ranked' | 'aram' } | null>(null);
+  readonly championsGame = signal<'league' | 'classic'>('league');
   readonly overlayPreview = signal(false);
   readonly overlayLocked = signal(true);
   readonly config = signal<Config | null>(null);
@@ -133,8 +137,18 @@ export class RiftService {
   }
 
   importRunesNow(): Promise<string> {
-    if (this.demo) return Promise.resolve('Set "League Buddy: Ahri Mid" (OP.GG) · Flash + Ignite');
+    if (this.demo) return Promise.resolve('Set "League Buddy: Ahri Mid" (OP.GG) · Flash + Ignite · build added to the shop');
     return invoke<string>('import_runes_now');
+  }
+
+  /** OP.GG's recommendation for any champion (Champions tab). Position: top|jungle|middle|bottom|utility. */
+  async lookupRec(championId: number, position: string, gameMode: 'ranked' | 'aram'): Promise<Recommendation> {
+    if (this.demo) {
+      await new Promise((r) => setTimeout(r, 300));
+      const rec = demoRec().rec!;
+      return { ...rec, championId, position, gameMode };
+    }
+    return invoke<Recommendation>('lookup_rec', { championId, position, gameMode });
   }
 
   async saveCurrentPageFor(championId: number): Promise<RunePage> {

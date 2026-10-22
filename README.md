@@ -22,13 +22,17 @@ To uninstall, use Windows **Settings → Apps → Installed apps → League Budd
 
 When you hover or lock a champion, League Buddy pulls OP.GG's ranked stats for that champion and role and shows the most popular rune page, summoner spells, skill order, starting items and build path, with game counts and win rate.
 
-### Rune and summoner spell auto-import
+To look up any champion outside champ select, use the **Champions** tab: pick a champion, then Ranked (with a role) or ARAM. That's also where you save your own rune page or item order for a champion.
+
+### Rune, summoner spell and shop build auto-import
 
 When you lock in, League Buddy creates a rune page called `League Buddy: <Champion> <Role>` and selects it. It reuses that one page every game, so your other pages are never touched. It also sets your summoner spells, keeping Flash on whichever key you already use.
 
+It also adds OP.GG's build to the in-game shop as an item set with the same name: starter items, boots, core build and options for items 4 to 6, with win rates. In the shop, find it under item sets. Like the rune page, it's one set that gets replaced each game, and your own item sets aren't touched.
+
 - **Where the page comes from:** your own saved page for that champion if you have one, otherwise OP.GG's most popular page. For rare picks with too few games on OP.GG, it uses the League client's own suggestion.
-- **Your own page:** select it in the client's rune editor, then save it for that champion on the **Runes** tab.
-- **Options:** under **Settings → Recommendations** you can switch to League client suggestions only, or turn off summoner spells. Turn on "Import while hovering" for blind pick. If all your page slots are full, delete one page, or turn on "Reuse the selected page when slots are full".
+- **Your own page:** select it in the client's rune editor, then save it on that champion's page in the **Champions** tab.
+- **Options:** under **Settings → Recommendations** you can switch to League client suggestions only, or turn off summoner spells or the shop build. Turn on "Import while hovering" for blind pick. If all your page slots are full, delete one page, or turn on "Reuse the selected page when slots are full".
 
 ### Scouting
 
@@ -44,7 +48,7 @@ A small, click-through panel in the top-right corner shows:
 - the game clock and your KDA
 - objective timers: dragon (switching to Elder after a soul), Baron, and destroyed inhibitors
 - which ability to max, plus a "Level up Q" hint whenever you have an unspent skill point
-- the next two items to buy, with the price turning green when you can afford it. These come from your saved build for that champion (set on the **Builds** tab), or from OP.GG's build otherwise.
+- the next two items to buy, with the price turning green when you can afford it. These come from your saved build for that champion (set in the **Champions** tab), or from OP.GG's build otherwise.
 
 You can change the overlay's position, opacity and the timer values under **Settings**. Use **Preview overlay** to see where it sits.
 

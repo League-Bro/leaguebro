@@ -241,6 +241,8 @@ export interface ChampInfo {
   alias: string;
   /** Client roles, e.g. ["mage", "assassin"]. */
   roles: string[];
+  /** A League Classic copy of a champion (id = 60000 + the normal id). */
+  classic: boolean;
 }
 
 export interface ItemInfo {
@@ -342,6 +344,7 @@ export interface Config {
   builds: Record<string, number[]>;
   recSource: 'opgg' | 'client';
   setSummonerSpells: boolean;
+  setItemSets: boolean;
   useRecommendedBuilds: boolean;
   showSkillHint: boolean;
   scoutInChampSelect: boolean;

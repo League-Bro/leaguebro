@@ -1,8 +1,8 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, input, signal } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { assetUrl } from '../core/assets';
-import { ItemSet } from '../core/models';
+import { ItemSet, RecState } from '../core/models';
 import { buildWhy, rolesLabel } from '../core/why';
 
 const MIN_GAMES = 20;
@@ -246,8 +246,13 @@ export class RecCard {
     return assetUrl(path);
   }
 
+  /** A lookup to show instead of champ select's (the Champions tab). */
+  readonly lookup = input<RecState | null>();
+
   /** Only show the recommendation for the champion currently picked. */
   protected readonly state = computed(() => {
+    const own = this.lookup();
+    if (own !== undefined) return own;
     const s = this.rift.rec();
     if (!s) return null;
     const cs = this.rift.champSelect();

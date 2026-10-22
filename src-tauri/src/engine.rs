@@ -2,6 +2,7 @@
 //! and loading, and feeds the overlay while a game is running.
 
 use crate::config::Config;
+use crate::itemsets;
 use crate::lcu::{self, Lcu};
 use crate::live::{self, OverlayState};
 use crate::opgg::{self, OpGg, Recommendation};
@@ -27,6 +28,12 @@ pub struct ChampInfo {
     pub alias: String,
     /// Client roles, e.g. ["mage", "assassin"].
     pub roles: Vec<String>,
+    /// A League Classic copy of a champion (id = 60000 + the normal id, alias `Jade_…`).
+    pub classic: bool,
+}
+
+pub fn is_league_classic(id: i64, alias: &str) -> bool {
+    id >= 60000 || alias.starts_with("Jade_")
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -344,6 +351,7 @@ async fn load_statics(lcu: &Lcu) -> anyhow::Result<StaticData> {
             name: st(c, "name").into(),
             alias: st(c, "alias").into(),
             roles: string_list(c, "roles"),
+            classic: is_league_classic(i(c, "id"), st(c, "alias")),
         })
         .collect();
     champions.sort_by(|a, b| a.name.cmp(&b.name));
@@ -863,7 +871,8 @@ impl Engine {
             // Fall back to matching the live champion name if champ select was missed.
             if sh.my_champion_id == 0 {
                 let me = live::find_me(&data).and_then(|p| p.get("championName")).and_then(Value::as_str).unwrap_or("");
-                if let Some(c) = sh.statics.as_ref().and_then(|s| s.champions.iter().find(|c| c.name == me)) {
+                // League Classic copies share the name; this fallback is for normal League.
+                if let Some(c) = sh.statics.as_ref().and_then(|s| s.champions.iter().find(|c| c.name == me && !c.classic)) {
                     sh.my_champion_id = c.id;
                 }
             }
@@ -968,7 +977,15 @@ pub async fn import_for(app: &AppHandle, champion_id: i64, position: &str) -> Re
         },
         _ => String::new(),
     };
-    Ok(format!("{result}{spells}"))
+    let items = match rec.as_ref().filter(|r| cfg.set_item_sets && r.games >= opgg::MIN_GAMES) {
+        Some(r) => match itemsets::apply(&lcu, r, &name, runes::position_label(position), map_id).await {
+            Ok(Some(_)) => " · build added to the shop".to_string(),
+            Ok(None) => String::new(),
+            Err(e) => format!(" · couldn't add the build to the shop: {e:#}"),
+        },
+        None => String::new(),
+    };
+    Ok(format!("{result}{spells}{items}"))
 }
 
 /// Puts each recommended spell where you already have it (so Flash stays on
@@ -1029,10 +1046,11 @@ pub async fn ensure_rec(app: &AppHandle, champion_id: i64, position: &str, live_
                 return r.rec.clone();
             }
         }
+        // OP.GG has no League Classic stats.
         let alias = sh
             .statics
             .as_ref()
-            .and_then(|s| s.champions.iter().find(|c| c.id == champion_id))
+            .and_then(|s| s.champions.iter().find(|c| c.id == champion_id && !c.classic))
             .map(|c| c.alias.clone());
         let mode = match live_mode {
             Some(m) => mode_from_live(m),
@@ -1153,6 +1171,15 @@ mod tests {
         assert_eq!(v.enemies[0].champion_id, 238);
         assert!(v.enemies[0].name.is_none() && v.enemies[0].puuid.is_none());
         assert_eq!(v.bans, vec![157, 555]);
+    }
+
+    #[test]
+    fn league_classic_champions() {
+        // Real entries from champion-summary.json (October 2026).
+        assert!(is_league_classic(60103, "Jade_Ahri"));
+        assert!(is_league_classic(60001, "Jade_Annie"));
+        assert!(!is_league_classic(103, "Ahri"));
+        assert!(!is_league_classic(950, "Naafiri"));
     }
 
     #[test]

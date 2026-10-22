@@ -1,5 +1,6 @@
 mod config;
 mod engine;
+mod itemsets;
 mod lcu;
 mod opgg;
 mod live;
@@ -48,6 +49,30 @@ async fn import_runes_now(app: AppHandle) -> Result<String, String> {
         return Err("Hover or lock a champion first".into());
     }
     engine::import_for(&app, champion, &position).await
+}
+
+/// OP.GG's recommendation for any champion, role and mode (the Champions tab).
+/// Unlike champ select's lookup this doesn't change the current recommendation.
+#[tauri::command]
+async fn lookup_rec(
+    state: State<'_, AppState>,
+    champion_id: i64,
+    position: String,
+    game_mode: String,
+) -> Result<opgg::Recommendation, String> {
+    if !matches!(game_mode.as_str(), "ranked" | "aram") {
+        return Err(format!("Unknown game mode {game_mode}"));
+    }
+    let alias = {
+        let sh = state.shared.lock().await;
+        let statics = sh.statics.as_ref().ok_or("Open the League client to load champions")?;
+        let champ = statics.champions.iter().find(|c| c.id == champion_id).ok_or("Unknown champion")?;
+        if champ.classic {
+            return Err("OP.GG has no League Classic stats".into());
+        }
+        champ.alias.clone()
+    };
+    state.opgg.recommend(champion_id, &alias, &position, &game_mode).await.map_err(|e| format!("{e:#}"))
 }
 
 /// Saves the rune page currently selected in the client as your own page for
@@ -165,6 +190,7 @@ pub fn run() {
             save_config,
             import_runes_now,
             save_current_page_for,
+            lookup_rec,
             preview_overlay,
             set_overlay_locked,
             list_patches,

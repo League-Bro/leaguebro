@@ -4,7 +4,13 @@ import { UpdateService } from '../core/update.service';
 import { Config, TimerConfig } from '../core/models';
 import { clock } from '../core/assets';
 
-type BoolKey = 'scoutInChampSelect' | 'scoutOnLoading' | 'overlayEnabled';
+type BoolKey =
+  | 'scoutInChampSelect'
+  | 'scoutOnLoading'
+  | 'overlayEnabled'
+  | 'autoImportRunes'
+  | 'importOnHover'
+  | 'reuseCurrentPageWhenFull';
 
 @Component({
   selector: 'rl-settings',
@@ -79,9 +85,14 @@ type BoolKey = 'scoutInChampSelect' | 'scoutOnLoading' | 'overlayEnabled';
               <span class="label"><b>Set summoner spells</b><span>On lock-in. Flash stays on whichever key you already use.</span></span>
             </label>
             <label class="toggle">
+              <input type="checkbox" [checked]="cfg.setItemSets" (change)="setRec('setItemSets', $any($event.target).checked)" />
+              <span class="track"></span>
+              <span class="label"><b>Add the build to the in-game shop</b><span>On lock-in, as a "League Buddy" item set under Item Sets in the shop. Your own item sets aren't touched.</span></span>
+            </label>
+            <label class="toggle">
               <input type="checkbox" [checked]="cfg.useRecommendedBuilds" (change)="setRec('useRecommendedBuilds', $any($event.target).checked)" />
               <span class="track"></span>
-              <span class="label"><b>Use OP.GG builds in the overlay</b><span>For champions you haven't saved a build for on the Builds tab.</span></span>
+              <span class="label"><b>Use OP.GG builds in the overlay</b><span>For champions you haven't saved a build for on the Champions tab.</span></span>
             </label>
             <label class="toggle">
               <input type="checkbox" [checked]="cfg.showSkillHint" (change)="setRec('showSkillHint', $any($event.target).checked)" />
@@ -89,6 +100,25 @@ type BoolKey = 'scoutInChampSelect' | 'scoutOnLoading' | 'overlayEnabled';
               <span class="label"><b>Skill order in the overlay</b><span>Shows which ability to max and what to level when you have a point.</span></span>
             </label>
           }
+        </section>
+
+        <section class="card stack">
+          <h2>Rune import</h2>
+          <label class="toggle">
+            <input type="checkbox" [checked]="cfg.autoImportRunes" (change)="setBool('autoImportRunes', $any($event.target).checked)" />
+            <span class="track"></span>
+            <span class="label"><b>Import runes in champ select</b><span>Creates one page called "League Buddy: …" and replaces it each game. Your own page for a champion (Champions tab) comes first.</span></span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" [checked]="cfg.importOnHover" (change)="setBool('importOnHover', $any($event.target).checked)" />
+            <span class="track"></span>
+            <span class="label"><b>Import while hovering</b><span>Don't wait for lock-in. Handy for blind pick.</span></span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" [checked]="cfg.reuseCurrentPageWhenFull" (change)="setBool('reuseCurrentPageWhenFull', $any($event.target).checked)" />
+            <span class="track"></span>
+            <span class="label"><b>Reuse the selected page when slots are full</b><span>Overwrites whichever editable page is selected. Leave off if you'd rather keep one slot free for League Buddy.</span></span>
+          </label>
         </section>
 
         <section class="card stack">
@@ -169,7 +199,7 @@ export class SettingsView {
   setSource(v: 'opgg' | 'client'): void {
     this.save((c) => ({ ...c, recSource: v }));
   }
-  setRec(key: 'setSummonerSpells' | 'useRecommendedBuilds' | 'showSkillHint', v: boolean): void {
+  setRec(key: 'setSummonerSpells' | 'setItemSets' | 'useRecommendedBuilds' | 'showSkillHint', v: boolean): void {
     this.save((c) => ({ ...c, [key]: v }));
   }
   setNum(key: 'overlayOpacity', v: number): void {

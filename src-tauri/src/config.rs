@@ -63,6 +63,8 @@ pub struct Config {
     pub rec_source: String,
     /// Set summoner spells from the recommendation when you lock in.
     pub set_summoner_spells: bool,
+    /// Add the recommended build to the in-game shop as an item set when you lock in.
+    pub set_item_sets: bool,
     /// Use the recommended item build in the overlay for champions you
     /// haven't saved a build for.
     pub use_recommended_builds: bool,
@@ -90,6 +92,7 @@ impl Default for Config {
             builds: HashMap::new(),
             rec_source: "opgg".into(),
             set_summoner_spells: true,
+            set_item_sets: true,
             use_recommended_builds: true,
             show_skill_hint: true,
             scout_in_champ_select: true,
