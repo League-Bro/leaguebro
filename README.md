@@ -4,6 +4,8 @@ A small, ad-free League of Legends companion for Windows. It imports your runes 
 
 ## Install
 
+Download it from **[doliaro.github.io/leaguebro](https://doliaro.github.io/leaguebro/)**, the League Bro website, which always links the newest installer. Or:
+
 1. Go to the **[latest release](https://github.com/doliaro/leaguebro/releases/latest)** and download `League.Bro_x.y.z_x64-setup.exe`.
 2. Run it. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**. That warning appears because the app isn't code-signed, not because something is wrong with it.
 3. Open League Bro, then open League. It connects on its own.
@@ -47,7 +49,7 @@ Each player card shows rank, LP, win rate, record and KDA over the last 20 games
 
 A small, click-through panel in the top-right corner shows:
 
-- the game clock and your KDA
+- how your items compare with your lane opponent's: the total cost of each of your items, and the difference (green when you're ahead). The game doesn't share enemy gold, so this is item value, like Blitz shows. Not shown in modes without roles, like ARAM.
 - objective timers: dragon (switching to Elder after a soul), Baron, and destroyed inhibitors
 - which ability to max, plus a "Level up Q" hint whenever you have an unspent skill point
 - the next two items to buy, with the price turning green when you can afford it. These come from your saved build for that champion (set in the **Champions** tab), or from OP.GG's build otherwise.
@@ -57,6 +59,10 @@ You can change the overlay's position, opacity and the timer values under **Sett
 ### Post-game summary
 
 When a game ends, the **Live** tab shows the result, your KDA, CS per minute, damage, gold, vision, kill share and items, plus a scoreboard for both teams. It stays until your next champ select, or until you close it.
+
+### Your profile
+
+Click **League Bro** (or your name) at the top of the window to open your profile: your rank, insights from your recent games (win rate, KDA, CS, damage and gold per minute, vision, streak, best champions and queues), and your match history. Click a match to see its full scoreboard. It covers the games the League client keeps, usually your last few dozen. Custom and practice games aren't included, and neither are Brawl or League Classic, which Riot doesn't allow apps to show.
 
 ### What it doesn't do
 
@@ -147,6 +153,12 @@ Don't run a dev copy and an installed copy of League Bro at the same time; both 
 | `linker 'link.exe' not found` | The Visual Studio Build Tools (C++ workload) are missing. Rerun the setup script or install them as above. |
 | Stuck on `Waiting for your frontend dev server to start` | Something else is using port 4200, or `npm run start` failed. Run `npm start` alone to see the error. |
 | `winget` isn't recognized | Install **App Installer** from the Microsoft Store, or use the manual links above. |
+
+### Website
+
+The download site is a single static page, `site/index.html`, published to GitHub Pages at https://doliaro.github.io/leaguebro/ by `.github/workflows/pages.yml` whenever `site/` changes on `main`. The page asks GitHub's API for the latest release in the visitor's browser, so a new release shows up on the site without republishing. To preview it locally, open `site/index.html` in a browser.
+
+One-time setup: in the repo's **Settings → Pages**, set **Source** to **GitHub Actions**.
 
 ### Releasing a new version
 

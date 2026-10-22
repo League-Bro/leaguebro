@@ -99,6 +99,9 @@ pub fn parse_history(history: &Value, puuid: &str) -> Vec<GameLine> {
             None => None,
         };
         let Some(p) = part else { continue };
+        if !crate::profile::allowed(g, p.get("championId").and_then(Value::as_i64).unwrap_or(0)) {
+            continue;
+        }
         let s = p.get("stats").cloned().unwrap_or(Value::Null);
         let n = |k: &str| s.get(k).and_then(Value::as_i64).unwrap_or(0);
         out.push(GameLine {

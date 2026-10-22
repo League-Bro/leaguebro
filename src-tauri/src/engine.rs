@@ -221,7 +221,7 @@ fn st<'a>(v: &'a Value, k: &str) -> &'a str {
     v.get(k).and_then(Value::as_str).unwrap_or("")
 }
 
-fn riot_name(v: &Value) -> Option<String> {
+pub fn riot_name(v: &Value) -> Option<String> {
     let game = st(v, "gameName");
     let tag = st(v, "tagLine");
     if !game.is_empty() {
