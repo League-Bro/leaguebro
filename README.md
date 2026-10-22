@@ -72,7 +72,7 @@ League Bro doesn't read game memory, use a Riot API key, or track enemy ability 
 | Problem | Fix |
 | --- | --- |
 | "League client not found" while League is open | Under **Settings**, enter your install folder, usually `C:\Riot Games\League of Legends`. If League runs as administrator, run League Bro as administrator too. |
-| Overlay doesn't show in game | Set League to **Borderless**, and make sure "Show the in-game overlay" is on in **Settings**. |
+| Overlay doesn't show in game | Set League to **Borderless** (League Bro shows a reminder when League is on Fullscreen), and make sure "Show the in-game overlay" is on in **Settings**. |
 | Rune import fails | Your rune page slots are full. Delete one page, or turn on "Reuse the selected page when slots are full". |
 | Objective timer is off | Riot changes spawn times between seasons. Report it on the **Feedback** tab so the next release can fix it. |
 | Champion or item icons missing | Icons load from CommunityDragon and need an internet connection. |

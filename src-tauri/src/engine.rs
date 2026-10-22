@@ -88,7 +88,22 @@ pub struct Status {
     pub phase: String,
     pub summoner: Option<Summoner>,
     pub message: String,
+    /// League's game window mode ("fullscreen", "windowed", "borderless"), from
+    /// its settings; None until read. Fullscreen hides the overlay.
+    pub window_mode: Option<String>,
 }
+
+/// League's `General.WindowMode` setting (checked against game.cfg, October 2026).
+pub fn window_mode_label(value: i64) -> Option<&'static str> {
+    match value {
+        0 => Some("fullscreen"),
+        1 => Some("windowed"),
+        2 => Some("borderless"),
+        _ => None,
+    }
+}
+
+const WINDOW_MODE_RECHECK: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone, Serialize, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -543,6 +558,7 @@ struct Engine {
     loading_game_id: Option<i64>,
     overlay_shown: bool,
     pending_post_game: Option<PendingPostGame>,
+    last_window_check: Option<Instant>,
     live_http: reqwest::Client,
 }
 
@@ -568,8 +584,37 @@ impl Engine {
     }
 
     async fn set_status(&self, connected: bool, phase: &str, summoner: Option<Summoner>, message: &str) {
-        let status = Status { connected, phase: phase.into(), summoner, message: message.into() };
-        self.state().shared.lock().await.status = status.clone();
+        let state = self.state();
+        let mut sh = state.shared.lock().await;
+        // The window mode is refreshed on its own timer; keep it while connected.
+        let window_mode = if connected { sh.status.window_mode.clone() } else { None };
+        let status = Status { connected, phase: phase.into(), summoner, message: message.into(), window_mode };
+        sh.status = status.clone();
+        drop(sh);
+        let _ = self.app.emit("status", status);
+    }
+
+    /// Re-reads League's window mode every 15 s and sends a status update when it changes.
+    async fn refresh_window_mode(&mut self, lcu: &Lcu) {
+        if self.last_window_check.is_some_and(|t| t.elapsed() < WINDOW_MODE_RECHECK) {
+            return;
+        }
+        self.last_window_check = Some(Instant::now());
+        let Ok(Some(settings)) = lcu.get("/lol-game-settings/v1/game-settings").await else { return };
+        let mode = settings
+            .pointer("/General/WindowMode")
+            .and_then(Value::as_i64)
+            .and_then(window_mode_label)
+            .map(String::from);
+        let status = {
+            let state = self.state();
+            let mut sh = state.shared.lock().await;
+            if sh.status.window_mode == mode {
+                return;
+            }
+            sh.status.window_mode = mode;
+            sh.status.clone()
+        };
         let _ = self.app.emit("status", status);
     }
 
@@ -606,6 +651,7 @@ impl Engine {
         }
         self.lcu = Some(client);
         self.phase.clear();
+        self.last_window_check = None;
         self.set_status(true, "None", Some(summoner), "Connected to the League client").await;
     }
 
@@ -654,6 +700,7 @@ impl Engine {
             _ => {}
         }
         self.poll_post_game(&lcu).await;
+        self.refresh_window_mode(&lcu).await;
     }
 
     /// Clears the live game (teams, overlay, recommendation) and starts
@@ -1279,6 +1326,7 @@ pub async fn run(app: AppHandle) {
         loading_game_id: None,
         overlay_shown: false,
         pending_post_game: None,
+        last_window_check: None,
         live_http: lcu::localhost_http_client(),
     };
     engine.set_status(false, "", None, "Waiting for the League client").await;
@@ -1345,6 +1393,15 @@ mod tests {
         assert_eq!(v.enemies[0].champion_id, 238);
         assert!(v.enemies[0].name.is_none() && v.enemies[0].puuid.is_none());
         assert_eq!(v.bans, vec![157, 555]);
+    }
+
+    #[test]
+    fn window_modes() {
+        // game.cfg's [General] WindowMode, same numbers as the client's game settings.
+        assert_eq!(window_mode_label(0), Some("fullscreen"));
+        assert_eq!(window_mode_label(1), Some("windowed"));
+        assert_eq!(window_mode_label(2), Some("borderless"));
+        assert_eq!(window_mode_label(7), None);
     }
 
     #[test]

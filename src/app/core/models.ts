@@ -10,6 +10,8 @@ export interface Status {
   phase: string;
   summoner: Summoner | null;
   message: string;
+  /** League's game window mode, from its settings; null until read. Fullscreen hides the overlay. */
+  windowMode: 'fullscreen' | 'windowed' | 'borderless' | null;
 }
 
 export interface CsPlayer {

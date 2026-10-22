@@ -1,6 +1,7 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { UpdateService } from '../core/update.service';
+import { FullscreenHint } from './fullscreen-hint';
 import { AbilityKeys, CacheInfo, CacheName, Config } from '../core/models';
 
 type BoolKey =
@@ -15,6 +16,7 @@ type BoolKey =
 
 @Component({
   selector: 'rl-settings',
+  imports: [FullscreenHint],
   template: `
     @if (rift.config(); as cfg) {
       <div class="grid">
@@ -25,6 +27,7 @@ type BoolKey =
             <span class="track"></span>
             <span class="label"><b>Show the in-game overlay</b><span>Set League's window mode to Borderless or Windowed. Fullscreen draws over it.</span></span>
           </label>
+          <rl-fullscreen-hint />
           <div class="field">
             <span>Opacity</span>
             <input type="range" min="0.4" max="1" step="0.05" [value]="cfg.overlayOpacity"

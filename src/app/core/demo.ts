@@ -60,7 +60,7 @@ function profile(puuid: string, tier: string, div: string, lp: number, w: number
 
 export function demoSnapshot(): Snapshot {
   return {
-    status: { connected: true, phase: 'InProgress', summoner: { puuid: 'me', name: 'Dom#NA1' }, message: '' },
+    status: { connected: true, phase: 'InProgress', summoner: { puuid: 'me', name: 'Dom#NA1' }, message: '', windowMode: 'borderless' },
     champSelect: null,
     loading: {
       gameId: 1,

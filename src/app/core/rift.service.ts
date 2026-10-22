@@ -45,7 +45,11 @@ export function inTauri(): boolean {
 
 @Injectable({ providedIn: 'root' })
 export class RiftService {
-  readonly status = signal<Status>({ connected: false, phase: '', summoner: null, message: 'Starting…' });
+  readonly status = signal<Status>({ connected: false, phase: '', summoner: null, message: 'Starting…', windowMode: null });
+  /** League is set to Fullscreen, which covers the overlay window. */
+  readonly fullscreenHint = computed(
+    () => this.status().connected && this.status().windowMode === 'fullscreen' && (this.config()?.overlayEnabled ?? true),
+  );
   readonly champSelect = signal<ChampSelectView | null>(null);
   readonly loading = signal<LoadingView | null>(null);
   readonly profiles = signal<Record<string, Profile>>({});
@@ -92,7 +96,10 @@ export class RiftService {
     if (this.demo) {
       const params = new URLSearchParams(location.search);
       this.windowLabel.set(params.get('window') ?? 'main');
-      this.applySnapshot(demoScene(params.get('scene')));
+      const snap = demoScene(params.get('scene'));
+      // ?fullscreen previews the "switch League to Borderless" hint.
+      if (params.has('fullscreen')) snap.status.windowMode = 'fullscreen';
+      this.applySnapshot(snap);
       this.statics.set(demoStatic());
       this.config.set(demoConfig());
       return;

@@ -4,13 +4,17 @@ import { RiftService } from '../core/rift.service';
 import { PlayerCard } from './player-card';
 import { RecCard } from './rec-card';
 import { PostGameView } from './post-game';
+import { FullscreenHint } from './fullscreen-hint';
 import { championIcon, clock, positionLabel } from '../core/assets';
 import { ImportEvent } from '../core/models';
 
 @Component({
   selector: 'rl-live',
-  imports: [PlayerCard, RecCard, PostGameView, DecimalPipe],
+  imports: [PlayerCard, RecCard, PostGameView, DecimalPipe, FullscreenHint],
   template: `
+    @if (rift.fullscreenHint()) {
+      <rl-fullscreen-hint class="top-hint" />
+    }
     @if (!rift.status().connected) {
       <div class="empty card">
         <h2>Waiting for League</h2>
@@ -168,6 +172,7 @@ import { ImportEvent } from '../core/models';
     }
   `,
   styles: `
+    .top-hint { display: block; margin-bottom: 14px; }
     .empty { max-width: 560px; margin: 60px auto; text-align: center; }
     .empty h2 { font-size: 18px; margin-bottom: 6px; }
     .hero { position: relative; display: flex; align-items: center; gap: 20px; margin-bottom: 8px; padding: 24px; min-height: 132px; }
