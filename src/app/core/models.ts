@@ -373,3 +373,35 @@ export interface Config {
   timers: TimerConfig;
   installDir: string | null;
 }
+
+/** Where a tier list comes from (tierlist.rs `Source`). */
+export type TierSource = 'lolalytics' | 'opgg';
+
+export interface TierEntry {
+  /** 0 when the name didn't match a known champion. */
+  championId: number;
+  name: string;
+  /** The row it goes in. */
+  tier: 'S' | 'A' | 'B' | 'C' | 'D';
+  /** The source's own label: "S+" … "D-" (Lolalytics) or "1" … "5" (OP.GG). */
+  label: string;
+  rank: number;
+  /** Places moved up (negative = down) since the source's previous ranking. */
+  rankChange: number | null;
+  /** Percentages. */
+  winRate: number;
+  pickRate: number;
+  banRate: number;
+  games: number;
+}
+
+export interface TierList {
+  source: TierSource;
+  /** top | jungle | middle | bottom | utility */
+  position: string;
+  /** Lolalytics rank filter, e.g. "emerald_plus"; null for OP.GG. */
+  rank: string | null;
+  gamesAnalysed: number | null;
+  fetchedAt: number;
+  entries: TierEntry[];
+}

@@ -5,8 +5,9 @@ import { LiveView } from './live-view';
 import { ChampionsView } from './champions-view';
 import { SettingsView } from './settings-view';
 import { PatchView } from './patch-view';
+import { TierListView } from './tierlist-view';
 
-type Tab = 'live' | 'champions' | 'patch' | 'settings';
+type Tab = 'live' | 'champions' | 'tiers' | 'patch' | 'settings';
 
 const PHASE_LABELS: Record<string, string> = {
   None: 'In client',
@@ -24,7 +25,7 @@ const PHASE_LABELS: Record<string, string> = {
 
 @Component({
   selector: 'rl-shell',
-  imports: [LiveView, ChampionsView, PatchView, SettingsView],
+  imports: [LiveView, ChampionsView, TierListView, PatchView, SettingsView],
   template: `
     <header>
       <div class="brand">
@@ -76,6 +77,7 @@ const PHASE_LABELS: Record<string, string> = {
       @switch (tab()) {
         @case ('live') { <rl-live /> }
         @case ('champions') { <rl-champions /> }
+        @case ('tiers') { <rl-tierlist (openChampion)="openChampion($event)" /> }
         @case ('patch') { <rl-patch /> }
         @case ('settings') { <rl-settings /> }
       }
@@ -122,11 +124,19 @@ export class Shell implements OnInit {
   protected readonly tabs: { id: Tab; label: string }[] = [
     { id: 'live', label: 'Live' },
     { id: 'champions', label: 'Champions' },
+    { id: 'tiers', label: 'Tier List' },
     { id: 'patch', label: 'Patch Notes' },
     { id: 'settings', label: 'Settings' },
   ];
   ngOnInit(): void {
     this.updates.start();
+  }
+
+  /** From the Tier List: show that champion's ranked build for the lane. */
+  protected openChampion(e: { championId: number; position: string }): void {
+    this.rift.championsGame.set('league');
+    this.rift.championsPick.set({ championId: e.championId, position: e.position, mode: 'ranked' });
+    this.tab.set('champions');
   }
 
   protected readonly statusText = computed(() => {
