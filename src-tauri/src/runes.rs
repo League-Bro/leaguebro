@@ -12,9 +12,9 @@ use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
 
 pub const PAGE_PREFIX: &str = "League Bro";
-/// Pages made by earlier versions (when the app was called Riftlight, then
-/// League Buddy) are cleaned up too.
-const OLD_PREFIXES: &[&str] = &["Riftlight", "League Buddy"];
+/// Pages made by earlier versions (when the app was called Riftlight) are
+/// cleaned up too.
+const OLD_PREFIXES: &[&str] = &["Riftlight"];
 /// Keep page names short enough for the client's rune page name field.
 const MAX_NAME_CHARS: usize = 25;
 
@@ -255,7 +255,7 @@ mod tests {
         assert_eq!(page_name("Twisted Fate Extended", "Mid"), "LB: Twisted Fate Extended");
         assert!(page_name("Twisted Fate Extended", "Support").chars().count() <= 25);
         assert!(is_ours("Riftlight: Ahri Mid") && is_ours("LB: Jinx Bot") && !is_ours("My Ahri page"));
-        assert!(is_ours("League Bro: Ahri") && is_ours("League Buddy: Ahri Mid") && !is_ours("League Brownie"));
+        assert!(is_ours("League Bro: Ahri") && !is_ours("League Brownie"));
     }
 
     #[test]

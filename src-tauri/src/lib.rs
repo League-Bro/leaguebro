@@ -216,7 +216,6 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let config_path = app.path().app_config_dir()?.join("settings.json");
-            Config::migrate_old_settings(&config_path);
             let config = Config::load(&config_path);
             app.manage(AppState {
                 config: std::sync::RwLock::new(config),

@@ -18,7 +18,7 @@ League Bro updates itself. When a new version is out, a banner at the top of the
 
 To uninstall, use Windows **Settings → Apps → Installed apps → League Bro**.
 
-League Bro used to be called League Buddy. Updating from League Buddy installs League Bro next to it and brings your settings across. After that, uninstall **League Buddy** from Installed apps so only one copy manages your rune page.
+If you installed the app before it was renamed to League Bro, updating installs League Bro next to the old copy and starts with default settings. Uninstall the old copy from Installed apps, and delete its old rune page and item set in the League client.
 
 ## What it does
 
@@ -93,7 +93,7 @@ Clone the repo, then run the setup script from the project folder:
 
 ```powershell
 git clone https://github.com/doliaro/leaguebro.git
-cd leaguebuddy
+cd leaguebro
 scripts\setup-dev.cmd
 ```
 

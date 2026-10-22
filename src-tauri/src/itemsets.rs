@@ -8,12 +8,6 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 
 const TITLE_PREFIX: &str = "League Bro:";
-/// Sets made before the rename are replaced too.
-const OLD_TITLE_PREFIXES: &[&str] = &["League Buddy:"];
-
-fn is_ours(title: &str) -> bool {
-    title.starts_with(TITLE_PREFIX) || OLD_TITLE_PREFIXES.iter().any(|p| title.starts_with(p))
-}
 
 fn block(label: &str, set: &ItemSet) -> Option<Value> {
     let mut items: Vec<(i64, u32)> = Vec::new();
@@ -86,7 +80,7 @@ pub fn merge(mut existing: Value, set: Value, now_ms: u64) -> Value {
         .cloned()
         .unwrap_or_default()
         .into_iter()
-        .filter(|s| !is_ours(s.get("title").and_then(Value::as_str).unwrap_or("")))
+        .filter(|s| !s.get("title").and_then(Value::as_str).unwrap_or("").starts_with(TITLE_PREFIX))
         .collect();
     sets.insert(0, set);
     if !existing.is_object() {
@@ -158,13 +152,10 @@ mod tests {
         let existing = json!({ "accountId": 7, "timestamp": 1, "itemSets": [
             { "title": "My Ahri set" },
             { "title": "League Bro: Zed Mid" },
-            { "title": "League Buddy: Jinx Bot" },
-            { "title": "League Brownie build" },
         ]});
         let out = merge(existing, json!({ "title": "League Bro: Ahri Mid" }), 99);
         let titles: Vec<&str> = out["itemSets"].as_array().unwrap().iter().map(|s| s["title"].as_str().unwrap()).collect();
-        // Ours (current and pre-rename) are replaced; "League Brownie" isn't ours.
-        assert_eq!(titles, ["League Bro: Ahri Mid", "My Ahri set", "League Brownie build"]);
+        assert_eq!(titles, ["League Bro: Ahri Mid", "My Ahri set"]);
         assert_eq!((out["accountId"].as_i64(), out["timestamp"].as_u64()), (Some(7), Some(99)));
     }
 

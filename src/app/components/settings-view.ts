@@ -87,7 +87,7 @@ type BoolKey =
             <label class="toggle">
               <input type="checkbox" [checked]="cfg.setItemSets" (change)="setRec('setItemSets', $any($event.target).checked)" />
               <span class="track"></span>
-              <span class="label"><b>Add the build to the in-game shop</b><span>On lock-in, as a "League Buddy" item set under Item Sets in the shop. Your own item sets aren't touched.</span></span>
+              <span class="label"><b>Add the build to the in-game shop</b><span>On lock-in, as a "League Bro" item set under Item Sets in the shop. Your own item sets aren't touched.</span></span>
             </label>
             <label class="toggle">
               <input type="checkbox" [checked]="cfg.useRecommendedBuilds" (change)="setRec('useRecommendedBuilds', $any($event.target).checked)" />
@@ -107,7 +107,7 @@ type BoolKey =
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.autoImportRunes" (change)="setBool('autoImportRunes', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Import runes in champ select</b><span>Creates one page called "League Buddy: …" and replaces it each game. Your own page for a champion (Champions tab) comes first.</span></span>
+            <span class="label"><b>Import runes in champ select</b><span>Creates one page called "League Bro: …" and replaces it each game. Your own page for a champion (Champions tab) comes first.</span></span>
           </label>
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.importOnHover" (change)="setBool('importOnHover', $any($event.target).checked)" />
@@ -117,7 +117,7 @@ type BoolKey =
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.reuseCurrentPageWhenFull" (change)="setBool('reuseCurrentPageWhenFull', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Reuse the selected page when slots are full</b><span>Overwrites whichever editable page is selected. Leave off if you'd rather keep one slot free for League Buddy.</span></span>
+            <span class="label"><b>Reuse the selected page when slots are full</b><span>Overwrites whichever editable page is selected. Leave off if you'd rather keep one slot free for League Bro.</span></span>
           </label>
         </section>
 

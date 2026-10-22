@@ -59,10 +59,10 @@ The Rust side runs one background loop (`engine.rs`, 1 s tick) that pushes state
 
 - Rune page: the user's saved page for the champion (`runeOverrides`), then OP.GG (if ≥ `MIN_GAMES`), then the client's recommended page.
 - Overlay build: the user's saved build (`builds`), then OP.GG's `build_order` (if enabled).
-- Shop item set: on lock-in (same rules as spells: OP.GG, ≥ `MIN_GAMES`, `setItemSets` on), one set titled `League Buddy: <Champ> <Role>` for that champion and map, blocks Starter / Boots / Core build / 4th-6th item options. Any other `League Buddy:` set is replaced; the user's own sets are never touched.
+- Shop item set: on lock-in (same rules as spells: OP.GG, ≥ `MIN_GAMES`, `setItemSets` on), one set titled `League Bro: <Champ> <Role>` for that champion and map, blocks Starter / Boots / Core build / 4th-6th item options. Any other `League Bro:` set is replaced; the user's own sets are never touched.
 - Summoner spells: `arrange_spells` keeps each recommended spell in the slot where the player already has it, so Flash stays on their usual key.
 - Overlay mouse handling: locked = click-through, except over the padlock button. `watch_overlay_cursor` (engine.rs, 50 ms) hit-tests the cursor against the button rect the overlay reports (`set_overlay_button`, CSS px) and toggles `set_ignore_cursor_events`. Unlocked = whole window takes input; dragging uses `data-tauri-drag-region`, which needs `core:window:allow-start-dragging` in `capabilities/default.json` and only fires on the exact element carrying the attribute (hence the full-panel `.drag-layer`). Locking saves the position; a fresh show (game start) always re-locks.
-- League Bro owns exactly one rune page, named `League Bro: <Champ> <Role>` and kept to 25 characters or fewer (`page_name`). It deletes and recreates that page each time, and also cleans up old `Riftlight:`, `League Buddy:` and `LB:` pages (`is_ours` matches the prefix plus `:`). It never touches the user's other pages unless "reuse the selected page when full" is on.
+- League Bro owns exactly one rune page, named `League Bro: <Champ> <Role>` and kept to 25 characters or fewer (`page_name`). It deletes and recreates that page each time, and also cleans up old `Riftlight:` and `LB:` pages (`is_ours` matches the prefix plus `:`). It never touches the user's other pages unless "reuse the selected page when full" is on.
 
 ## Riot rules (hard constraints)
 
@@ -120,14 +120,14 @@ Adding a setting: add it to `config.rs` (with a default; `#[serde(default)]` kee
 ## Status (October 2026)
 
 - Released: v0.1.0 (named "Riftlight", obsolete). v0.1.2 (rename + auto-updates) needs a release run if it hasn't happened yet. Dom and his friend need to install the first updater-enabled version manually once.
-- Renamed League Buddy → League Bro (identifier `dev.dom.leaguebuddy` → `dev.dom.leaguebro`). `Config::migrate_old_settings` copies the old `settings.json` on first run. Because the NSIS install folder and uninstall entry follow `productName`, updating from League Buddy installs League Bro alongside it; users should uninstall League Buddy afterwards. The old `%LOCALAPPDATA%\dev.dom.leaguebuddy` cache is left behind.
+- Renamed to League Bro in issue 5 (identifier now `dev.dom.leaguebro`). Settings are **not** carried over from the old identifier, pages and item sets made under the old name are not cleaned up, and since the NSIS install folder and uninstall entry follow `productName`, updating an old install puts League Bro next to it. Users should uninstall the old copy and delete its leftover rune page.
 - Written but **not yet tested in a real game**, so verify when Dom plays:
   - OP.GG recommendations in champ select (card, rune import, spell setting), and the in-game recommendation fetch if the app starts mid-game.
   - Overlay skill hint ("Level up Q") and the OP.GG build reminder.
   - Rune lookup for ARAM / blind pick, and inhibitor lane labels (`Barracks_T1_L1` → Top, `C` → Mid, `R` → Bot).
   - Objective spawn timings (editable in Settings).
   - Post-game summary after a full 10-player game, and the live view resetting when the game ends.
-  - The League Buddy item set showing in the in-game shop (written on lock-in).
+  - The League Bro item set showing in the in-game shop (written on lock-in).
   - Overlay padlock (hover-to-click while locked) and dragging.
   - Lane item-value diff: that `position` matches up with the right enemy in ranked/normal draft.
   - Profile page against real data (icon, level, ranks, a match's full scoreboard).
