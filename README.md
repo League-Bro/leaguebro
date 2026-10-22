@@ -53,7 +53,7 @@ A small, click-through panel in the top-right corner shows:
 - which ability to max, plus a "Level up Q" hint whenever you have an unspent skill point
 - the next two items to buy, with the price turning green when you can afford it. These come from OP.GG's build.
 
-You can change the overlay's position, opacity and the timer values under **Settings**. Use **Preview overlay** to see where it sits.
+Under **Settings → Overlay** you can change its position and opacity, and choose which of these four parts it shows. Use **Preview overlay** to see where it sits.
 
 ### Post-game summary
 
@@ -74,7 +74,7 @@ League Bro doesn't read game memory, use a Riot API key, or track enemy ability 
 | "League client not found" while League is open | Under **Settings**, enter your install folder, usually `C:\Riot Games\League of Legends`. If League runs as administrator, run League Bro as administrator too. |
 | Overlay doesn't show in game | Set League to **Borderless**, and make sure "Show the in-game overlay" is on in **Settings**. |
 | Rune import fails | Your rune page slots are full. Delete one page, or turn on "Reuse the selected page when slots are full". |
-| Objective timer is off | Riot changes spawn times between seasons. Adjust them under **Settings → Objective timers**. |
+| Objective timer is off | Riot changes spawn times between seasons. Report it on the **Feedback** tab so the next release can fix it. |
 | Champion or item icons missing | Icons load from CommunityDragon and need an internet connection. |
 | "Couldn't get OP.GG data" | OP.GG is unreachable or changed something. Runes fall back to the League client's suggestion automatically. You can also switch to "League client only" under **Settings → Recommendations**. |
 

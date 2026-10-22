@@ -467,6 +467,10 @@ export interface Config {
   setItemSets: boolean;
   useRecommendedBuilds: boolean;
   showSkillHint: boolean;
+  /** Objective timers on the overlay (the Live tab always shows them). */
+  showTimers: boolean;
+  /** Item value vs your lane opponent on the overlay. */
+  showLaneDiff: boolean;
   /** The player's ability keybinds, shown in place of Q/W/E/R. */
   abilityKeys: AbilityKeys;
   scoutInChampSelect: boolean;

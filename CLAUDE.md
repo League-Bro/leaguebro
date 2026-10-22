@@ -66,6 +66,7 @@ The Rust side runs one background loop (`engine.rs`, 1 s tick) that pushes state
 - Shop item set: on lock-in (same rules as spells: OP.GG, ≥ `MIN_GAMES`, `setItemSets` on), one set titled `League Bro: <Champ> <Role>` for that champion and map, blocks Starter / Boots / Core build / 4th-6th item options. Any other `League Bro:` set is replaced (Swiftplay writes one per lobby slot instead); the user's own sets are never touched.
 - Summoner spells: `arrange_spells` keeps each recommended spell in the slot where the player already has it, so Flash stays on their usual key.
 - Overlay mouse handling: locked = click-through, except over the padlock button. `watch_overlay_cursor` (engine.rs, 50 ms) hit-tests the cursor against the button rect the overlay reports (`set_overlay_button`, CSS px) and toggles `set_ignore_cursor_events`. Unlocked = whole window takes input; dragging uses `data-tauri-drag-region`, which needs `core:window:allow-start-dragging` in `capabilities/default.json` and only fires on the exact element carrying the attribute (hence the full-panel `.drag-layer`). Locking saves the position; a fresh show (game start) always re-locks.
+- Overlay contents: Settings → Overlay → "Show on the overlay" has one switch per part. `showLaneDiff` and `showTimers` only hide those parts in the overlay window (`overlay.ts`), so the Live tab keeps them; `showSkillHint` and `useRecommendedBuilds` are applied in the engine and need OP.GG recommendations (greyed out in Settings otherwise). The padlock always shows.
 - League Bro owns exactly one rune page, named `League Bro: <Champ> <Role>` and kept to 25 characters or fewer (`page_name`). It deletes and recreates that page each time, and also cleans up old `Riftlight:` and `LB:` pages (`is_ours` matches the prefix plus `:`). It never touches the user's other pages unless "reuse the selected page when full" is on.
 
 ## Riot rules (hard constraints)
@@ -133,7 +134,7 @@ Adding a setting: add it to `config.rs` (with a default; `#[serde(default)]` kee
   - OP.GG recommendations in champ select (card, rune import, spell setting), and the in-game recommendation fetch if the app starts mid-game.
   - Overlay skill hint ("Level up Q") and the OP.GG build reminder.
   - Rune lookup for ARAM / blind pick, and inhibitor lane labels (`Barracks_T1_L1` → Top, `C` → Mid, `R` → Bot).
-  - Objective spawn timings (editable in Settings).
+  - Objective spawn timings. They're the `TimerConfig` defaults in `config.rs` (no longer editable in Settings, as of October 2026); when Riot moves a spawn, change the default and release. A user's `settings.json` keeps whatever `timers` values it already has.
   - Post-game summary after a full 10-player game, and the live view resetting when the game ends.
   - The League Bro item set showing in the in-game shop (written on lock-in).
   - Swiftplay: that the per-slot `POST` keeps the runes (the import says so if not), that the game uses them, and that the two item sets show in the shop.

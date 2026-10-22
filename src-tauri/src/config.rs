@@ -71,6 +71,10 @@ pub struct Config {
     pub use_recommended_builds: bool,
     /// Show the skill max order and "level up" hint in the overlay.
     pub show_skill_hint: bool,
+    /// Show objective timers in the overlay (the Live tab always shows them).
+    pub show_timers: bool,
+    /// Show your item value against your lane opponent's in the overlay.
+    pub show_lane_diff: bool,
     pub ability_keys: AbilityKeys,
     pub scout_in_champ_select: bool,
     pub scout_on_loading: bool,
@@ -97,6 +101,8 @@ impl Default for Config {
             set_item_sets: true,
             use_recommended_builds: true,
             show_skill_hint: true,
+            show_timers: true,
+            show_lane_diff: true,
             ability_keys: AbilityKeys::default(),
             scout_in_champ_select: true,
             scout_on_loading: true,
@@ -147,6 +153,8 @@ mod tests {
         assert_eq!(c.timers.baron_respawn, 360.0);
         assert_eq!(c.ability_keys.q, "Q");
         assert!(c.favorite_champions.is_empty());
+        // Overlay parts added later default to shown.
+        assert!(c.show_timers && c.show_lane_diff);
     }
 
     #[test]

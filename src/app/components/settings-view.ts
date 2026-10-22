@@ -1,8 +1,7 @@
 import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { UpdateService } from '../core/update.service';
-import { AbilityKeys, CacheInfo, CacheName, Config, TimerConfig } from '../core/models';
-import { clock } from '../core/assets';
+import { AbilityKeys, CacheInfo, CacheName, Config } from '../core/models';
 
 type BoolKey =
   | 'scoutInChampSelect'
@@ -10,7 +9,9 @@ type BoolKey =
   | 'overlayEnabled'
   | 'autoImportRunes'
   | 'importOnHover'
-  | 'reuseCurrentPageWhenFull';
+  | 'reuseCurrentPageWhenFull'
+  | 'showTimers'
+  | 'showLaneDiff';
 
 @Component({
   selector: 'rl-settings',
@@ -51,18 +52,28 @@ type BoolKey =
               {{ rift.overlayLocked() ? 'Unlock to move' : 'Lock in place' }}
             </button>
           </div>
-        </section>
 
-        <section class="card stack">
-          <h2>Objective timers</h2>
-          <p class="faint small">Riot changes these between seasons; adjust them here if a patch moves a spawn.</p>
-          @for (t of timerFields; track t.key) {
-            <div class="field">
-              <span>{{ t.label }}</span>
-              <input type="number" min="0" step="5" [value]="cfg.timers[t.key]" (change)="setTimer(t.key, +$any($event.target).value)" />
-              <span class="mono faint">{{ time(cfg.timers[t.key]) }}</span>
-            </div>
-          }
+          <h3 class="sub">Show on the overlay</h3>
+          <label class="toggle">
+            <input type="checkbox" [checked]="cfg.showLaneDiff" (change)="setBool('showLaneDiff', $any($event.target).checked)" />
+            <span class="track"></span>
+            <span class="label"><b>Items vs your lane opponent</b><span>The total cost of your items against theirs. Not shown in modes without roles, like ARAM.</span></span>
+          </label>
+          <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
+            <input type="checkbox" [checked]="cfg.showSkillHint" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('showSkillHint', $any($event.target).checked)" />
+            <span class="track"></span>
+            <span class="label"><b>Skill order</b><span>Which ability to max, and what to level when you have a point.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" [checked]="cfg.showTimers" (change)="setBool('showTimers', $any($event.target).checked)" />
+            <span class="track"></span>
+            <span class="label"><b>Objective timers</b><span>Dragon, Baron and inhibitor respawns. The Live tab shows them either way.</span></span>
+          </label>
+          <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
+            <input type="checkbox" [checked]="cfg.useRecommendedBuilds" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('useRecommendedBuilds', $any($event.target).checked)" />
+            <span class="track"></span>
+            <span class="label"><b>Next items to buy</b><span>The next two items from OP.GG's build, priced green when you can afford them.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
+          </label>
         </section>
 
         <section class="card stack">
@@ -88,16 +99,6 @@ type BoolKey =
               <input type="checkbox" [checked]="cfg.setItemSets" (change)="setRec('setItemSets', $any($event.target).checked)" />
               <span class="track"></span>
               <span class="label"><b>Add the build to the in-game shop</b><span>On lock-in, as a "League Bro" item set under Item Sets in the shop. Your own item sets aren't touched.</span></span>
-            </label>
-            <label class="toggle">
-              <input type="checkbox" [checked]="cfg.useRecommendedBuilds" (change)="setRec('useRecommendedBuilds', $any($event.target).checked)" />
-              <span class="track"></span>
-              <span class="label"><b>Use OP.GG builds in the overlay</b><span>Shows the next two items to buy.</span></span>
-            </label>
-            <label class="toggle">
-              <input type="checkbox" [checked]="cfg.showSkillHint" (change)="setRec('showSkillHint', $any($event.target).checked)" />
-              <span class="track"></span>
-              <span class="label"><b>Skill order in the overlay</b><span>Shows which ability to max and what to level when you have a point.</span></span>
             </label>
           }
         </section>
@@ -199,6 +200,11 @@ type BoolKey =
     .keybind { display: flex; flex-direction: column; align-items: center; gap: 2px; }
     .key { width: 52px; text-align: center; text-transform: uppercase; }
     .small { font-size: 12.5px; margin: 0; }
+    .sub {
+      margin: 10px 0 0; padding-top: 12px; border-top: 1px solid var(--line);
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
+    }
+    .toggle.off { opacity: 0.55; }
     .cache-row { display: flex; align-items: center; gap: 12px; }
     .cache-row .label { flex: 1; display: flex; flex-direction: column; gap: 2px; }
     .cache-row .label span { font-size: 12.5px; color: var(--text-faint); }
@@ -209,16 +215,7 @@ export class SettingsView {
   protected readonly rift = inject(RiftService);
   protected readonly updates = inject(UpdateService);
   protected readonly error = signal('');
-  protected time = clock;
   protected readonly abilitySlots: (keyof AbilityKeys)[] = ['q', 'w', 'e', 'r'];
-  protected readonly timerFields: { key: keyof TimerConfig; label: string }[] = [
-    { key: 'firstDragon', label: 'First dragon at' },
-    { key: 'dragonRespawn', label: 'Dragon respawn' },
-    { key: 'elderRespawn', label: 'Elder respawn' },
-    { key: 'firstBaron', label: 'First Baron at' },
-    { key: 'baronRespawn', label: 'Baron respawn' },
-    { key: 'inhibRespawn', label: 'Inhibitor respawn' },
-  ];
 
   protected readonly cache = signal<CacheInfo | null>(null);
   protected readonly clearing = signal<CacheName | null>(null);
@@ -301,10 +298,6 @@ export class SettingsView {
   }
   resetKeys(): void {
     this.save((c) => ({ ...c, abilityKeys: { q: 'Q', w: 'W', e: 'E', r: 'R' } }));
-  }
-  setTimer(key: keyof TimerConfig, v: number): void {
-    if (!Number.isFinite(v) || v < 0) return;
-    this.save((c) => ({ ...c, timers: { ...c.timers, [key]: v } }));
   }
   setInstall(v: string): void {
     this.save((c) => ({ ...c, installDir: v.trim() || null }));

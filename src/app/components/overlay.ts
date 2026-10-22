@@ -37,7 +37,7 @@ const PREVIEW: OverlayState = {
           <div class="drag-layer" data-tauri-drag-region>Drag to move, then lock</div>
         }
         <div class="top">
-          @if (o.lane; as l) {
+          @if (showLane() && o.lane; as l) {
             <div class="lane" title="Total cost of your items vs your lane opponent's">
               <span class="cap">vs {{ l.opponent }}</span>
               <span class="diff" [class.ahead]="l.mine > l.theirs" [class.behind]="l.mine < l.theirs">{{ signed(l.mine - l.theirs) }}</span>
@@ -63,7 +63,7 @@ const PREVIEW: OverlayState = {
             }
           </div>
         }
-        @if (o.timers.length) {
+        @if (showTimers() && o.timers.length) {
           <div class="timers">
             @for (t of o.timers; track t.key) {
               <div class="timer" [class]="t.side" [class.soon]="t.spawnAt - o.gameTime <= 30">
@@ -157,6 +157,9 @@ export class Overlay {
   protected readonly preview = this.rift.overlayPreview;
   protected readonly state = computed(() => this.rift.overlay() ?? (this.preview() ? PREVIEW : null));
   protected readonly opacity = computed(() => this.rift.config()?.overlayOpacity ?? 0.9);
+  // Overlay-only switches: the Live tab's in-game bar still shows both.
+  protected readonly showTimers = computed(() => this.rift.config()?.showTimers ?? true);
+  protected readonly showLane = computed(() => this.rift.config()?.showLaneDiff ?? true);
   protected readonly locked = this.rift.overlayLocked;
   protected time = clock;
   private readonly lockBtn = viewChild<ElementRef<HTMLElement>>('lockBtn');

@@ -325,6 +325,8 @@ export function demoConfig(): Config {
     setItemSets: true,
     useRecommendedBuilds: true,
     showSkillHint: true,
+    showTimers: true,
+    showLaneDiff: true,
     abilityKeys: { q: 'Q', w: 'W', e: 'E', r: 'R' },
     scoutInChampSelect: true,
     scoutOnLoading: true,
