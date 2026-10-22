@@ -6,6 +6,20 @@ export function championIcon(id: number): string {
   return id > 0 ? `${CDRAGON}/v1/champion-icons/${id}.png` : '';
 }
 
+export function profileIcon(id: number): string {
+  return id > 0 ? `${CDRAGON}/v1/profile-icons/${id}.jpg` : '';
+}
+
+const QUEUE_LABELS: Record<number, string> = {
+  420: 'Ranked Solo/Duo', 440: 'Ranked Flex', 400: 'Normal Draft', 430: 'Normal Blind', 490: 'Quickplay',
+  480: 'Swiftplay', 450: 'ARAM', 900: 'URF', 1900: 'URF', 1300: 'Nexus Blitz', 1700: 'Arena', 1710: 'Arena',
+  830: 'Co-op vs AI', 840: 'Co-op vs AI', 850: 'Co-op vs AI', 870: 'Co-op vs AI', 880: 'Co-op vs AI', 890: 'Co-op vs AI',
+};
+
+export function queueLabel(id: number, gameMode = ''): string {
+  return QUEUE_LABELS[id] ?? (gameMode ? gameMode.charAt(0) + gameMode.slice(1).toLowerCase() : `Queue ${id}`);
+}
+
 /** Converts a client asset path like /lol-game-data/assets/ASSETS/Items/... */
 export function assetUrl(path: string | undefined | null): string {
   if (!path) return '';

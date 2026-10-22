@@ -5,8 +5,10 @@ import { LiveView } from './live-view';
 import { ChampionsView } from './champions-view';
 import { SettingsView } from './settings-view';
 import { PatchView } from './patch-view';
+import { ProfileView } from './profile-view';
 
-type Tab = 'live' | 'champions' | 'patch' | 'settings';
+/** 'profile' isn't in the tab bar; the brand and your name open it. */
+type Tab = 'live' | 'champions' | 'patch' | 'settings' | 'profile';
 
 const PHASE_LABELS: Record<string, string> = {
   None: 'In client',
@@ -24,13 +26,13 @@ const PHASE_LABELS: Record<string, string> = {
 
 @Component({
   selector: 'rl-shell',
-  imports: [LiveView, ChampionsView, PatchView, SettingsView],
+  imports: [LiveView, ChampionsView, PatchView, SettingsView, ProfileView],
   template: `
     <header>
-      <div class="brand">
+      <button class="brand" [class.active]="tab() === 'profile'" title="Your profile and match history" (click)="tab.set('profile')">
         <img src="favicon.png" alt="" />
         <span>League Bro</span>
-      </div>
+      </button>
       <nav>
         @for (t of tabs; track t.id) {
           <button [class.active]="tab() === t.id" (click)="tab.set(t.id)">{{ t.label }}</button>
@@ -41,7 +43,7 @@ const PHASE_LABELS: Record<string, string> = {
         <span class="dot"></span>
         <span>{{ statusText() }}</span>
         @if (rift.status().summoner; as s) {
-          <span class="who">{{ s.name }}</span>
+          <button class="who" title="Your profile and match history" (click)="tab.set('profile')">{{ s.name }}</button>
         }
       </div>
     </header>
@@ -78,6 +80,7 @@ const PHASE_LABELS: Record<string, string> = {
         @case ('champions') { <rl-champions /> }
         @case ('patch') { <rl-patch /> }
         @case ('settings') { <rl-settings /> }
+        @case ('profile') { <rl-profile /> }
       }
     </main>
   `,
@@ -89,7 +92,11 @@ const PHASE_LABELS: Record<string, string> = {
       border-bottom: 1px solid var(--line);
       background: linear-gradient(180deg, #0f1523, var(--bg));
     }
-    .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; letter-spacing: 0.04em; }
+    .brand {
+      display: flex; align-items: center; gap: 9px; font-weight: 700; letter-spacing: 0.04em;
+      background: none; border: none; padding: 4px 6px; margin-left: -6px; border-radius: 8px; color: var(--text); cursor: pointer;
+    }
+    .brand:hover, .brand.active { background: var(--gold-soft); color: var(--gold); }
     .brand img { width: 22px; height: 22px; }
     nav { display: flex; gap: 2px; height: 100%; }
     nav button {
@@ -101,7 +108,11 @@ const PHASE_LABELS: Record<string, string> = {
     .status { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 13px; }
     .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); }
     .status.on .dot { background: var(--win); box-shadow: 0 0 8px var(--win); }
-    .status .who { color: var(--text); padding-left: 10px; border-left: 1px solid var(--line-strong); }
+    .status .who {
+      color: var(--text); padding: 0 0 0 10px; border: none; border-left: 1px solid var(--line-strong); border-radius: 0;
+      background: none; font: inherit; cursor: pointer;
+    }
+    .status .who:hover { color: var(--gold); }
     .demo-bar { background: var(--gold-soft); color: var(--gold); font-size: 12.5px; padding: 6px 20px; }
     .demo-bar code { font-family: var(--mono); }
     .update-bar {

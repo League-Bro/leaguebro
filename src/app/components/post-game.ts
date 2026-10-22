@@ -1,4 +1,4 @@
-import { Component, computed, inject, input } from '@angular/core';
+import { Component, computed, inject, input, output } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { assetUrl, championIcon, clock } from '../core/assets';
 import { PostGame, PostPlayer, PostTeam } from '../core/models';
@@ -35,7 +35,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
             }
           </div>
         </div>
-        <button class="ghost" (click)="rift.closedPostGame.set(g.gameId)">Close</button>
+        <button class="ghost" (click)="closed.emit()">Close</button>
       </section>
     }
 
@@ -125,6 +125,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
 export class PostGameView {
   protected readonly rift = inject(RiftService);
   readonly game = input.required<PostGame>();
+  readonly closed = output<void>();
 
   protected readonly myTeam = computed(() => this.game().teams.find((t) => t.isMine) ?? null);
   protected readonly me = computed(() => this.myTeam()?.players.find((p) => p.isMe) ?? null);

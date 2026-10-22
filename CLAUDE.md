@@ -37,7 +37,7 @@ The Rust side runs one background loop (`engine.rs`, 1 s tick) that pushes state
    - `lol-champ-select/v1/session`, plus `PATCH lol-champ-select/v1/session/my-selection` for summoner spells
    - `GET`/`PUT lol-item-sets/v1/item-sets/{summonerId}/sets` (shop build, `itemsets.rs`). `PUT` replaces the whole list, so read, swap our set, write back. Item `id`s are strings. Format checked with a real write and read-back in October 2026; block headers are kept ASCII because the in-game shop draws them.
    - `lol-perks/v1/pages`, `currentpage`, `recommended-pages/champion/{id}/position/{pos}/map/{map}`
-   - `lol-ranked/v1/ranked-stats/{puuid}`, `lol-match-history/v1/products/lol/{puuid}/matches` (scouting)
+   - `lol-ranked/v1/ranked-stats/{puuid}`, `lol-match-history/v1/products/lol/{puuid}/matches` (scouting, and the Profile page via `profile.rs`). That endpoint returns only the requested player in each game, and the client keeps just a few dozen recent games (32 for Dom in October 2026, even when asked for 100). `profile::allowed` drops Brawl and League Classic games for both: League Classic by champion id ≥ 60000, Brawl by mode `BRAWL` / queue 2400 (not yet seen in real data, so check that when someone plays Brawl). The profile also drops custom/practice games, and its insights skip remakes. Lane/role in this data (`timeline.lane`/`role`) is unreliable, so there's no per-role breakdown.
    - `lol-match-history/v1/games/{gameId}` (post-game summary, `postgame.rs`). When a game ends (`in_game` → not), `end_game` clears the live state and the engine retries this every 3 s for up to 3 min, because the record shows up a few seconds after the game. Format checked against a real response in October 2026. `lol-end-of-game/v1/eog-stats-block` only exists on the post-game screen and its `stats` keys are untyped, so it isn't used.
    - `lol-game-data/assets/v1/{champion-summary,items,perks,perkstyles,summoner-spells}.json` (static data). `champion-summary` also lists League Classic copies of ~80 champions: same name, id = 60000 + the normal id, alias `Jade_…` (checked October 2026). `ChampInfo.classic` marks them (`is_league_classic`); the Champions tab lists them separately, and OP.GG lookups and the live-game name match skip them.
    - The schema reference is the swagger at https://github.com/dysolix/hasagi-types (`swagger.json`).
@@ -92,11 +92,17 @@ src-tauri/src/
   scout.rs      rank + match history summaries
   live.rs       live game: timers, next items, skill hint, overlay state
   postgame.rs   post-game summary from the match-history record
+  profile.rs    your profile: rank, recent matches, insights; the Brawl/League Classic filter
   config.rs     settings (%APPDATA%\dev.dom.leaguebro\settings.json), serde defaults for new fields
 src-tauri/tauri.conf.json   windows (main + transparent overlay), CSP, updater pubkey + endpoint, version
 src/app/core/   rift.service.ts (events/commands), update.service.ts (auto-update), models.ts, demo.ts, assets.ts, why.ts (recommendation explanations)
-src/app/components/  shell, live-view, post-game, champions-view, rec-card, player-card, patch-view, settings-view, overlay
+src/app/components/  shell, live-view, post-game, champions-view, profile-view, rec-card, player-card, patch-view, settings-view, overlay
+                     (the Profile page isn't in the tab bar; the "League Bro" brand and your name in the header open it)
 .github/workflows/build-windows.yml   release workflow (tauri-action, signs updates, publishes latest.json)
+.github/workflows/pages.yml           publishes site/ to GitHub Pages (https://doliaro.github.io/leaguebro/)
+site/index.html                       download website: one static page, no build step; the download button
+                                      reads releases/latest from GitHub's API in the browser and picks the
+                                      *-setup.exe asset, falling back to the releases page
 scripts/setup-dev.ps1 (+ .cmd)        dev environment setup
 ```
 
@@ -108,6 +114,7 @@ Adding a setting: add it to `config.rs` (with a default; `#[serde(default)]` kee
 - Dom pushes, then runs **Actions → Release Windows installer → Run workflow**. That publishes `League.Bro_x.y.z_x64-setup.exe`, the `.sig`, and `latest.json`.
 - Installed copies check `releases/latest/download/latest.json` on startup and every 6 h, then show an "Update and restart" banner. Dev builds never self-update (`isDevMode()`).
 - Updates are signed. The private key and password are the repo secrets `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; the public key is in `tauri.conf.json`. Never change the pubkey unless Dom has lost the key, because that breaks updates for everyone already installed.
+- The website (`site/`) needs no change per release. Keep its copy in step with the app when features change, and keep the Riot "isn't endorsed by Riot Games" notice in its footer (required for fan projects). It uses no Riot logos or champion art.
 - The installs are unsigned for Windows (SmartScreen "Run anyway"). Code signing (e.g. Azure Trusted Signing) is a possible future step.
 
 ## Status (October 2026)
@@ -123,6 +130,7 @@ Adding a setting: add it to `config.rs` (with a default; `#[serde(default)]` kee
   - The League Buddy item set showing in the in-game shop (written on lock-in).
   - Overlay padlock (hover-to-click while locked) and dragging.
   - Lane item-value diff: that `position` matches up with the right enemy in ranked/normal draft.
+  - Profile page against real data (icon, level, ranks, a match's full scoreboard).
 - Known gap: blind pick with no assigned role has no OP.GG position. The UI shows an error and runes fall back to the client.
 
 Ideas Dom has mentioned or that came up: letting the user pick a role for blind pick, and Riot developer portal registration if it's ever shared more widely.

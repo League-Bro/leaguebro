@@ -57,6 +57,74 @@ export interface RankLine {
   losses: number;
 }
 
+/** One of your past games (custom, Brawl and League Classic games are left out). */
+export interface MatchLine {
+  gameId: number;
+  queueId: number;
+  gameMode: string;
+  /** Unix ms. */
+  created: number;
+  /** Seconds. */
+  duration: number;
+  result: 'win' | 'loss' | 'remake';
+  championId: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  cs: number;
+  gold: number;
+  damage: number;
+  vision: number;
+  /** item0..item6; the last one is the trinket. */
+  items: number[];
+  spells: [number, number];
+}
+
+export interface ChampStat {
+  championId: number;
+  games: number;
+  wins: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+}
+
+export interface QueueStat {
+  queueId: number;
+  games: number;
+  wins: number;
+}
+
+/** Totals over counted games (remakes left out). */
+export interface Insights {
+  games: number;
+  wins: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  csPerMin: number;
+  damagePerMin: number;
+  goldPerMin: number;
+  visionPerGame: number;
+  /** Positive = win streak, negative = loss streak. */
+  streak: number;
+  champions: ChampStat[];
+  queues: QueueStat[];
+}
+
+export interface MyProfile {
+  puuid: string;
+  name: string;
+  iconId: number;
+  level: number;
+  solo: RankLine | null;
+  flex: RankLine | null;
+  /** Newest first. */
+  matches: MatchLine[];
+  insights: Insights;
+  error: string | null;
+}
+
 export interface GameLine {
   championId: number;
   win: boolean;

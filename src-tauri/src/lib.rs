@@ -7,6 +7,7 @@ mod opgg;
 mod live;
 mod patch;
 mod postgame;
+mod profile;
 mod runes;
 mod scout;
 
@@ -50,6 +51,27 @@ async fn import_runes_now(app: AppHandle) -> Result<String, String> {
         return Err("Hover or lock a champion first".into());
     }
     engine::import_for(&app, champion, &position).await
+}
+
+/// Your rank, recent matches and insights (the Profile page).
+#[tauri::command]
+async fn get_my_profile(state: State<'_, AppState>) -> Result<profile::MyProfile, String> {
+    let lcu = state.shared.lock().await.lcu.clone().ok_or("Open the League client to see your profile")?;
+    profile::load(&lcu).await.map_err(|e| format!("{e:#}"))
+}
+
+/// The full scoreboard of one of your past games.
+#[tauri::command]
+async fn get_match(state: State<'_, AppState>, game_id: i64, queue_name: String) -> Result<postgame::PostGame, String> {
+    let lcu = state.shared.lock().await.lcu.clone().ok_or("Open the League client to see this game")?;
+    let me = lcu.get_req("/lol-summoner/v1/current-summoner").await.map_err(|e| format!("{e:#}"))?;
+    let puuid = me.get("puuid").and_then(|v| v.as_str()).unwrap_or("");
+    let game = lcu
+        .get(&format!("/lol-match-history/v1/games/{game_id}"))
+        .await
+        .map_err(|e| format!("{e:#}"))?
+        .ok_or("The League client doesn't have this game anymore")?;
+    postgame::parse(&game, puuid, &queue_name).ok_or_else(|| "Couldn't read this game".to_string())
 }
 
 /// OP.GG's recommendation for any champion, role and mode (the Champions tab).
@@ -234,6 +256,8 @@ pub fn run() {
             import_runes_now,
             save_current_page_for,
             lookup_rec,
+            get_my_profile,
+            get_match,
             preview_overlay,
             set_overlay_locked,
             list_patches,

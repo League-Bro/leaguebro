@@ -116,7 +116,7 @@ import { championIcon, clock, positionLabel } from '../core/assets';
         }
       </div>
     } @else if (visiblePostGame(); as pg) {
-      <rl-post-game [game]="pg" />
+      <rl-post-game [game]="pg" (closed)="rift.closedPostGame.set(pg.gameId)" />
     } @else if (postGamePhase() && !rift.postGame()) {
       <div class="empty card">
         <h2>Game over</h2>

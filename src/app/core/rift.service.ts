@@ -9,6 +9,7 @@ import {
   Config,
   ImportEvent,
   LoadingView,
+  MyProfile,
   OverlayState,
   PatchInfo,
   PatchNotes,
@@ -21,7 +22,18 @@ import {
   StaticData,
   Status,
 } from './models';
-import { demoCacheInfo, demoChampSelect, demoConfig, demoPatch, demoPatchList, demoPostGame, demoRec, demoSnapshot, demoStatic } from './demo';
+import {
+  demoCacheInfo,
+  demoChampSelect,
+  demoConfig,
+  demoPatch,
+  demoPatchList,
+  demoPostGame,
+  demoProfile,
+  demoRec,
+  demoSnapshot,
+  demoStatic,
+} from './demo';
 
 export function inTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -167,6 +179,23 @@ export class RiftService {
   async setOverlayLocked(locked: boolean): Promise<void> {
     this.overlayLocked.set(locked);
     if (!this.demo) await invoke('set_overlay_locked', { locked });
+  }
+
+  async getMyProfile(): Promise<MyProfile> {
+    if (this.demo) {
+      await new Promise((r) => setTimeout(r, 300));
+      return demoProfile();
+    }
+    return invoke<MyProfile>('get_my_profile');
+  }
+
+  /** Full scoreboard of one of your past games. */
+  async getMatch(gameId: number, queueName: string): Promise<PostGame> {
+    if (this.demo) {
+      await new Promise((r) => setTimeout(r, 300));
+      return { ...demoPostGame(), gameId, queueName };
+    }
+    return invoke<PostGame>('get_match', { gameId, queueName });
   }
 
   listPatches(): Promise<PatchInfo[]> {

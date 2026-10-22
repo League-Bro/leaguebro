@@ -4,8 +4,13 @@
 import {
   CacheInfo,
   ChampSelectView,
+  ChampStat,
   Config,
+  Insights,
   ItemInfo,
+  MatchLine,
+  MyProfile,
+  QueueStat,
   PatchInfo,
   PatchNotes,
   PostGame,
@@ -106,6 +111,55 @@ export function demoSnapshot(): Snapshot {
     },
     rec: demoRec(),
     postGame: null,
+  };
+}
+
+export function demoProfile(): MyProfile {
+  const rows: [number, number, MatchLine['result'], number, number, number, number, number][] = [
+    // queue, champion, result, K, D, A, CS, minutes
+    [420, 103, 'win', 11, 2, 9, 226, 31], [420, 103, 'win', 7, 3, 8, 201, 28], [420, 238, 'loss', 4, 7, 3, 174, 33],
+    [400, 103, 'win', 9, 4, 11, 189, 27], [480, 157, 'remake', 0, 0, 0, 8, 3], [420, 103, 'loss', 3, 5, 6, 198, 30],
+    [420, 238, 'win', 13, 4, 5, 211, 29], [480, 157, 'win', 8, 6, 4, 176, 22], [400, 99, 'loss', 2, 6, 14, 41, 34],
+    [420, 103, 'win', 6, 1, 10, 233, 26], [450, 84, 'win', 14, 9, 22, 61, 19], [420, 238, 'loss', 5, 8, 2, 162, 32],
+  ];
+  const builds: Record<number, number[]> = { 103: [3118, 3020, 4645, 3157], 238: [3020, 3135], 157: [3020, 1058], 99: [3089], 84: [3157, 3020] };
+  const matches: MatchLine[] = rows.map(([queueId, championId, result, kills, deaths, assists, cs, min], i) => ({
+    gameId: 1000 + i, queueId, gameMode: queueId === 450 ? 'ARAM' : queueId === 480 ? 'SWIFTPLAY' : 'CLASSIC',
+    created: Date.now() - (i * 5 + 1) * 3_600_000, duration: min * 60, result, championId, kills, deaths, assists, cs,
+    gold: min * 420, damage: min * 850 + kills * 600, vision: Math.round(min * 0.8),
+    items: [...(builds[championId] ?? []), 0, 0, 0, 0, 0, 0].slice(0, 6).concat(3340), spells: [4, 14],
+  }));
+  return {
+    puuid: 'me', name: 'Dom#NA1', iconId: 938, level: 214,
+    solo: { tier: 'GOLD', division: 'II', lp: 47, wins: 38, losses: 31 }, flex: null,
+    matches, insights: demoInsights(matches), error: null,
+  };
+}
+
+function demoInsights(matches: MatchLine[]): Insights {
+  const counted = matches.filter((m) => m.result !== 'remake');
+  const sum = (f: (m: MatchLine) => number) => counted.reduce((a, m) => a + f(m), 0);
+  const minutes = sum((m) => m.duration / 60);
+  const champs = new Map<number, ChampStat>();
+  const queues = new Map<number, QueueStat>();
+  for (const m of counted) {
+    const win = m.result === 'win' ? 1 : 0;
+    const c = champs.get(m.championId) ?? { championId: m.championId, games: 0, wins: 0, kills: 0, deaths: 0, assists: 0 };
+    champs.set(m.championId, { ...c, games: c.games + 1, wins: c.wins + win, kills: c.kills + m.kills, deaths: c.deaths + m.deaths, assists: c.assists + m.assists });
+    const q = queues.get(m.queueId) ?? { queueId: m.queueId, games: 0, wins: 0 };
+    queues.set(m.queueId, { ...q, games: q.games + 1, wins: q.wins + win });
+  }
+  const first = counted[0]?.result;
+  const streakLen = counted.findIndex((m) => m.result !== first);
+  const len = streakLen < 0 ? counted.length : streakLen;
+  return {
+    games: counted.length, wins: counted.filter((m) => m.result === 'win').length,
+    kills: sum((m) => m.kills), deaths: sum((m) => m.deaths), assists: sum((m) => m.assists),
+    csPerMin: sum((m) => m.cs) / minutes, damagePerMin: sum((m) => m.damage) / minutes, goldPerMin: sum((m) => m.gold) / minutes,
+    visionPerGame: sum((m) => m.vision) / counted.length,
+    streak: first === 'win' ? len : -len,
+    champions: [...champs.values()].sort((a, b) => b.games - a.games || b.wins - a.wins),
+    queues: [...queues.values()].sort((a, b) => b.games - a.games),
   };
 }
 
