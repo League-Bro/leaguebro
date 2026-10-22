@@ -25,11 +25,65 @@ const MIN_GAMES = 20;
             <button class="ghost why-toggle" [class.on]="showWhy()" (click)="showWhy.set(!showWhy())">
               {{ showWhy() ? 'Hide why' : 'Why these picks?' }}
             </button>
+          } @else if (s.loading) {
+            <!-- Keeps the header its loaded height. -->
+            <button class="ghost why-toggle" style="visibility: hidden" tabindex="-1" aria-hidden="true">Why these picks?</button>
           }
         </div>
 
         @if (s.loading) {
-          <p class="muted small">Looking up {{ rift.champName(s.championId) }} on OP.GG…</p>
+          <!-- Same layout as the loaded card, so nothing jumps when the data arrives. -->
+          <div class="grid skeleton" role="status" [attr.aria-label]="'Looking up ' + rift.champName(s.championId) + ' on OP.GG'">
+            <div class="block runes">
+              <div class="label">Runes</div>
+              <div class="row">
+                <span class="bone keystone round"></span>
+                <div class="lines">
+                  <span class="bone text" style="width: 90px"></span>
+                  <span class="bone text sm" style="width: 130px"></span>
+                </div>
+              </div>
+              <div class="perks">
+                @for (i of [1, 2, 3, 4, 5]; track i) { <span class="bone perk round"></span> }
+                @for (i of [1, 2, 3]; track i) { <span class="bone shard round"></span> }
+              </div>
+              <div class="small names">
+                @for (w of nameWidths; track $index) { <span class="bone word" [style.width.ch]="w"></span> }
+              </div>
+            </div>
+
+            <div class="block">
+              <div class="label">Summoner spells</div>
+              <div class="row spells">
+                <span class="bone icon"></span><span class="bone text" style="width: 44px"></span>
+                <span class="bone icon"></span><span class="bone text" style="width: 44px"></span>
+              </div>
+              <div class="label">Skill order</div>
+              <div class="row max">
+                @for (i of [1, 2, 3]; track i) { <span class="bone key-bone"></span> }
+              </div>
+              <div class="levels">
+                @for (i of levels; track $index) { <span class="bone lvl-bone"></span> }
+              </div>
+            </div>
+
+            <div class="block items">
+              <div class="label">Start</div>
+              <div class="row">
+                <span class="bone icon"></span><span class="bone icon"></span>
+              </div>
+              <div class="label">Build</div>
+              <div class="row build">
+                @for (i of [1, 2, 3, 4, 5, 6]; track i; let last = $last) {
+                  <span class="bone icon"></span>
+                  @if (!last) { <span class="faint arrow">›</span> }
+                }
+              </div>
+              @if (rift.config()?.useRecommendedBuilds) {
+                <div class="faint small">The overlay will remind you of this build in game.</div>
+              }
+            </div>
+          </div>
         } @else if (s.error) {
           <p class="loss small">Couldn't get OP.GG data: {{ s.error }}. Runes fall back to the League client's suggestion.</p>
         } @else if (s.rec; as r) {
@@ -215,12 +269,37 @@ const MIN_GAMES = 20;
     .data { color: var(--accent); opacity: 0.9; }
     .note { line-height: 1.45; }
     @media (max-width: 960px) { .why-grid { grid-template-columns: 1fr; } }
+    .lines { display: flex; flex-direction: column; gap: 6px; }
+    /* Inline "words" in the rune-names text block, so they wrap like the real names. */
+    .bone.word { height: 10px; border-radius: 999px; vertical-align: middle; margin-right: 1.6ch; }
+    .bone {
+      display: inline-block; flex: none; border-radius: 6px;
+      background: linear-gradient(90deg, var(--bg-sunken) 30%, var(--line-strong) 50%, var(--bg-sunken) 70%);
+      background-size: 300% 100%;
+      /* The shimmer starts late, so a quick lookup swaps straight to the data without a flash. */
+      animation: shimmer 1.4s ease-in-out 0.4s infinite;
+    }
+    .bone.round { border-radius: 50%; }
+    .bone.text { height: 12px; border-radius: 999px; }
+    .bone.text.sm { height: 10px; }
+    .bone.keystone { width: 44px; height: 44px; }
+    .bone.perk { width: 26px; height: 26px; }
+    .bone.shard { width: 18px; height: 18px; }
+    .bone.icon { width: 30px; height: 30px; }
+    .bone.key-bone { width: 28px; height: 28px; border-radius: 9px; }
+    .bone.lvl-bone { width: 16px; height: 18px; border-radius: 4px; }
+    @keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+    @media (prefers-reduced-motion: reduce) { .bone { animation: none; } }
   `,
 })
 export class RecCard {
   protected readonly rift = inject(RiftService);
   protected readonly minGames = MIN_GAMES;
   protected readonly showWhy = signal(false);
+  /** Skill-order placeholder: one box per level. */
+  protected readonly levels = Array.from({ length: 18 });
+  /** Rune-name placeholders, roughly as wide as real names ("Taste of Blood", "Grisly Mementos"…). */
+  protected readonly nameWidths = [13, 14, 14, 13, 12];
 
   protected readonly why = computed(() => {
     const r = this.state()?.rec;
