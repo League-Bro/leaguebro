@@ -24,11 +24,14 @@
 param(
   [Parameter(Mandatory = $true, Position = 0)]
   [string]$Version,
-  # Project folder; defaults to the one this script is in. Used by tests.
-  [string]$Root = (Split-Path -Parent $PSScriptRoot)
+  # Project folder; defaults to the one above this script. Used by tests.
+  [string]$Root
 )
 
 $ErrorActionPreference = 'Stop'
+# Set here, not as the param default: Windows PowerShell 5.1 leaves $PSScriptRoot
+# empty while evaluating param() defaults.
+if (-not $Root) { $Root = Split-Path -Parent $PSScriptRoot }
 $utf8 = New-Object System.Text.UTF8Encoding $false
 
 function Fail([string]$message) {
