@@ -152,7 +152,7 @@ const VERDICT_LABELS: Record<string, string> = {
     .name { font-weight: 600; }
     .badge { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 10px; }
     .badge.buff { color: var(--win); background: rgba(79, 194, 139, 0.14); }
-    .badge.nerf { color: var(--loss); background: rgba(224, 100, 108, 0.14); }
+    .badge.nerf { color: var(--loss); background: rgba(255, 90, 78, 0.14); }
     .badge.adjusted { color: var(--gold); background: var(--gold-soft); }
     .badge.new { color: var(--ally); background: rgba(75, 157, 240, 0.14); }
     .badge.removed { color: var(--text-dim); background: var(--bg-sunken); }

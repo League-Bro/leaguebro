@@ -98,8 +98,8 @@ const PREVIEW: OverlayState = {
     :host { display: block; padding: 6px; }
     .panel {
       position: relative;
-      background: rgba(13, 14, 18, 0.88);
-      border: 1px solid rgba(47, 212, 196, 0.35);
+      background: rgba(15, 13, 20, 0.88);
+      border: 1px solid rgba(255, 79, 163, 0.35);
       border-radius: 14px;
       padding: 10px 12px;
       color: #f1f2f5;
@@ -110,7 +110,7 @@ const PREVIEW: OverlayState = {
       position: absolute; inset: 0; z-index: 10;
       display: flex; align-items: center; justify-content: center;
       border: 1px dashed var(--accent); border-radius: 14px;
-      background: rgba(13, 14, 18, 0.55);
+      background: rgba(15, 13, 20, 0.55);
       font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
       color: var(--accent); cursor: move;
     }
@@ -120,8 +120,8 @@ const PREVIEW: OverlayState = {
       display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px;
       color: var(--text-faint); cursor: pointer;
     }
-    .lock:hover { color: var(--accent); background: rgba(47, 212, 196, 0.16); }
-    .lock.open { color: var(--accent); background: rgba(47, 212, 196, 0.22); }
+    .lock:hover { color: var(--accent); background: rgba(255, 79, 163, 0.16); }
+    .lock.open { color: var(--accent); background: rgba(255, 79, 163, 0.22); }
     .lane { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
     .lane .diff { font: 600 13px var(--mono); color: var(--text-dim); }
     .lane .diff.ahead { color: var(--win); }
@@ -133,14 +133,14 @@ const PREVIEW: OverlayState = {
     .skills .cap { margin-right: 2px; }
     .levelup {
       margin-left: auto; padding: 1px 7px; border-radius: 5px;
-      background: rgba(47, 212, 196, 0.22); animation: pulse 1.6s ease-in-out infinite;
+      background: rgba(255, 79, 163, 0.22); animation: pulse 1.6s ease-in-out infinite;
     }
-    @keyframes pulse { 50% { background: rgba(47, 212, 196, 0.08); } }
+    @keyframes pulse { 50% { background: rgba(255, 79, 163, 0.08); } }
     .timers { display: flex; flex-direction: column; gap: 3px; }
     .timer { display: flex; justify-content: space-between; padding: 3px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.04); border-left: 2px solid var(--text-faint); }
     .timer.ally { border-left-color: var(--ally); }
     .timer.enemy { border-left-color: var(--enemy); }
-    .timer.soon { background: rgba(47, 212, 196, 0.16); }
+    .timer.soon { background: rgba(255, 79, 163, 0.16); }
     .timer.soon .left { color: var(--accent); }
     .left { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     .build { margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 6px; display: flex; flex-direction: column; gap: 4px; }

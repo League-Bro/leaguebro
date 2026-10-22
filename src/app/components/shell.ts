@@ -99,7 +99,7 @@ const PHASE_LABELS: Record<string, string> = {
       display: flex; align-items: center; gap: 22px;
       padding: 0 20px; height: 64px; flex: none;
       border-bottom: 1px solid var(--line);
-      background: rgba(13, 14, 18, 0.7);
+      background: rgba(15, 13, 20, 0.7);
       backdrop-filter: blur(14px);
     }
     .brand {
@@ -127,7 +127,7 @@ const PHASE_LABELS: Record<string, string> = {
       color: var(--text); font: inherit; font-weight: 600; padding: 0 0 0 10px;
       border: none; border-left: 1px solid var(--line-strong); border-radius: 0; background: none;
     }
-    .status .who:hover:not(:disabled) { color: var(--accent); background: none; border-color: var(--line-strong); }
+    .status .who:hover:not(:disabled) { color: var(--accent-2); background: none; border-color: var(--line-strong); }
     .demo-bar { background: var(--gold-soft); color: var(--gold); font-size: 12.5px; padding: 6px 20px; }
     .demo-bar code { font-family: var(--mono); }
     .update-bar {
@@ -137,7 +137,7 @@ const PHASE_LABELS: Record<string, string> = {
       border-bottom: 1px solid var(--line);
     }
     .update-bar span:first-child { flex: 1; }
-    .update-bar.bad { background: rgba(241, 91, 108, 0.14); }
+    .update-bar.bad { background: rgba(255, 90, 78, 0.14); }
     main { flex: 1; overflow: auto; padding: 24px; }
     .back {
       display: inline-flex; align-items: center; gap: 6px; margin: -8px 0 14px;

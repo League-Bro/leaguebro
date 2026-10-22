@@ -1,27 +1,29 @@
-/* Theme: charcoal glass panels, pill controls, hextech-teal accent with gold
-   for highlights (warnings, "adjusted", rank). Based on the most popular
-   League app shots on Dribbble. */
+/* Theme: violet-charcoal glass panels, pill controls, colours from the app
+   icon (Jinx-style graffiti): spray-paint pink accent, teal second accent
+   (hovers, segmented controls), gold for warnings and "adjusted". */
 :root {
-  --bg: #0d0e12;
-  --bg-raised: #16181e;
-  --bg-sunken: #0a0b0e;
+  --bg: #0f0d14;
+  --bg-raised: #18151f;
+  --bg-sunken: #0b0a0f;
   --bg-hover: rgba(255, 255, 255, 0.05);
   --glass: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
   --line: rgba(255, 255, 255, 0.07);
   --line-strong: rgba(255, 255, 255, 0.13);
   --text: #f1f2f5;
-  --text-dim: #9ba0ad;
-  --text-faint: #636875;
-  --accent: #2fd4c4;
-  --accent-soft: rgba(47, 212, 196, 0.13);
-  --accent-glow: rgba(47, 212, 196, 0.35);
-  --on-accent: #04201d;
+  --text-dim: #a29dae;
+  --text-faint: #6a6577;
+  --accent: #ff4fa3;
+  --accent-soft: rgba(255, 79, 163, 0.14);
+  --accent-glow: rgba(255, 79, 163, 0.38);
+  --on-accent: #2b0719;
+  --accent-2: #2fd4c4;
+  --accent-2-soft: rgba(47, 212, 196, 0.13);
   --gold: #e4b75e;
   --gold-soft: rgba(228, 183, 94, 0.14);
   --win: #3ccf8e;
-  --loss: #f15b6c;
+  --loss: #ff5a4e;
   --ally: #4ea4ff;
-  --enemy: #f15b6c;
+  --enemy: #ff5a4e;
   --radius: 16px;
   --radius-sm: 10px;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
@@ -37,8 +39,8 @@ html, body {
   margin: 0;
   height: 100%;
   background:
-    radial-gradient(900px 500px at 0% 0%, rgba(47, 212, 196, 0.07), transparent 60%),
-    radial-gradient(700px 500px at 100% 100%, rgba(78, 164, 255, 0.05), transparent 60%),
+    radial-gradient(900px 500px at 0% 0%, rgba(255, 79, 163, 0.07), transparent 60%),
+    radial-gradient(700px 500px at 100% 100%, rgba(47, 212, 196, 0.06), transparent 60%),
     var(--bg);
   color: var(--text);
   font: 14px/1.45 var(--font);
@@ -67,7 +69,7 @@ button {
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
 }
-button:hover:not(:disabled) { border-color: var(--accent); background: rgba(255, 255, 255, 0.08); }
+button:hover:not(:disabled) { border-color: var(--accent-2); background: rgba(255, 255, 255, 0.08); }
 button:disabled { opacity: 0.45; cursor: default; }
 button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; box-shadow: 0 4px 18px var(--accent-glow); }
 button.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
@@ -105,7 +107,7 @@ input[type='number'] { width: 90px; }
 }
 .seg button { border: none; background: none; color: var(--text-dim); padding: 5px 13px; }
 .seg button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
-.seg button.on, .seg button.on:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.seg button.on, .seg button.on:hover:not(:disabled) { background: var(--accent-2-soft); color: var(--accent-2); font-weight: 600; }
 
 .muted { color: var(--text-dim); }
 .faint { color: var(--text-faint); }
@@ -137,7 +139,7 @@ input[type='number'] { width: 90px; }
 .splash img { width: 100%; height: 100%; object-fit: cover; object-position: 70% 20%; opacity: 0.55; }
 .splash::after {
   content: ''; position: absolute; inset: 0;
-  background: linear-gradient(90deg, var(--bg-raised) 18%, rgba(22, 24, 30, 0.75) 55%, rgba(22, 24, 30, 0.2));
+  background: linear-gradient(90deg, var(--bg-raised) 18%, rgba(24, 21, 31, 0.75) 55%, rgba(24, 21, 31, 0.2));
 }
 
 /* Toggle switch */

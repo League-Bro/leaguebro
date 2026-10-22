@@ -85,7 +85,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .hero.win { border-left-color: var(--win); }
     .hero.loss { border-left-color: var(--loss); }
     .hero.win .big { border-color: var(--win); box-shadow: 0 0 22px rgba(60, 207, 142, 0.35); }
-    .hero.loss .big { border-color: var(--loss); box-shadow: 0 0 22px rgba(241, 91, 108, 0.35); }
+    .hero.loss .big { border-color: var(--loss); box-shadow: 0 0 22px rgba(255, 90, 78, 0.35); }
     .big { width: 80px; height: 80px; border-radius: 18px; border: 2px solid var(--accent); }
     .grow { flex: 1; gap: 10px; min-width: 0; }
     .title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
