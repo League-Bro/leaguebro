@@ -17,7 +17,7 @@
 //! One block can hold several entries (the Items section separates them
 //! with `<hr>` and a new `<h3>`), so entries start at each `<h3>`.
 //!
-//! Caching (on disk, `%LOCALAPPDATA%\dev.dom.leaguebuddy\patch-notes`):
+//! Caching (on disk, `%LOCALAPPDATA%\dev.dom.leaguebro\patch-notes`):
 //! - Each patch's parsed notes are saved the first time they're opened and
 //!   never downloaded again.
 //! - The list of patches is saved too, and only re-checked once the next
@@ -30,17 +30,18 @@
 
 use anyhow::{anyhow, bail, Context, Result};
 use scraper::{CaseSensitivity, ElementRef, Html, Selector};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use crate::cache::{now_secs, CacheUsage, DiskCache, Generation};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use tokio::sync::Mutex;
 
 const SITE: &str = "https://www.leagueoflegends.com";
 const LIST_URL: &str = "https://www.leagueoflegends.com/en-us/news/tags/patch-notes/";
-const DAY_SECS: u64 = 24 * 60 * 60;
+pub(crate) const DAY_SECS: u64 = 24 * 60 * 60;
 /// Riot's usual cadence, used after the schedule below runs out.
 const PATCH_EVERY_SECS: u64 = 14 * DAY_SECS;
 
@@ -90,6 +91,24 @@ fn parse_version(v: &str) -> Option<(u32, u32)> {
 fn scheduled_notes_due(newest: (u32, u32)) -> Option<u64> {
     let &(_, _, date) = PATCH_SCHEDULE.iter().find(|(maj, min, _)| (*maj, *min) > newest)?;
     Some(iso_to_secs(date)? - NOTES_BEFORE_PATCH_SECS)
+}
+
+/// When the latest patch notes at or before `t` came out (`None` before the
+/// schedule starts) and when the next ones are due. Past the end of the
+/// schedule, patches are assumed every two weeks after the last listed one.
+pub(crate) fn notes_releases_around(t: u64) -> (Option<u64>, u64) {
+    let mut prev = None;
+    for &(_, _, date) in PATCH_SCHEDULE {
+        let Some(due) = iso_to_secs(date).map(|d| d - NOTES_BEFORE_PATCH_SECS) else { continue };
+        if due > t {
+            return (prev, due);
+        }
+        prev = Some(due);
+    }
+    // Schedule ran out: step two weeks at a time from the last listed patch.
+    let last = prev.unwrap_or(t);
+    let latest = last + (t - last) / PATCH_EVERY_SECS * PATCH_EVERY_SECS;
+    (Some(latest), latest + PATCH_EVERY_SECS)
 }
 /// Once a new patch is due but not out yet, how often to look again.
 const RECHECK_SECS: u64 = 6 * 60 * 60;
@@ -539,13 +558,9 @@ pub fn parse_article(body: &str) -> Vec<PatchSection> {
 
 // ---------- freshness ----------
 
-fn now_secs() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
-}
-
 /// "2026-10-20T18:00:00.000Z" -> seconds since 1970 (UTC). Only the date and
 /// time of day are read; that's all the site sends.
-fn iso_to_secs(s: &str) -> Option<u64> {
+pub(crate) fn iso_to_secs(s: &str) -> Option<u64> {
     let num = |r: std::ops::Range<usize>| s.get(r)?.parse::<i64>().ok();
     let (y, m, d) = (num(0..4)?, num(5..7)?, num(8..10)?);
     let (hh, mm, ss) = (num(11..13).unwrap_or(0), num(14..16).unwrap_or(0), num(17..19).unwrap_or(0));
@@ -596,36 +611,6 @@ struct SavedNotes {
     notes: PatchNotes,
 }
 
-// ---------- disk cache ----------
-
-/// Files in the app's cache folder. Every failure here is ignored: the cache
-/// only saves downloads, so a missing or broken file just means fetching again.
-struct DiskCache {
-    dir: Option<PathBuf>,
-}
-
-impl DiskCache {
-    fn read<T: DeserializeOwned>(&self, name: &str) -> Option<T> {
-        let bytes = std::fs::read(self.dir.as_ref()?.join(name)).ok()?;
-        serde_json::from_slice(&bytes).ok()
-    }
-
-    fn write<T: Serialize>(&self, name: &str, value: &T) {
-        let Some(dir) = &self.dir else { return };
-        let save = || -> Result<()> {
-            std::fs::create_dir_all(dir)?;
-            // Write then rename, so a crash mid-write never leaves half a file.
-            let tmp = dir.join(format!("{name}.tmp"));
-            std::fs::write(&tmp, serde_json::to_vec(value)?)?;
-            std::fs::rename(&tmp, dir.join(name))?;
-            Ok(())
-        };
-        if let Err(e) = save() {
-            eprintln!("couldn't save {name} to the patch notes cache: {e:#}");
-        }
-    }
-}
-
 /// File name for one patch's notes, from the URL's last segment
 /// ("league-of-legends-patch-26-21-notes"), limited to safe characters.
 fn notes_file(url: &str) -> String {
@@ -656,6 +641,8 @@ pub struct PatchNotesClient {
     list: Mutex<Option<SavedList>>,
     /// Notes already read this session (from disk or the site).
     notes: Mutex<HashMap<String, PatchNotes>>,
+    /// Bumped by `clear`, under the `notes` lock.
+    generation: Generation,
 }
 
 impl PatchNotesClient {
@@ -663,14 +650,36 @@ impl PatchNotesClient {
     pub fn new(version: &str, cache_dir: Option<PathBuf>) -> PatchNotesClient {
         PatchNotesClient {
             http: reqwest::Client::builder()
-                .user_agent(format!("LeagueBuddy/{version} (+https://github.com/doliaro/leaguebuddy)"))
+                .user_agent(format!("LeagueBro/{version} (+https://github.com/doliaro/leaguebuddy)"))
                 .timeout(Duration::from_secs(15))
                 .build()
                 .expect("http client"),
             disk: DiskCache { dir: cache_dir },
             list: Mutex::new(None),
             notes: Mutex::new(HashMap::new()),
+            generation: Generation::default(),
         }
+    }
+
+    pub async fn usage(&self) -> CacheUsage {
+        // The list lock is held during a download; don't wait on the network.
+        let list = self.list.try_lock().map_or(0, |l| usize::from(l.is_some()));
+        let notes = self.notes.lock().await.len();
+        self.disk.usage(list + notes)
+    }
+
+    /// Forgets the list and every patch's notes, on disk and in memory, so the
+    /// next look at the Patch Notes tab downloads them again.
+    pub async fn clear(&self) -> Result<()> {
+        // Waits for a list download in progress, so it can't save over the clear.
+        let mut list = self.list.lock().await;
+        *list = None;
+        // Articles download without a lock; the generation stops one that
+        // started before the clear from saving after it.
+        let mut notes = self.notes.lock().await;
+        self.generation.bump();
+        notes.clear();
+        self.disk.clear()
     }
 
     async fn fetch(&self, url: &str) -> Result<String> {
@@ -708,13 +717,17 @@ impl PatchNotesClient {
         if !url.starts_with(&format!("{SITE}/")) {
             bail!("not a leagueoflegends.com link");
         }
+        let generation = self.generation.current();
         if let Some(n) = self.notes.lock().await.get(url) {
             return Ok(n.clone());
         }
         let file = notes_file(url);
         if let Some(saved) = self.disk.read::<SavedNotes>(&file) {
             if saved.format == CACHE_FORMAT && saved.notes.info.url == url {
-                self.notes.lock().await.insert(url.to_string(), saved.notes.clone());
+                let mut cache = self.notes.lock().await;
+                if self.generation.current() == generation {
+                    cache.insert(url.to_string(), saved.notes.clone());
+                }
                 return Ok(saved.notes);
             }
         }
@@ -727,11 +740,15 @@ impl PatchNotesClient {
         let html = self.fetch(url).await?;
         let sections = parse_article(&article_body(&html)?);
         if sections.is_empty() {
-            bail!("the patch notes page had no changes League Buddy could read");
+            bail!("the patch notes page had no changes League Bro could read");
         }
         let notes = PatchNotes { info, sections };
-        self.disk.write(&file, &SavedNotes { format: CACHE_FORMAT, notes: notes.clone() });
-        self.notes.lock().await.insert(url.to_string(), notes.clone());
+        let mut cache = self.notes.lock().await;
+        // Cleared while downloading: still show the notes, just don't save them.
+        if self.generation.current() == generation {
+            self.disk.write(&file, &SavedNotes { format: CACHE_FORMAT, notes: notes.clone() });
+            cache.insert(url.to_string(), notes.clone());
+        }
         Ok(notes)
     }
 }
@@ -875,6 +892,17 @@ mod tests {
         // The schedule is in order and every date reads.
         assert!(PATCH_SCHEDULE.windows(2).all(|w| (w[0].0, w[0].1) < (w[1].0, w[1].1) && w[0].2 < w[1].2));
         assert!(PATCH_SCHEDULE.iter().all(|(_, _, d)| iso_to_secs(d).is_some()));
+    }
+
+    #[test]
+    fn notes_release_times() {
+        let at = |s: &str| iso_to_secs(s).unwrap();
+        // 26.21 shipped Oct 21 (notes Oct 20), 26.22 ships Nov 4 (notes Nov 3).
+        assert_eq!(notes_releases_around(at("2026-10-21T09:00:00Z")), (Some(at("2026-10-20T12:00:00Z")), at("2026-11-03T12:00:00Z")));
+        assert_eq!(notes_releases_around(at("2026-11-03T12:00:00Z")).0, Some(at("2026-11-03T12:00:00Z")));
+        assert_eq!(notes_releases_around(at("2026-01-01T00:00:00Z")), (None, at("2026-01-07T12:00:00Z")));
+        // Past the schedule: every two weeks from 26.24's notes (Dec 8).
+        assert_eq!(notes_releases_around(at("2026-12-25T00:00:00Z")), (Some(at("2026-12-22T12:00:00Z")), at("2027-01-05T12:00:00Z")));
     }
 
     #[test]

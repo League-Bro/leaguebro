@@ -13,21 +13,34 @@
 //!
 //! `parse_compact` turns that into ordinary JSON objects using the `class`
 //! headers to name each positional argument.
+//!
+//! Answers are saved on disk (`%LOCALAPPDATA%\dev.dom.leaguebro\opgg`), one
+//! file per champion + position + mode, and expire on the patch cycle
+//! (`expires_at`): a day at a time for the week after each patch's notes come
+//! out, then a week at a time, and always when the next notes are due.
 
 use anyhow::{anyhow, bail, Context, Result};
-use serde::Serialize;
+use crate::cache::{now_secs, CacheUsage, DiskCache, Generation};
+use crate::patch::{notes_releases_around, DAY_SECS};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::path::PathBuf;
+use std::time::Duration;
 use tokio::sync::Mutex;
 
 pub const ENDPOINT: &str = "https://mcp-api.op.gg/mcp";
 /// Below this many games OP.GG's numbers are mostly noise (e.g. an off-role
-/// pick), so League Buddy falls back to the client's own recommendation.
+/// pick), so League Bro falls back to the client's own recommendation.
 pub const MIN_GAMES: i64 = 20;
 /// 4th–6th item options seen in fewer games than this are skipped.
 const MIN_LATE_ITEM_GAMES: i64 = 10;
-const CACHE_FOR: Duration = Duration::from_secs(6 * 60 * 60);
+/// Bump when `Recommendation` or `extract` changes, so saved answers are
+/// fetched again instead of read in an old shape.
+const CACHE_FORMAT: u32 = 1;
+/// How long after a patch's notes come out OP.GG answers are kept for only a
+/// day, while the new patch's numbers settle. After that, a week.
+const SETTLING_SECS: u64 = 7 * DAY_SECS;
 
 // ---------- compact format parser ----------
 
@@ -170,7 +183,7 @@ pub fn parse_compact(text: &str) -> Result<Value> {
 
 // ---------- recommendation model ----------
 
-#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RuneRec {
     pub primary_style_id: i64,
@@ -187,7 +200,7 @@ pub struct RuneRec {
     pub pick_rate: f64,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ItemSet {
     pub ids: Vec<i64>,
@@ -199,7 +212,7 @@ pub struct ItemSet {
 }
 
 /// How often a choice (skill order, spells) was picked and how it did.
-#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct PickStats {
     pub games: i64,
@@ -207,7 +220,7 @@ pub struct PickStats {
     pub pick_rate: f64,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Recommendation {
     pub champion_id: i64,
@@ -434,23 +447,85 @@ const FIELDS: &[&str] = &[
     "data.sixth_items",
 ];
 
+// ---------- cache ----------
+
+/// When an answer fetched at `fetched_at` (seconds since 1970) goes stale.
+/// Always at the next patch notes, since OP.GG's numbers move with the patch.
+/// Within a week of the latest notes: after a day, so the new patch's stats
+/// are picked up as games come in. After that: a week.
+pub fn expires_at(fetched_at: u64) -> u64 {
+    let (latest, next) = notes_releases_around(fetched_at);
+    let settling = latest.is_some_and(|l| fetched_at < l + SETTLING_SECS);
+    let keep = if settling { DAY_SECS } else { 7 * DAY_SECS };
+    (fetched_at + keep).min(next)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SavedRec {
+    format: u32,
+    fetched_at: u64,
+    rec: Recommendation,
+}
+
+impl SavedRec {
+    fn is_fresh(&self, now: u64) -> bool {
+        self.format == CACHE_FORMAT && now < expires_at(self.fetched_at)
+    }
+
+    /// Fetched since the latest patch notes came out. When OP.GG can't be
+    /// reached, an expired answer is only used if this holds; an older one
+    /// is for a previous patch, and the client's own page is better.
+    fn is_this_patch(&self, now: u64) -> bool {
+        self.format == CACHE_FORMAT && notes_releases_around(now).0.is_none_or(|l| self.fetched_at >= l)
+    }
+}
+
+/// "103:mid:ranked" -> "rec-103-mid-ranked.json"
+fn rec_file(key: &str) -> String {
+    let safe: String = key.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    format!("rec-{safe}.json")
+}
+
 pub struct OpGg {
     http: reqwest::Client,
     session: Mutex<Option<String>>,
-    cache: Mutex<HashMap<String, (Instant, Recommendation)>>,
+    /// Answers read this session (from disk or OP.GG), by champion:position:mode.
+    /// `None` means the disk was checked and had nothing, so it isn't read again.
+    cache: Mutex<HashMap<String, Option<SavedRec>>>,
+    disk: DiskCache,
+    /// Bumped by `clear`, under the `cache` lock.
+    generation: Generation,
 }
 
 impl OpGg {
-    pub fn new(version: &str) -> OpGg {
+    /// `cache_dir` is where answers are saved; `None` keeps them in memory only.
+    pub fn new(version: &str, cache_dir: Option<PathBuf>) -> OpGg {
         OpGg {
             http: reqwest::Client::builder()
-                .user_agent(format!("LeagueBuddy/{version} (+https://github.com/doliaro/leaguebuddy)"))
+                .user_agent(format!("LeagueBro/{version} (+https://github.com/doliaro/leaguebuddy)"))
                 .timeout(Duration::from_secs(12))
                 .build()
                 .expect("http client"),
             session: Mutex::new(None),
             cache: Mutex::new(HashMap::new()),
+            disk: DiskCache { dir: cache_dir },
+            generation: Generation::default(),
         }
+    }
+
+    pub async fn usage(&self) -> CacheUsage {
+        let in_memory = self.cache.lock().await.values().filter(|s| s.is_some()).count();
+        self.disk.usage(in_memory)
+    }
+
+    /// Forgets every saved answer, on disk and in memory, so the next champion
+    /// asks OP.GG again. A lookup already in progress still returns its answer
+    /// but doesn't save it.
+    pub async fn clear(&self) -> Result<()> {
+        let mut cache = self.cache.lock().await;
+        self.generation.bump();
+        cache.clear();
+        self.disk.clear()
     }
 
     async fn post(&self, body: Value, session: Option<&str>) -> Result<(Option<String>, String)> {
@@ -482,7 +557,7 @@ impl OpGg {
             .post(
                 json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
                     "protocolVersion": "2025-06-18", "capabilities": {},
-                    "clientInfo": {"name": "League Buddy", "version": env!("CARGO_PKG_VERSION")}
+                    "clientInfo": {"name": "League Bro", "version": env!("CARGO_PKG_VERSION")}
                 }}),
                 None,
             )
@@ -518,11 +593,44 @@ impl OpGg {
             bail!("no position to look up (blind pick without a role)");
         }
         let key = format!("{champion_id}:{pos}:{game_mode}");
-        if let Some((at, rec)) = self.cache.lock().await.get(&key) {
-            if at.elapsed() < CACHE_FOR {
-                return Ok(rec.clone());
+        let file = rec_file(&key);
+        let now = now_secs();
+        let generation = self.generation.current();
+        let cached = self.cache.lock().await.get(&key).cloned();
+        let saved = match cached {
+            Some(s) => s,
+            None => {
+                // First lookup of this key this session: check the disk (once,
+                // outside the lock).
+                let s = self.disk.read::<SavedRec>(&file).filter(|s| s.format == CACHE_FORMAT);
+                let mut cache = self.cache.lock().await;
+                if self.generation.current() == generation {
+                    cache.entry(key.clone()).or_insert_with(|| s.clone());
+                }
+                s
             }
+        };
+        if let Some(s) = saved.as_ref().filter(|s| s.is_fresh(now)) {
+            return Ok(s.rec.clone());
         }
+        match self.fetch_rec(champion_id, alias, pos, game_mode).await {
+            Ok(rec) => {
+                let fresh = SavedRec { format: CACHE_FORMAT, fetched_at: now, rec: rec.clone() };
+                let mut cache = self.cache.lock().await;
+                // Cleared while fetching: still use the answer, just don't save it.
+                if self.generation.current() == generation {
+                    self.disk.write(&file, &fresh);
+                    cache.insert(key, Some(fresh));
+                }
+                Ok(rec)
+            }
+            // Offline or OP.GG is down: an expired answer from this patch still
+            // beats none. One from an older patch doesn't; the client's page is used.
+            Err(e) => saved.filter(|s| s.is_this_patch(now)).map(|s| s.rec).ok_or(e),
+        }
+    }
+
+    async fn fetch_rec(&self, champion_id: i64, alias: &str, pos: &str, game_mode: &str) -> Result<Recommendation> {
         let text = self
             .call_tool(
                 "lol_get_champion_analysis",
@@ -536,9 +644,7 @@ impl OpGg {
             )
             .await?;
         let parsed = parse_compact(&text).context("couldn't read OP.GG's answer")?;
-        let rec = extract(&parsed, champion_id, pos, game_mode)?;
-        self.cache.lock().await.insert(key, (Instant::now(), rec.clone()));
-        Ok(rec)
+        extract(&parsed, champion_id, pos, game_mode)
     }
 }
 
@@ -662,5 +768,60 @@ mod tests {
         assert_eq!(game_mode_for(450, 12), Some("aram"));
         assert_eq!(game_mode_for(420, 11), Some("ranked"));
         assert_eq!(game_mode_for(1700, 30), None);
+    }
+
+    #[test]
+    fn cache_follows_the_patch_cycle() {
+        let at = |s: &str| crate::patch::iso_to_secs(s).unwrap();
+        let hour = 60 * 60;
+        // 26.21's notes came out Oct 20 12:00 UTC; 26.22's are due Nov 3 12:00.
+        let notes = at("2026-10-20T12:00:00Z");
+        let next = at("2026-11-03T12:00:00Z");
+        // First week after the notes: a day at a time.
+        assert_eq!(expires_at(notes + hour), notes + hour + DAY_SECS);
+        assert_eq!(expires_at(notes + 6 * DAY_SECS), notes + 7 * DAY_SECS);
+        // After that: a week, cut short by the next patch's notes.
+        assert_eq!(expires_at(notes + 7 * DAY_SECS), next);
+        assert_eq!(expires_at(notes + 8 * DAY_SECS), next);
+        // Fetched just before new notes: gone the moment they're out.
+        assert_eq!(expires_at(next - hour), next);
+        // Three-week gap before 26.24 (notes Dec 8): the second week runs a full week.
+        let n23 = at("2026-11-17T12:00:00Z");
+        assert_eq!(expires_at(n23 + 7 * DAY_SECS), n23 + 14 * DAY_SECS);
+    }
+
+    #[test]
+    fn saved_recs_survive_a_restart() {
+        let dir = std::env::temp_dir().join(format!("lb-opgg-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let rec = extract(&parse_compact(&fixture("ahri_mid_full.txt")).unwrap(), 103, "mid", "ranked").unwrap();
+        let disk = DiskCache { dir: Some(dir.clone()) };
+        let now = now_secs();
+        disk.write(&rec_file("103:mid:ranked"), &SavedRec { format: CACHE_FORMAT, fetched_at: now, rec: rec.clone() });
+        // A new client (as after restarting the app) reads it without the network.
+        let client = OpGg::new("test", Some(dir.clone()));
+        let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+        assert_eq!(rt.block_on(client.recommend(103, "Ahri", "middle", "ranked")).unwrap(), rec);
+        // Saved in an older format: not used.
+        let old = SavedRec { format: CACHE_FORMAT + 1, fetched_at: now, rec: rec.clone() };
+        assert!(!old.is_fresh(now));
+        // Clearing removes the saved files and leaves anything else alone.
+        std::fs::write(dir.join("keep.txt"), "x").unwrap();
+        let usage = rt.block_on(client.usage());
+        assert_eq!((usage.files, usage.in_memory), (1, 1));
+        rt.block_on(client.clear()).unwrap();
+        assert_eq!(rt.block_on(client.usage()), CacheUsage::default());
+        assert!(dir.join("keep.txt").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn expired_answers_only_stand_in_within_the_patch() {
+        let at = |s: &str| crate::patch::iso_to_secs(s).unwrap();
+        let saved = |fetched_at| SavedRec { format: CACHE_FORMAT, fetched_at, rec: Recommendation::default() };
+        // 26.21's notes came out Oct 20 12:00 UTC.
+        let now = at("2026-10-25T00:00:00Z");
+        assert!(saved(at("2026-10-21T00:00:00Z")).is_this_patch(now));
+        assert!(!saved(at("2026-10-19T00:00:00Z")).is_this_patch(now));
     }
 }

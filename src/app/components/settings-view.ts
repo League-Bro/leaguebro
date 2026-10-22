@@ -1,7 +1,7 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { UpdateService } from '../core/update.service';
-import { Config, TimerConfig } from '../core/models';
+import { CacheInfo, CacheName, Config, TimerConfig } from '../core/models';
 import { clock } from '../core/assets';
 
 type BoolKey =
@@ -137,18 +137,32 @@ type BoolKey =
 
         <section class="card stack">
           <h2>League install folder</h2>
-          <p class="faint small">Only needed if League Buddy never connects. It normally finds the client on its own.</p>
+          <p class="faint small">Only needed if League Bro never connects. It normally finds the client on its own.</p>
           <div class="field">
             <input type="text" class="wide" placeholder="C:\\Riot Games\\League of Legends" [value]="cfg.installDir ?? ''"
               (change)="setInstall($any($event.target).value)" />
           </div>
         </section>
         <section class="card stack">
+          <h2>Clear cache</h2>
+          <p class="faint small">League Bro saves downloads so it doesn't fetch them every time. Clearing one makes it download fresh copies the next time they're needed.</p>
+          @for (c of cacheRows; track c.key) {
+            <div class="cache-row">
+              <span class="label"><b>{{ c.label }}</b><span>{{ c.hint }}</span></span>
+              <span class="mono faint">{{ usage(c.key) }}</span>
+              <button class="ghost" [disabled]="clearing() === c.key || isEmpty(c.key)" (click)="clearCache(c.key)">
+                {{ clearing() === c.key ? 'Clearing…' : 'Clear' }}
+              </button>
+            </div>
+          }
+        </section>
+
+        <section class="card stack">
           <h2>About &amp; updates</h2>
           <p class="muted small">
-            @if (updates.currentVersion()) { League Buddy {{ updates.currentVersion() }} } @else { League Buddy (dev build) }
+            @if (updates.currentVersion()) { League Bro {{ updates.currentVersion() }} } @else { League Bro (dev build) }
           </p>
-          <p class="faint small">League Buddy checks for updates when it starts and every few hours, then asks before installing.</p>
+          <p class="faint small">League Bro checks for updates when it starts and every few hours, then asks before installing.</p>
           <div class="row">
             <button [disabled]="updates.checking() || !updates.currentVersion()" (click)="updates.check(true)">
               {{ updates.checking() ? 'Checking…' : 'Check for updates' }}
@@ -173,6 +187,10 @@ type BoolKey =
     .seg button:last-child { border-radius: 0 8px 8px 0; border-left: none; }
     .seg button.on { background: var(--gold-soft); border-color: var(--gold); color: var(--gold); }
     .small { font-size: 12.5px; margin: 0; }
+    .cache-row { display: flex; align-items: center; gap: 12px; }
+    .cache-row .label { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+    .cache-row .label span { font-size: 12.5px; color: var(--text-faint); }
+    .cache-row .mono { white-space: nowrap; }
   `,
 })
 export class SettingsView {
@@ -188,6 +206,52 @@ export class SettingsView {
     { key: 'baronRespawn', label: 'Baron respawn' },
     { key: 'inhibRespawn', label: 'Inhibitor respawn' },
   ];
+
+  protected readonly cache = signal<CacheInfo | null>(null);
+  protected readonly clearing = signal<CacheName | null>(null);
+  protected readonly cacheRows: { key: CacheName; label: string; hint: string }[] = [
+    { key: 'patchNotes', label: 'Patch notes', hint: 'The patch list and every patch you opened.' },
+    { key: 'runes', label: 'Rune pages', hint: "OP.GG runes, spells, skill order and builds. Your own saved pages aren't touched." },
+  ];
+
+  constructor() {
+    // Reloaded whenever a recommendation arrives, since that's when the rune
+    // cache grows. Patch notes only change on the Patch Notes tab, and coming
+    // back here recreates this view.
+    effect(() => {
+      this.rift.rec();
+      untracked(() => this.refreshCache());
+    });
+  }
+
+  private refreshCache(): void {
+    this.rift.cacheInfo().then((c) => this.cache.set(c), (e) => this.error.set(String(e)));
+  }
+
+  protected isEmpty(key: CacheName): boolean {
+    const u = this.cache()?.[key];
+    return !u || (!u.files && !u.inMemory);
+  }
+
+  protected usage(key: CacheName): string {
+    const u = this.cache()?.[key];
+    if (!u) return '';
+    if (!u.files) return u.inMemory ? 'Not saved to disk' : 'Empty';
+    const size = u.bytes < 1024 * 1024 ? `${Math.max(1, Math.round(u.bytes / 1024))} KB` : `${(u.bytes / 1024 / 1024).toFixed(1)} MB`;
+    return `${u.files} ${u.files === 1 ? 'file' : 'files'} · ${size}`;
+  }
+
+  async clearCache(key: CacheName): Promise<void> {
+    this.clearing.set(key);
+    this.error.set('');
+    try {
+      this.cache.set(await this.rift.clearCache(key));
+    } catch (e) {
+      this.error.set(String(e));
+    } finally {
+      this.clearing.set(null);
+    }
+  }
 
   private save(fn: (c: Config) => Config): void {
     this.rift.updateConfig(fn).catch((e) => this.error.set(String(e)));

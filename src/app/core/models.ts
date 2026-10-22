@@ -276,6 +276,23 @@ export interface StaticData {
   spells: PerkInfo[];
 }
 
+// Saved downloads (see cache_info / clear_cache in src-tauri/src/lib.rs).
+
+export interface CacheUsage {
+  files: number;
+  bytes: number;
+  /** Entries held in memory; more than `files` when saving to disk fails. */
+  inMemory: number;
+}
+
+export interface CacheInfo {
+  patchNotes: CacheUsage;
+  /** OP.GG recommendations: rune pages, spells, skill order, builds. */
+  runes: CacheUsage;
+}
+
+export type CacheName = keyof CacheInfo;
+
 // Patch notes (see src-tauri/src/patch.rs).
 
 export interface PatchInfo {

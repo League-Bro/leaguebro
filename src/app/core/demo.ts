@@ -2,6 +2,7 @@
 // instead of inside the Tauri app, so the layout can be worked on
 // without League running.
 import {
+  CacheInfo,
   ChampSelectView,
   Config,
   ItemInfo,
@@ -79,7 +80,11 @@ export function demoSnapshot(): Snapshot {
       profile('e4', '', '', 0, 0, 0, [145, 222]),
       profile('e5', 'SILVER', 'I', 91, 30, 37, [555, 412]),
     ],
+<<<<<<< HEAD
     lastImport: { ok: true, championId: 103, message: 'Set "League Buddy: Ahri Mid" (OP.GG) · Flash + Ignite · build added to the shop' },
+=======
+    lastImport: { ok: true, championId: 103, message: 'Set "League Bro: Ahri Mid" (OP.GG) · Flash + Ignite' },
+>>>>>>> 2b3c7d15a5d8eb55f88d18b41e50faac7541d1b0
     overlay: {
       gameTime: 742,
       gameMode: 'CLASSIC',
@@ -250,7 +255,7 @@ export function demoChampSelect(): ChampSelectView {
   };
 }
 
-/** Real OP.GG answer for Ahri mid (from the probe), as League Buddy shows it. */
+/** Real OP.GG answer for Ahri mid (from the probe), as League Bro shows it. */
 export function demoRec(): RecState {
   const total = 10962;
   const set = (ids: number[], names: string[], games: number, wins: number) => ({ ids, names, games, winRate: wins / games, pickRate: games / total });
@@ -296,6 +301,13 @@ export function demoRec(): RecState {
 }
 
 const PATCH_URL = 'https://www.leagueoflegends.com/en-us/news/game-updates/league-of-legends-patch-26-21-notes';
+
+export function demoCacheInfo(): CacheInfo {
+  return {
+    patchNotes: { files: 4, bytes: 186_400, inMemory: 2 },
+    runes: { files: 23, bytes: 97_300, inMemory: 1 },
+  };
+}
 
 export function demoPatchList(): PatchInfo[] {
   return [

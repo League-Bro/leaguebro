@@ -12,7 +12,7 @@ import { championIcon, clock, positionLabel } from '../core/assets';
     @if (!rift.status().connected) {
       <div class="empty card">
         <h2>Waiting for League</h2>
-        <p class="muted">Open the League client and League Buddy will connect on its own. If it never connects, set your install folder under Settings.</p>
+        <p class="muted">Open the League client and League Bro will connect on its own. If it never connects, set your install folder under Settings.</p>
       </div>
     } @else if (rift.champSelect(); as cs) {
       <section class="hero card">

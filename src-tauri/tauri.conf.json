@@ -1,19 +1,19 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "League Buddy",
+  "productName": "League Bro",
   "version": "0.1.2",
-  "identifier": "dev.dom.leaguebuddy",
+  "identifier": "dev.dom.leaguebro",
   "build": {
     "beforeDevCommand": "npm run start",
     "devUrl": "http://127.0.0.1:4200",
     "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist/leaguebuddy/browser"
+    "frontendDist": "../dist/leaguebro/browser"
   },
   "app": {
     "windows": [
       {
         "label": "main",
-        "title": "League Buddy",
+        "title": "League Bro",
         "width": 1080,
         "height": 760,
         "minWidth": 860,
@@ -22,7 +22,7 @@
       },
       {
         "label": "overlay",
-        "title": "League Buddy Overlay",
+        "title": "League Bro Overlay",
         "width": 270,
         "height": 360,
         "visible": false,

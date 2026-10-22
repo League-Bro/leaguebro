@@ -1,32 +1,34 @@
-# League Buddy
+# League Bro
 
 A small, ad-free League of Legends companion for Windows. It imports your runes automatically, shows who you're playing with and against, and adds a lightweight in-game overlay with objective timers. There are no ads, no accounts and no tracking.
 
 ## Install
 
-1. Go to the **[latest release](https://github.com/doliaro/leaguebuddy/releases/latest)** and download `League.Buddy_x.y.z_x64-setup.exe`.
+1. Go to the **[latest release](https://github.com/doliaro/leaguebuddy/releases/latest)** and download `League.Bro_x.y.z_x64-setup.exe`.
 2. Run it. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**. That warning appears because the app isn't code-signed, not because something is wrong with it.
-3. Open League Buddy, then open League. It connects on its own.
+3. Open League Bro, then open League. It connects on its own.
 
 In League, set **Settings → Video → Window Mode** to **Borderless** (or Windowed). In Fullscreen the game covers the overlay.
 
 To move the overlay, click the padlock in its top-right corner, drag it where you want it, then click the padlock again. The rest of the overlay ignores the mouse, so clicks go through to the game.
 
-League Buddy updates itself. When a new version is out, a banner at the top of the window offers **Update and restart**. It never installs in the middle of a game unless you click. You can also check under **Settings → About & updates**.
+League Bro updates itself. When a new version is out, a banner at the top of the window offers **Update and restart**. It never installs in the middle of a game unless you click. You can also check under **Settings → About & updates**.
 
-To uninstall, use Windows **Settings → Apps → Installed apps → League Buddy**.
+To uninstall, use Windows **Settings → Apps → Installed apps → League Bro**.
+
+League Bro used to be called League Buddy. Updating from League Buddy installs League Bro next to it and brings your settings across. After that, uninstall **League Buddy** from Installed apps so only one copy manages your rune page.
 
 ## What it does
 
 ### Recommendations (OP.GG)
 
-When you hover or lock a champion, League Buddy pulls OP.GG's ranked stats for that champion and role and shows the most popular rune page, summoner spells, skill order, starting items and build path, with game counts and win rate.
+When you hover or lock a champion, League Bro pulls OP.GG's ranked stats for that champion and role and shows the most popular rune page, summoner spells, skill order, starting items and build path, with game counts and win rate.
 
 To look up any champion outside champ select, use the **Champions** tab: pick a champion, then Ranked (with a role) or ARAM. That's also where you save your own rune page or item order for a champion.
 
 ### Rune, summoner spell and shop build auto-import
 
-When you lock in, League Buddy creates a rune page called `League Buddy: <Champion> <Role>` and selects it. It reuses that one page every game, so your other pages are never touched. It also sets your summoner spells, keeping Flash on whichever key you already use.
+When you lock in, League Bro creates a rune page called `League Bro: <Champion> <Role>` and selects it. It reuses that one page every game, so your other pages are never touched. It also sets your summoner spells, keeping Flash on whichever key you already use.
 
 It also adds OP.GG's build to the in-game shop as an item set with the same name: starter items, boots, core build and options for items 4 to 6, with win rates. In the shop, find it under item sets. Like the rune page, it's one set that gets replaced each game, and your own item sets aren't touched.
 
@@ -38,7 +40,7 @@ It also adds OP.GG's build to the in-game shop as an item set with the same name
 
 Each player card shows rank, LP, win rate, record and KDA over the last 20 games, most-played champions, and how often they've played their current pick.
 
-- **Champ select:** only your party, plus everyone in normal games. Riot hides other players' names in ranked champ select, and League Buddy follows that rule.
+- **Champ select:** only your party, plus everyone in normal games. Riot hides other players' names in ranked champ select, and League Bro follows that rule.
 - **Loading screen:** all ten players, except anyone using streamer mode.
 
 ### In-game overlay
@@ -58,20 +60,20 @@ When a game ends, the **Live** tab shows the result, your KDA, CS per minute, da
 
 ### What it doesn't do
 
-League Buddy doesn't read game memory, use a Riot API key, or track enemy ability or summoner spell cooldowns. It uses only the League client's local API, Riot's official in-game data API (port 2999), and OP.GG's public stats, and stays within [Riot's third-party app rules](https://developer.riotgames.com/policies/general).
+League Bro doesn't read game memory, use a Riot API key, or track enemy ability or summoner spell cooldowns. It uses only the League client's local API, Riot's official in-game data API (port 2999), and OP.GG's public stats, and stays within [Riot's third-party app rules](https://developer.riotgames.com/policies/general).
 
 ## Troubleshooting
 
 | Problem | Fix |
 | --- | --- |
-| "League client not found" while League is open | Under **Settings**, enter your install folder, usually `C:\Riot Games\League of Legends`. If League runs as administrator, run League Buddy as administrator too. |
+| "League client not found" while League is open | Under **Settings**, enter your install folder, usually `C:\Riot Games\League of Legends`. If League runs as administrator, run League Bro as administrator too. |
 | Overlay doesn't show in game | Set League to **Borderless**, and make sure "Show the in-game overlay" is on in **Settings**. |
 | Rune import fails | Your rune page slots are full. Delete one page, or turn on "Reuse the selected page when slots are full". |
 | Objective timer is off | Riot changes spawn times between seasons. Adjust them under **Settings → Objective timers**. |
 | Champion or item icons missing | Icons load from CommunityDragon and need an internet connection. |
 | "Couldn't get OP.GG data" | OP.GG is unreachable or changed something. Runes fall back to the League client's suggestion automatically. You can also switch to "League client only" under **Settings → Recommendations**. |
 
-Settings are stored in `%APPDATA%\dev.dom.leaguebuddy\settings.json`. Delete that file to reset everything.
+Settings are stored in `%APPDATA%\dev.dom.leaguebro\settings.json`. Delete that file to reset everything.
 
 ---
 
@@ -101,7 +103,7 @@ When it says **All set**, open a **new** terminal (so it sees the updated PATH) 
 npm run tauri dev
 ```
 
-The first run compiles all the Rust dependencies (about 5 minutes), then the League Buddy window opens. After that it starts in seconds.
+The first run compiles all the Rust dependencies (about 5 minutes), then the League Bro window opens. After that it starts in seconds.
 
 ### Manual setup
 
@@ -134,7 +136,7 @@ cd src-tauri; cargo test   # Rust unit tests
 
 In browser mode, add `?scene=champselect` to the URL to see champ select, or `?window=overlay` to see the overlay.
 
-Don't run a dev copy and an installed copy of League Buddy at the same time; both would try to manage your rune page.
+Don't run a dev copy and an installed copy of League Bro at the same time; both would try to manage your rune page.
 
 ### Troubleshooting setup
 
@@ -157,7 +159,7 @@ Installers are built on GitHub's servers by `.github/workflows/build-windows.yml
    git commit -m "Release 0.1.1"
    git push
    ```
-3. Go to **Actions → Release Windows installer → Run workflow**. About 10–15 minutes later, a new release appears with the installer attached. Everyone who has League Buddy installed gets the update banner the next time it checks.
+3. Go to **Actions → Release Windows installer → Run workflow**. About 10–15 minutes later, a new release appears with the installer attached. Everyone who has League Bro installed gets the update banner the next time it checks.
 
 ### Auto-updates
 

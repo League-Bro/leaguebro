@@ -7,7 +7,7 @@
   },
   "newProjectRoot": "projects",
   "projects": {
-    "leaguebuddy": {
+    "leaguebro": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:class": {
@@ -82,10 +82,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "leaguebuddy:build:production"
+              "buildTarget": "leaguebro:build:production"
             },
             "development": {
-              "buildTarget": "leaguebuddy:build:development"
+              "buildTarget": "leaguebro:build:development"
             }
           },
           "defaultConfiguration": "development"

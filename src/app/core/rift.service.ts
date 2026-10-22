@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
+  CacheInfo,
+  CacheName,
   ChampSelectView,
   Config,
   ImportEvent,
@@ -19,7 +21,11 @@ import {
   StaticData,
   Status,
 } from './models';
+<<<<<<< HEAD
 import { demoChampSelect, demoConfig, demoPatch, demoPatchList, demoPostGame, demoRec, demoSnapshot, demoStatic } from './demo';
+=======
+import { demoCacheInfo, demoChampSelect, demoConfig, demoPatch, demoPatchList, demoPostGame, demoSnapshot, demoStatic } from './demo';
+>>>>>>> 2b3c7d15a5d8eb55f88d18b41e50faac7541d1b0
 
 export function inTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -137,7 +143,11 @@ export class RiftService {
   }
 
   importRunesNow(): Promise<string> {
+<<<<<<< HEAD
     if (this.demo) return Promise.resolve('Set "League Buddy: Ahri Mid" (OP.GG) · Flash + Ignite · build added to the shop');
+=======
+    if (this.demo) return Promise.resolve('Set "League Bro: Ahri Mid" (OP.GG) · Flash + Ignite');
+>>>>>>> 2b3c7d15a5d8eb55f88d18b41e50faac7541d1b0
     return invoke<string>('import_runes_now');
   }
 
@@ -175,6 +185,22 @@ export class RiftService {
   getPatch(url: string): Promise<PatchNotes> {
     if (this.demo) return Promise.resolve(demoPatch(url));
     return invoke<PatchNotes>('get_patch', { url });
+  }
+
+  private demoCache: CacheInfo = demoCacheInfo();
+
+  cacheInfo(): Promise<CacheInfo> {
+    if (this.demo) return Promise.resolve(structuredClone(this.demoCache));
+    return invoke<CacheInfo>('cache_info');
+  }
+
+  /** Deletes one cache and returns what's left in both. */
+  clearCache(which: CacheName): Promise<CacheInfo> {
+    if (this.demo) {
+      this.demoCache[which] = { files: 0, bytes: 0, inMemory: 0 };
+      return this.cacheInfo();
+    }
+    return invoke<CacheInfo>('clear_cache', { which });
   }
 
   private lastButtonRect = '';
