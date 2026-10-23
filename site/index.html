@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>League Bro: a free, ad-free League of Legends companion</title>
-  <meta name="description" content="League Bro sets your runes, summoner spells and shop build in champ select, scouts the lobby and shows objective timers in game. Free, no ads, no account.">
+  <meta name="description" content="League Bro sets your runes, summoner spells and shop build in champ select, shows your lane matchup, keeps a small overlay in game and reviews your game after. Free, no ads, no account.">
   <meta property="og:title" content="League Bro">
   <meta property="og:description" content="A free, ad-free League of Legends companion for Windows.">
-  <meta property="og:image" content="icon.png">
+  <meta property="og:image" content="https://doliaro.github.io/leaguebro/shots/og.jpg">
   <link rel="icon" type="image/png" href="icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -56,12 +56,12 @@
 
     /* ---------- hero ---------- */
     .hero {
-      display: grid; grid-template-columns: 1.05fr 1fr; gap: 56px; align-items: center;
+      display: grid; grid-template-columns: 1fr 1.25fr; gap: 56px; align-items: center;
       padding: 48px 0 88px;
     }
     h1 {
       margin: 0 0 22px;
-      font-size: clamp(42px, 5.6vw, 70px); line-height: 1; font-weight: 800;
+      font-size: clamp(42px, 5.2vw, 66px); line-height: 1; font-weight: 800;
       letter-spacing: -0.03em;
     }
     h1 .tag { color: var(--pink); }
@@ -81,105 +81,33 @@
     .meta strong { color: var(--dim); font-weight: 600; }
     .not-windows { margin-top: 14px; font-size: 15px; color: var(--pink); }
 
-    /* The one loud thing: champ select playing itself. The script steps the
-       .demo through s1..s4 (lock in, runes, spells, shop), holds, then loops. */
-    .demo {
-      position: relative; border-radius: 22px; padding: 22px;
-      background:
-        radial-gradient(90% 70% at 100% 0%, rgba(255, 79, 163, 0.12), transparent 60%),
-        radial-gradient(80% 60% at 0% 100%, rgba(47, 212, 196, 0.08), transparent 60%),
-        var(--panel);
-      border: 1px solid var(--line);
-      box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.8);
-      font-size: 15px; transition: opacity 0.4s ease;
+    /* Real screenshots from the app's browser preview (demo data). */
+    .shot {
+      margin: 0; border-radius: 16px; overflow: hidden;
+      border: 1px solid var(--line); background: var(--deep);
+      box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.85);
     }
-    .demo.fade { opacity: 0; }
-    .d-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; }
-    .d-phase { font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
-    .d-timer { font: 700 20px var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
-    .d-champ {
-      display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 14px;
-      background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line);
-    }
-    .d-avatar {
-      width: 48px; height: 48px; border-radius: 12px; flex: none; display: grid; place-items: center;
-      background: linear-gradient(135deg, #3a2550, #1b1426); border: 2px solid var(--line);
-      font-weight: 800; font-size: 20px; color: var(--dim); transition: border-color 0.3s, box-shadow 0.3s;
-    }
-    .s1 .d-avatar { border-color: var(--pink); box-shadow: 0 0 18px rgba(255, 79, 163, 0.45); color: var(--text); }
-    .d-name { font-weight: 750; font-size: 18px; line-height: 1.2; }
-    .d-sub { font-size: 14px; color: var(--faint); }
-    .d-lock {
-      margin-left: auto; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 700;
-      background: var(--pink); color: var(--pink-ink);
-      opacity: 0; transform: scale(0.7); transition: opacity 0.25s, transform 0.25s cubic-bezier(.3, 1.6, .5, 1);
-    }
-    .s1 .d-lock { opacity: 1; transform: none; }
+    .shot img { display: block; width: 100%; height: auto; }
+    .hero .shot { box-shadow: 0 30px 70px -28px rgba(255, 79, 163, 0.35), 0 30px 60px -30px rgba(0, 0, 0, 0.85); }
 
-    .d-rec { margin-top: 14px; padding: 16px; border-radius: 14px; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.18); }
-    .d-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; font-size: 13px; }
-    .d-head b { font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
-    .d-head span { color: var(--faint); opacity: 0; transition: opacity 0.3s; }
-    .s2 .d-head span { opacity: 1; }
-    .d-runes { display: flex; align-items: center; gap: 18px; }
-    .tree { display: flex; align-items: center; gap: 7px; }
-    .rune {
-      width: 20px; height: 20px; border-radius: 50%; flex: none;
-      border: 2px solid var(--line); background: transparent;
-      transition: background 0.25s, border-color 0.25s, box-shadow 0.25s, transform 0.25s;
-    }
-    .rune.key { width: 40px; height: 40px; }
-    .dom { --tc: #e2504f; }
-    .sor { --tc: #8a8cff; }
-    .s2 .rune { border-color: var(--tc); background: radial-gradient(circle, var(--tc) 0 38%, transparent 42%); transform: scale(1.06); }
-    .s2 .rune.key { background: radial-gradient(circle, var(--tc) 0 30%, rgba(255, 255, 255, 0.08) 32%); box-shadow: 0 0 18px var(--tc); }
-    .s2 .tree .rune:nth-child(2) { transition-delay: 0.12s; }
-    .s2 .tree .rune:nth-child(3) { transition-delay: 0.24s; }
-    .s2 .tree .rune:nth-child(4) { transition-delay: 0.36s; }
-    .s2 .sor .rune:nth-child(1) { transition-delay: 0.48s; }
-    .s2 .sor .rune:nth-child(2) { transition-delay: 0.6s; }
-    .d-keystone { margin-left: auto; text-align: right; line-height: 1.3; opacity: 0; transition: opacity 0.3s 0.5s; }
-    .d-keystone b { display: block; font-weight: 750; }
-    .d-keystone span { font-size: 13px; color: var(--faint); }
-    .s2 .d-keystone { opacity: 1; }
-    .d-spells { display: flex; gap: 10px; margin-top: 16px; }
-    .spell {
-      display: flex; align-items: center; gap: 9px; flex: 1; padding: 7px 10px; border-radius: 10px;
-      border: 1px dashed var(--line); color: var(--faint); transition: border-color 0.3s, color 0.3s, background 0.3s;
-    }
-    .spell kbd {
-      font: 700 12px var(--mono); padding: 2px 7px; border-radius: 6px;
-      background: rgba(255, 255, 255, 0.06); color: var(--dim);
-    }
-    .spell i { font-style: normal; opacity: 0; transition: opacity 0.3s; }
-    .s3 .spell { border-style: solid; border-color: rgba(47, 212, 196, 0.45); background: rgba(47, 212, 196, 0.07); color: var(--text); }
-    .s3 .spell i { opacity: 1; }
-    .s3 .spell + .spell, .s3 .spell + .spell i { transition-delay: 0.15s; }
-
-    .d-steps { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 8px; font-size: 14.5px; }
-    .d-steps li { display: flex; align-items: center; gap: 10px; color: var(--faint); transition: color 0.3s; }
-    .d-steps li::before {
-      content: ''; width: 18px; height: 18px; flex: none; border-radius: 50%; border: 2px solid var(--line);
-      display: grid; place-items: center; font-size: 11px; font-weight: 800; color: var(--deep);
-      transition: background 0.3s, border-color 0.3s;
-    }
-    .s2 .d-steps li:nth-child(1), .s3 .d-steps li:nth-child(2), .s4 .d-steps li:nth-child(3) { color: var(--text); }
-    .s2 .d-steps li:nth-child(1)::before, .s3 .d-steps li:nth-child(2)::before, .s4 .d-steps li:nth-child(3)::before {
-      content: '\2713'; background: var(--teal); border-color: var(--teal);
-    }
-
-    /* ---------- features ---------- */
+    /* ---------- sections ---------- */
     section { padding: 72px 0; }
     section + section { border-top: 1px solid var(--line); }
     h2 {
       margin: 0 0 12px; font-size: clamp(32px, 4vw, 46px); line-height: 1.05;
       font-weight: 780; letter-spacing: -0.025em;
     }
-    .sub { margin: 0 0 44px; max-width: 34em; color: var(--dim); font-size: 19px; }
-    .moments { display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px 32px; }
-    .moment h3 { margin: 0 0 8px; font-size: 21px; font-weight: 700; letter-spacing: -0.01em; }
-    .moment p { margin: 0; color: var(--dim); font-size: 16.5px; }
-    .moment .when {
+    .sub { margin: 0 0 52px; max-width: 34em; color: var(--dim); font-size: 19px; }
+
+    /* ---------- tour: one stop per moment of a game ---------- */
+    .tour { display: grid; gap: 80px; }
+    .stop { display: grid; grid-template-columns: 1fr 1.6fr; gap: 48px; align-items: center; }
+    .stop.flip { grid-template-columns: 1.6fr 1fr; }
+    .stop.flip .stop-text { order: 2; }
+    .stop h3 { margin: 0 0 12px; font-size: 28px; line-height: 1.15; font-weight: 750; letter-spacing: -0.015em; }
+    .stop p { margin: 0 0 12px; color: var(--dim); font-size: 17px; }
+    .stop p:last-child { margin: 0; }
+    .when {
       display: inline-block; margin-bottom: 14px; padding: 3px 10px; border-radius: 999px;
       font-size: 13.5px; font-weight: 600; color: var(--night);
     }
@@ -187,8 +115,18 @@
     .when.cs { background: var(--ally); }
     .when.game { background: var(--pink); }
     .when.after { background: var(--ok); }
+    /* The overlay is a small transparent window, so it floats on a hint of the game instead of a frame. */
+    .overlay-shot {
+      margin: 0; padding: 40px 24px; border-radius: 16px; display: grid; place-items: center;
+      background:
+        radial-gradient(70% 60% at 30% 30%, rgba(47, 212, 196, 0.18), transparent 70%),
+        radial-gradient(60% 60% at 80% 80%, rgba(255, 79, 163, 0.16), transparent 70%),
+        linear-gradient(160deg, #1d2a24, #141a22 60%, #1a1422);
+      border: 1px solid var(--line);
+    }
+    .overlay-shot img { display: block; width: min(300px, 100%); height: auto; filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.6)); }
 
-    .nots { margin-top: 56px; display: grid; grid-template-columns: 1fr 1.6fr; gap: 32px; align-items: start; }
+    .nots { margin-top: 88px; display: grid; grid-template-columns: 1fr 1.6fr; gap: 32px; align-items: start; }
     .nots h3 { margin: 0; font-size: 24px; font-weight: 720; }
     .nots ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
     .nots li { padding-left: 26px; position: relative; color: var(--dim); }
@@ -242,17 +180,16 @@
 
     @media (max-width: 920px) {
       .hero { grid-template-columns: 1fr; gap: 40px; padding-top: 24px; }
-      .moments { grid-template-columns: 1fr 1fr; }
+      .stop, .stop.flip { grid-template-columns: 1fr; gap: 24px; }
+      .stop.flip .stop-text { order: 0; }
       .steps { grid-template-columns: 1fr; }
       .nots { grid-template-columns: 1fr; gap: 16px; }
     }
     @media (max-width: 560px) {
       body { font-size: 17px; }
-      .moments { grid-template-columns: 1fr; }
       .bar nav { display: none; }
       .lede { font-size: 19px; }
-      .demo { padding: 16px; }
-      .d-head span { display: none; }
+      .stop h3 { font-size: 24px; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -274,10 +211,10 @@
   <main>
     <div class="wrap hero">
       <div>
-        <h1>Your runes, timers and builds, <span class="tag">without the ads.</span></h1>
+        <h1>Your runes, matchups and builds, <span class="tag">without the ads.</span></h1>
         <p class="lede">
-          League Bro sets up champ select for you, scouts the lobby, and keeps a small overlay
-          of objective timers and your next item in game. Free, no account, nothing to sign up for.
+          League Bro sets up champ select for you, shows how your lane matchup goes, keeps a small overlay
+          of timers and your next item in game, and reviews your game when it ends. Free, no account, nothing to sign up for.
         </p>
         <div class="download">
           <a class="btn" id="download" href="https://github.com/doliaro/leaguebro/releases/latest">
@@ -289,65 +226,94 @@
         <p class="not-windows" id="not-windows" hidden>League Bro runs on Windows only. Open this page on the PC you play League on.</p>
       </div>
 
-      <div class="demo s1 s2 s3 s4" id="demo" role="img" aria-label="League Bro in champ select: you lock in Ahri mid, and it sets an OP.GG rune page, Flash and Ignite with Flash on your usual key, and a build in the in-game shop.">
-        <div aria-hidden="true">
-          <div class="d-top">
-            <span class="d-phase">Champ select</span>
-            <span class="d-timer" id="d-timer">0:24</span>
-          </div>
-          <div class="d-champ">
-            <div class="d-avatar">A</div>
-            <div>
-              <div class="d-name">Ahri</div>
-              <div class="d-sub">Mid</div>
-            </div>
-            <span class="d-lock">Locked in</span>
-          </div>
-          <div class="d-rec">
-            <div class="d-head"><b>Runes</b><span>OP.GG · 3,764 games · 51.3% win</span></div>
-            <div class="d-runes">
-              <div class="tree dom"><i class="rune key"></i><i class="rune"></i><i class="rune"></i><i class="rune"></i></div>
-              <div class="tree sor"><i class="rune"></i><i class="rune"></i></div>
-              <div class="d-keystone"><b>Electrocute</b><span>Domination / Sorcery</span></div>
-            </div>
-            <div class="d-spells">
-              <span class="spell"><kbd>D</kbd><i>Ignite</i></span>
-              <span class="spell"><kbd>F</kbd><i>Flash</i></span>
-            </div>
-          </div>
-          <ul class="d-steps">
-            <li>Rune page set: League Bro: Ahri Mid</li>
-            <li>Flash + Ignite, Flash kept on F</li>
-            <li>Build added to the in-game shop</li>
-          </ul>
-        </div>
-      </div>
+      <figure class="shot">
+        <img src="shots/champ-select.webp" width="1280" height="820"
+          alt="League Bro in champ select: Ahri locked in mid, with the rune page, Flash and Ignite and the shop build already set, and the lane matchup against Zed below.">
+      </figure>
     </div>
 
     <section id="what">
       <div class="wrap">
         <h2>Help at every point of a game</h2>
         <p class="sub">It works in the background while League runs, and only shows up when there's something useful to show.</p>
-        <div class="moments">
-          <div class="moment">
-            <span class="when lobby">Any time</span>
-            <h3>Look up any champion</h3>
-            <p>Runes, spells, skill order and the full build for every champion and role, from OP.GG's ranked stats, with a short reason for each pick. New to a champion? Its guide shows every ability in action, plus Riot's tips for playing as and against it.</p>
+
+        <div class="tour">
+          <div class="stop">
+            <div class="stop-text">
+              <span class="when cs">Champ select</span>
+              <h3>Set up the moment you lock in</h3>
+              <p>Your rune page, summoner spells and in-game shop build are set as soon as you lock in, from OP.GG's ranked stats. Flash stays on the key you use, and your own pages are never touched.</p>
+              <p>OP.GG's other popular choices are one click away, each with its win rate.</p>
+            </div>
+            <figure class="shot">
+              <img src="shots/runes.webp" width="1280" height="820" loading="lazy"
+                alt="Recommended runes, summoner spells, skill order and build for Ahri, with OP.GG game counts and win rates.">
+            </figure>
           </div>
-          <div class="moment">
-            <span class="when cs">Champ select</span>
-            <h3>Set up when you lock in</h3>
-            <p>Your rune page, summoner spells and in-game shop build are set the moment you lock in. Flash stays on the key you use, and your own pages are never touched. Once your lane opponent picks, see how the matchup goes and switch to the build players use against them.</p>
+
+          <div class="stop flip">
+            <div class="stop-text">
+              <span class="when cs">Champ select</span>
+              <h3>Know your lane matchup</h3>
+              <p>Once the enemy team picks, League Bro works out who's probably in your lane and shows how it goes: the win rate, who usually wins lane and gets solo kills, the damage they deal, a lane tip, and your own record against them.</p>
+              <p>Switch to <strong>vs Zed</strong> to use the runes and build players take against that champion. Wrong guess? Pick the right enemy.</p>
+            </div>
+            <figure class="shot">
+              <img src="shots/matchup.webp" width="1232" height="282" loading="lazy"
+                alt="Lane matchup card for Ahri vs Zed: OP.GG win rate, who wins lane, solo kills, their damage type, your games against them and a lane tip.">
+            </figure>
           </div>
-          <div class="moment">
-            <span class="when game">In game</span>
-            <h3>A small overlay</h3>
-            <p>Dragon, Baron and inhibitor timers, which ability to level next, and the next two items you can buy. Clicks go straight through it to the game.</p>
+
+          <div class="stop">
+            <div class="stop-text">
+              <span class="when game">In game</span>
+              <h3>A small overlay</h3>
+              <p>Your item value against your lane opponent, Dragon, Baron and inhibitor timers, which ability to level next, the next items to buy, and a counter item for what the enemy team is doing.</p>
+              <p>It starts unlocked, so you can drag it where you want it. Click the padlock to lock it in place, and clicks go straight through it to the game.</p>
+            </div>
+            <figure class="overlay-shot">
+              <img src="shots/overlay.webp" width="260" height="390" loading="lazy"
+                alt="The in-game overlay: item value vs Zed, skill order, Dragon, Baron and inhibitor timers, the next items and a situational item.">
+            </figure>
           </div>
-          <div class="moment">
-            <span class="when after">After the game</span>
-            <h3>See how it went</h3>
-            <p>Damage, gold, vision and CS for all ten players, plus the latest patch notes sorted into buffs and nerfs.</p>
+
+          <div class="stop flip">
+            <div class="stop-text">
+              <span class="when after">After the game</span>
+              <h3>See how it went, with a review from the Bro</h3>
+              <p>Your result, KDA, CS per minute, damage, gold, vision and kill share, with both teams' scoreboards side by side.</p>
+              <p>The Bro's review roasts your bad stats and cheers the good ones. It's cheeky, never rude: no swearing. Not for you? Turn it off in <strong>Settings</strong>.</p>
+            </div>
+            <figure class="shot">
+              <img src="shots/post-game.webp" width="1280" height="900" loading="lazy"
+                alt="Post-game summary of a defeat: the Bro's review roasting 4.2 CS a minute and 11 deaths, praising 41 vision, and both teams' scoreboards side by side.">
+            </figure>
+          </div>
+
+          <div class="stop">
+            <div class="stop-text">
+              <span class="when lobby">Any time</span>
+              <h3>Your profile and match history</h3>
+              <p>Your Solo/Duo and Flex rank with its crest, win rate, KDA, CS, damage and gold per minute, your best champions and toughest opponents, and every recent match with its full scoreboard.</p>
+              <p>Enter your Riot ID and it works even when League is closed.</p>
+            </div>
+            <figure class="shot">
+              <img src="shots/profile.webp" width="1280" height="820" loading="lazy"
+                alt="Profile page: Gold II rank crest with LP and record, win rate, KDA and per-minute stats, champions, queues and match history.">
+            </figure>
+          </div>
+
+          <div class="stop flip">
+            <div class="stop-text">
+              <span class="when lobby">Any time</span>
+              <h3>Look up any champion</h3>
+              <p>Runes, spells, skill order and the full build for every champion and role, with a short reason for each pick. New to a champion? Its guide shows every ability, plus Riot's tips for playing as and against it.</p>
+              <p>There's also a tier list for every role, from Lolalytics or OP.GG, and the latest patch notes sorted into buffs and nerfs.</p>
+            </div>
+            <figure class="shot">
+              <img src="shots/tier-list.webp" width="1280" height="820" loading="lazy"
+                alt="The tier list, with champions ranked by tier, win rate, pick rate and ban rate.">
+            </figure>
           </div>
         </div>
 
@@ -365,7 +331,7 @@
     <section id="install">
       <div class="wrap">
         <h2>Install in a minute</h2>
-        <p class="sub">After this, League Bro updates itself. You'll see a banner when there's a new version.</p>
+        <p class="sub">After this, League Bro updates itself. You'll see a banner when there's a new version, and the version you have is shown next to your name at the top of the window.</p>
         <ol class="steps">
           <li>
             <h3>Download and run it</h3>
@@ -399,7 +365,7 @@
             <summary>Can I get banned for using it?</summary>
             <div>
               <p>League Bro works the same way as well-known companion apps. It only uses the League client's own local interface and Riot's official in-game data, and it skips the features Riot has banned, like enemy ultimate timers.</p>
-              <p>It isn't registered with Riot, though, and nobody but Riot can promise anything about bans. You use it at your own risk.</p>
+              <p>Its registration with Riot is pending, and nobody but Riot can promise anything about bans. You use it at your own risk.</p>
             </div>
           </details>
           <details>
@@ -412,7 +378,15 @@
           </details>
           <details>
             <summary>How do I move the overlay?</summary>
-            <div><p>Click the padlock in the overlay's top-right corner, drag it where you want it, then click the padlock again to lock it in place.</p></div>
+            <div><p>It starts unlocked each game, so just drag it where you want it. Click the padlock in its top-right corner to lock it in place; clicks then go through it to the game. League Bro remembers where you put it.</p></div>
+          </details>
+          <details>
+            <summary>Can I turn off the roasts?</summary>
+            <div><p>Yes. In Settings, under Post-game, turn off Roasts. The rest of the post-game summary stays.</p></div>
+          </details>
+          <details>
+            <summary>Which version do I have?</summary>
+            <div><p>It's shown at the top right of the window, next to your name. League Bro updates itself, and shows a banner when a new version is ready.</p></div>
           </details>
           <details>
             <summary>Where do the recommendations come from?</summary>
@@ -441,7 +415,8 @@
       <p class="legal">
         League Bro isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone
         officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are
-        trademarks or registered trademarks of Riot Games, Inc. Recommendation data comes from OP.GG.
+        trademarks or registered trademarks of Riot Games, Inc. Recommendation data comes from OP.GG, and tier list data from Lolalytics and OP.GG.
+        Screenshots show the app with demo data.
       </p>
     </div>
   </footer>
@@ -480,26 +455,6 @@
           }
         })
         .catch(function () { /* Keep the link to the releases page. */ });
-
-      // Play champ select on a loop: lock in, then runes, spells and shop
-      // build land one after another. Reduced motion keeps the finished state.
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-      var demo = document.getElementById('demo');
-      var timer = document.getElementById('d-timer');
-      var steps = [['s1', 1400], ['s2', 2300], ['s3', 3500], ['s4', 4500]];
-      var left;
-      var play = function () {
-        demo.classList.remove('s1', 's2', 's3', 's4', 'fade');
-        left = 30;
-        steps.forEach(function (s) { setTimeout(function () { demo.classList.add(s[0]); }, s[1]); });
-        setTimeout(function () { demo.classList.add('fade'); }, 9000);
-        setTimeout(play, 9400);
-      };
-      setInterval(function () {
-        left = Math.max(0, left - 1);
-        timer.textContent = '0:' + String(left).padStart(2, '0');
-      }, 1000);
-      play();
     })();
   </script>
 </body>
