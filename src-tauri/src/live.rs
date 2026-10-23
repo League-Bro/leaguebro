@@ -118,6 +118,11 @@ pub struct Guidance<'a> {
     pub build: Option<&'a [i64]>,
     pub skill_max: &'a [String],
     pub skill_order: &'a [String],
+    /// Upgraded boots you were seen holding earlier this game. Finishing the
+    /// bot lane quest moves your boots into the quest slot, and the live data
+    /// stops listing them (seen October 2026: a Kai'Sa with boots in that slot
+    /// had none in `items`), so they still count as owned.
+    pub seen_boots: Option<i64>,
 }
 
 /// The ability to level next, if you have an unspent skill point, following
@@ -324,15 +329,20 @@ fn is_upgraded_boots(id: i64, items: &HashMap<i64, ShopItem>) -> bool {
 
 /// Your next items from the recommended build, priced after the components
 /// you already own. Any upgraded boots you own count as the build's boots,
-/// since you only carry one pair.
+/// since you only carry one pair. `seen_boots` (see `Guidance`) counts when
+/// the live data lists no boots.
 pub fn next_items(
     data: &Value,
     build: &[i64],
     items: &HashMap<i64, ShopItem>,
     limit: usize,
+    seen_boots: Option<i64>,
 ) -> Vec<NextItem> {
     let gold = float(data, "/activePlayer/currentGold");
     let mut owned_left = my_items(data, items);
+    if let Some(b) = seen_boots.filter(|_| !owned_left.iter().any(|o| is_upgraded_boots(*o, items))) {
+        owned_left.push(b);
+    }
     let mut out = Vec::new();
     for id in build {
         // Each owned copy satisfies one entry, so a build listing an item
@@ -357,6 +367,11 @@ pub fn next_items(
         }
     }
     out
+}
+
+/// The upgraded boots in your inventory, if any.
+pub fn my_boots(data: &Value, items: &HashMap<i64, ShopItem>) -> Option<i64> {
+    my_items(data, items).into_iter().find(|id| is_upgraded_boots(*id, items))
 }
 
 /// Prices the situational items after the components you own. Each is priced
@@ -391,7 +406,7 @@ pub fn overlay_state(
         deaths: score("deaths"),
         assists: score("assists"),
         timers: compute_timers(data, cfg),
-        next_items: build.map(|b| next_items(data, b, items, usize::MAX)).unwrap_or_default(),
+        next_items: build.map(|b| next_items(data, b, items, usize::MAX, guide.seen_boots)).unwrap_or_default(),
         has_build: build.map(|b| !b.is_empty()).unwrap_or(false),
         skill_max: guide.skill_max.to_vec(),
         next_skill: next_skill(data, guide.skill_order),
@@ -460,7 +475,7 @@ mod tests {
     #[test]
     fn build_reminder() {
         let items = shop(&[(3020, "Sorcerer's Shoes", 1100, &[]), (6655, "Luden's Companion", 2850, &[]), (1058, "Needlessly Large Rod", 1200, &[])]);
-        let next = next_items(&sample(600.0, json!([])), &[3020, 6655, 1058], &items, 2);
+        let next = next_items(&sample(600.0, json!([])), &[3020, 6655, 1058], &items, 2, None);
         assert_eq!(next.len(), 2);
         assert_eq!(next[0].id, 6655);
         assert!(!next[0].affordable);
@@ -484,7 +499,7 @@ mod tests {
         let mut d = sample(600.0, json!([]));
         // A Blasting Wand plus a Tome from inside the Lost Chapter.
         d["allPlayers"][0]["items"] = json!([{"itemID": 1026}, {"itemID": 1052}]);
-        let next = next_items(&d, &[6655, 3089], &items, 2);
+        let next = next_items(&d, &[6655, 3089], &items, 2, None);
         assert_eq!(next[0].price, 2850 - 850 - 400);
         // The Wand already went to Luden's, so Deathcap is full price.
         assert_eq!(next[1].price, 3500);
@@ -492,7 +507,7 @@ mod tests {
         d["allPlayers"][0]["items"] = json!([{"itemID": 3802}]);
         // Short of the full 2850 but enough for what's left.
         d["activePlayer"]["currentGold"] = json!(1700.0);
-        let next = next_items(&d, &[6655], &items, 1);
+        let next = next_items(&d, &[6655], &items, 1, None);
         assert_eq!(next[0].price, 2850 - 1200);
         assert!(next[0].affordable);
     }
@@ -507,7 +522,7 @@ mod tests {
             (6655, "Luden's Companion", 2850, &[]),
         ]);
         let mut d = sample(600.0, json!([]));
-        let ids = |d: &Value| next_items(d, &[3020, 6655], &items, 5).iter().map(|n| n.id).collect::<Vec<_>>();
+        let ids = |d: &Value| next_items(d, &[3020, 6655], &items, 5, None).iter().map(|n| n.id).collect::<Vec<_>>();
         d["allPlayers"][0]["items"] = json!([{"itemID": 3158}]);
         assert_eq!(ids(&d), vec![6655]);
         // A tier-3 upgrade of other boots counts too.
@@ -515,8 +530,22 @@ mod tests {
         assert_eq!(ids(&d), vec![6655]);
         // Basic Boots don't: they only take their price off.
         d["allPlayers"][0]["items"] = json!([{"itemID": 1001}]);
-        let next = next_items(&d, &[3020, 6655], &items, 5);
+        let next = next_items(&d, &[3020, 6655], &items, 5, None);
         assert_eq!((next[0].id, next[0].price), (3020, 800));
+    }
+
+    #[test]
+    fn boots_in_the_quest_slot_still_count() {
+        let items = shop(&[(1001, "Boots", 300, &[]), (3006, "Berserker's Greaves", 1100, &[1001]), (6672, "Kraken Slayer", 3000, &[])]);
+        let mut d = sample(600.0, json!([]));
+        d["allPlayers"][0]["items"] = json!([{"itemID": 3006}]);
+        assert_eq!(my_boots(&d, &items), Some(3006));
+        // The bot lane quest is done: the boots are gone from the live data.
+        d["allPlayers"][0]["items"] = json!([{"itemID": 6672}]);
+        assert_eq!(my_boots(&d, &items), None);
+        let ids = |seen| next_items(&d, &[3006, 6672], &items, 5, seen).iter().map(|n| n.id).collect::<Vec<_>>();
+        assert_eq!(ids(None), vec![3006]);
+        assert!(ids(Some(3006)).is_empty());
     }
 
     #[test]
@@ -532,7 +561,7 @@ mod tests {
         let mut d = sample(600.0, json!([]));
         d["allPlayers"][0]["items"] = json!([{"itemID": 323190}, {"itemID": 323070}]);
         assert_eq!(my_items(&d, &items), vec![3190, 323070], "unknown base items keep their id");
-        let next = next_items(&d, &[3190, 3050], &items, 5);
+        let next = next_items(&d, &[3190, 3050], &items, 5, None);
         assert_eq!(next.iter().map(|n| n.id).collect::<Vec<_>>(), vec![3050]);
     }
 

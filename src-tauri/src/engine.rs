@@ -658,6 +658,8 @@ struct Engine {
     last_rec_key: Option<(i64, String)>,
     /// Champion, position, enemy picks and opponent pick the matchup was worked out for.
     last_matchup_key: Option<MatchupKey>,
+    /// Upgraded boots seen in your inventory this game (see `live::Guidance::seen_boots`).
+    seen_boots: Option<i64>,
     /// Swiftplay lobby slots (champion, position) already imported.
     last_slot_keys: Vec<(i64, String)>,
     requested: HashSet<String>,
@@ -873,6 +875,7 @@ impl Engine {
     async fn clear_game(&mut self) -> Option<LoadingView> {
         self.last_rec_key = None;
         self.last_matchup_key = None;
+        self.seen_boots = None;
         let loading = {
             let state = self.state();
             let mut sh = state.shared.lock().await;
@@ -1148,7 +1151,9 @@ impl Engine {
                 Some(r) => (r.skill_max.as_slice(), r.skill_order.as_slice()),
                 None => (empty.as_slice(), empty.as_slice()),
             };
-            let guide = live::Guidance { build, skill_max, skill_order };
+            let boots_now = live::my_boots(&data, &items);
+            let seen_boots = boots_now.or(self.seen_boots);
+            let guide = live::Guidance { build, skill_max, skill_order, seen_boots };
             let st = live::overlay_state(&data, &cfg.timers, &guide, &items);
             sh.overlay = Some(st.clone());
             let enemies: Vec<EnemySeen> = live::enemies(&data)
@@ -1158,9 +1163,10 @@ impl Engine {
                     Some(EnemySeen { champion_id: c.id, items: e.items, kills: e.kills, deaths: e.deaths, assists: e.assists })
                 })
                 .collect();
-            (st, enemies, items)
+            (st, enemies, items, seen_boots)
         };
-        let (mut state, enemies, items) = state;
+        let (mut state, enemies, items, seen_boots) = state;
+        self.seen_boots = seen_boots;
         let owned = live::my_items(&data, &items);
         if let Some(sit) = self.update_situational(enemies, owned, true).await {
             if cfg.show_situational {
@@ -1649,6 +1655,7 @@ pub async fn run(app: AppHandle) {
         last_import_key: None,
         last_rec_key: None,
         last_matchup_key: None,
+        seen_boots: None,
         last_slot_keys: Vec::new(),
         requested: HashSet::new(),
         loading_game_id: None,

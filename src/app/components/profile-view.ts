@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { championIcon, formatTier, kdaRatio, profileIcon, queueLabel, rankCrest, tierClass, winPct } from '../core/assets';
@@ -35,6 +35,8 @@ const REGIONS = [
         @if (formError(); as e) { <p class="loss small">{{ e }}</p> }
         @if (editing()) { <button class="ghost" (click)="editing.set(false)">Cancel</button> }
       </section>
+    } @else if (waiting() && !profile()) {
+      <section class="card empty"><p class="muted">Waiting for the League client to finish starting…</p></section>
     } @else if (loading() && !profile()) {
       <section class="card empty"><p class="muted">Loading your profile from {{ rift.status().connected ? 'the League client' : 'OP.GG' }}…</p></section>
     } @else if (loadError(); as e) {
@@ -357,6 +359,11 @@ export class ProfileView {
   protected readonly profile = signal<MyProfile | null>(null);
   protected readonly loading = signal(false);
   protected readonly loadError = signal<string | null>(null);
+  /** The client is open but not connected yet, so OP.GG isn't asked; loads once it connects. */
+  protected readonly waiting = signal(false);
+  /** Each load's number, so an answer that arrives after a newer load started is dropped. */
+  private loadSeq = 0;
+  private destroyed = false;
   protected readonly openId = signal<number | null>(null);
   protected readonly detail = signal<PostGame | null>(null);
   protected readonly detailError = signal<string | null>(null);
@@ -373,10 +380,8 @@ export class ProfileView {
   });
   protected readonly where = computed(() => (this.profile()?.source === 'opgg' ? 'on OP.GG' : 'in the League client'));
 
-  /** 'all' or a queue id. */
+  /** 'all' or a queue id. Starts on All; a refresh keeps what you picked. */
   protected readonly mode = signal<number | 'all'>('all');
-  /** Set once you pick a mode, so a refresh doesn't switch it back. */
-  private picked = false;
 
   protected readonly ins = computed(() => {
     const p = this.profile();
@@ -430,13 +435,15 @@ export class ProfileView {
   protected abs = Math.abs;
 
   constructor() {
-    this.load();
+    inject(DestroyRef).onDestroy(() => (this.destroyed = true));
     // League opened or closed: switch between the client's data and OP.GG's.
+    // A load still running was asked of the old source, so it's redone too.
     effect(() => {
       const connected = this.rift.status().connected;
       untracked(() => {
         const p = this.profile();
-        if (p && !this.loading() && (p.source === 'opgg') === connected) this.load();
+        const stale = p !== null && (p.source === 'opgg') === connected;
+        if (!p || stale || this.loading() || this.waiting()) this.load();
       });
     });
   }
@@ -471,23 +478,29 @@ export class ProfileView {
   }
 
   async load(): Promise<void> {
+    const seq = ++this.loadSeq;
     this.loading.set(true);
     try {
       const p = await this.rift.getMyProfile();
+      if (seq !== this.loadSeq) return;
       this.profile.set(p);
       this.loadError.set(null);
-      // Start on the queue you're in, if you've played it recently.
+      this.waiting.set(false);
+      // The picked queue is gone from the new data (e.g. switched to OP.GG's).
       const m = this.mode();
-      if (!this.picked) {
-        const now = p.modes.find((q) => q.queueId === p.currentQueueId);
-        this.mode.set(now ? now.queueId : 'all');
-      } else if (m !== 'all' && !p.modes.some((q) => q.queueId === m)) {
-        this.mode.set('all');
-      }
+      if (m !== 'all' && !p.modes.some((q) => q.queueId === m)) this.mode.set('all');
     } catch (e) {
-      if (!this.profile()) this.loadError.set(String(e));
+      if (seq !== this.loadSeq) return;
+      const waiting = String(e).includes('Waiting for the League client');
+      this.waiting.set(waiting);
+      if (waiting) {
+        this.loadError.set(null);
+        // Asked again in case the client closes instead of connecting.
+        setTimeout(() => !this.destroyed && seq === this.loadSeq && this.load(), 5000);
+      }
+      else if (!this.profile()) this.loadError.set(String(e));
     } finally {
-      this.loading.set(false);
+      if (seq === this.loadSeq) this.loading.set(false);
     }
   }
 
@@ -510,7 +523,6 @@ export class ProfileView {
   }
 
   pick(mode: number | 'all'): void {
-    this.picked = true;
     this.mode.set(mode);
     this.openId.set(null);
   }

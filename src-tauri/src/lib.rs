@@ -67,6 +67,7 @@ async fn import_swiftplay_now(app: AppHandle) -> Result<Vec<engine::ImportEvent>
 
 /// Your rank, recent matches and insights (the Profile page): from the League
 /// client while it's running, else from OP.GG by the Riot ID in settings.
+/// OP.GG is never asked while the client is open, even before it connects.
 #[tauri::command]
 async fn get_my_profile(app: AppHandle, state: State<'_, AppState>) -> Result<profile::MyProfile, String> {
     let lcu = state.shared.lock().await.lcu.clone();
@@ -75,6 +76,7 @@ async fn get_my_profile(app: AppHandle, state: State<'_, AppState>) -> Result<pr
         remember_riot_id(&app, &state, &lcu, &p.name).await;
         return Ok(p);
     }
+    client_closed().await?;
     let (riot_id, region) = riot_id(&state)?;
     load_web_statics(&app, &state).await;
     opgg_profile::load(&state.opgg, &riot_id, &region).await.map_err(msg)
@@ -84,8 +86,22 @@ async fn get_my_profile(app: AppHandle, state: State<'_, AppState>) -> Result<pr
 /// loads the profile again. `updated_at` is the shown profile's `updatedAt`.
 #[tauri::command]
 async fn renew_profile(state: State<'_, AppState>, updated_at: Option<i64>) -> Result<profile::MyProfile, String> {
+    if state.shared.lock().await.lcu.is_some() {
+        return Err("The League client is open, so your profile comes from it".into());
+    }
+    client_closed().await?;
     let (riot_id, region) = riot_id(&state)?;
     opgg_profile::renew(&state.opgg, &riot_id, &region, updated_at).await.map_err(msg)
+}
+
+/// Errs while the League client is open but not connected yet (starting up),
+/// so the Profile page waits for it instead of asking OP.GG.
+async fn client_closed() -> Result<(), String> {
+    let running = tauri::async_runtime::spawn_blocking(lcu::client_running).await.unwrap_or(false);
+    if running {
+        return Err("Waiting for the League client to finish starting".into());
+    }
+    Ok(())
 }
 
 /// The Riot ID and OP.GG region from settings.

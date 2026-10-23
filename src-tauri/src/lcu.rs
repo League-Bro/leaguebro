@@ -62,8 +62,7 @@ fn find_from_process() -> (Option<Credentials>, Option<String>) {
         ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
     );
     for p in sys.processes().values() {
-        let name = p.name().to_string_lossy().to_lowercase();
-        if name.starts_with("leagueclientux") && !name.contains("render") {
+        if is_client_ux(p) {
             let args: Vec<String> = p.cmd().iter().map(|s| s.to_string_lossy().into_owned()).collect();
             let found = parse_cmdline(&args);
             if found.0.is_some() || found.1.is_some() {
@@ -72,6 +71,20 @@ fn find_from_process() -> (Option<Credentials>, Option<String>) {
         }
     }
     (None, None)
+}
+
+fn is_client_ux(p: &sysinfo::Process) -> bool {
+    let name = p.name().to_string_lossy().to_lowercase();
+    name.starts_with("leagueclientux") && !name.contains("render")
+}
+
+/// Whether the League client is open, even if its API isn't answering yet
+/// (it takes a few seconds after the window appears).
+pub fn client_running() -> bool {
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
+    let mut sys = System::new();
+    sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
+    sys.processes().values().any(is_client_ux)
 }
 
 fn lockfile_candidates(install_hint: Option<&str>) -> Vec<PathBuf> {
