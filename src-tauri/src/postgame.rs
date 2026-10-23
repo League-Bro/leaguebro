@@ -1,6 +1,7 @@
 //! Post-game summary, built from the League client's match-history record
 //! (`/lol-match-history/v1/games/{gameId}`) once the game has ended.
 
+use crate::profile;
 use crate::util::{flag, int, list, text};
 use serde::Serialize;
 use serde_json::Value;
@@ -41,6 +42,9 @@ pub struct PostPlayer {
     /// Riot ID, or None for bots and hidden players.
     pub name: Option<String>,
     pub is_me: bool,
+    /// "top", "jungle", "mid", "adc" or "support"; None outside a 5v5 on
+    /// Summoner's Rift or when it's unclear (`profile::positions`).
+    pub position: Option<&'static str>,
     #[serde(flatten)]
     pub line: PlayerLine,
 }
@@ -108,7 +112,7 @@ pub fn parse(game: &Value, my_puuid: &str, queue_name: &str) -> Option<PostGame>
                 (g, t) => Some(format!("{g}#{t}")),
             };
             let is_me = !puuid.is_empty() && puuid == my_puuid;
-            (int(p, "teamId"), PostPlayer { puuid, name, is_me, line: PlayerLine::parse(p) }, p)
+            (int(p, "teamId"), PostPlayer { puuid, name, is_me, position: None, line: PlayerLine::parse(p) }, p)
         })
         .collect();
     // A solo custom game may not carry the puuid we know; one player means it's us.
@@ -125,7 +129,15 @@ pub fn parse(game: &Value, my_puuid: &str, queue_name: &str) -> Option<PostGame>
         .into_iter()
         .map(|id| {
             let row = list(game, "teams").iter().find(|t| int(t, "teamId") == id).unwrap_or(&Value::Null);
-            let members: Vec<PostPlayer> = players.iter().filter(|(t, _, _)| *t == id).map(|(_, p, _)| p.clone()).collect();
+            let rows: Vec<&(i64, PostPlayer, &Value)> = players.iter().filter(|(t, _, _)| *t == id).collect();
+            // Positions only mean something in a 5v5 on Summoner's Rift.
+            let lanes = (int(game, "mapId") == 11 && rows.len() == 5 && players.len() == 10)
+                .then(|| profile::positions(&rows.iter().map(|(_, _, raw)| *raw).collect::<Vec<_>>()));
+            let members: Vec<PostPlayer> = rows
+                .iter()
+                .enumerate()
+                .map(|(i, (_, p, _))| PostPlayer { position: lanes.as_ref().and_then(|l| l[i]), ..p.clone() })
+                .collect();
             PostTeam {
                 team_id: id,
                 win: text(row, "win") == "Win",
@@ -180,6 +192,33 @@ mod tests {
         let enemy = &g.teams[1];
         assert!(!enemy.is_mine && !enemy.win);
         assert_eq!(enemy.players[1].name, None);
+        // Only 4 players, so no positions.
+        assert!(g.teams.iter().flat_map(|t| &t.players).all(|p| p.position.is_none()));
+    }
+
+    #[test]
+    fn positions_in_a_full_rift_game() {
+        let lanes = [("TOP", "SOLO"), ("JUNGLE", "NONE"), ("MIDDLE", "SOLO"), ("BOTTOM", "DUO"), ("BOTTOM", "DUO")];
+        let cs = [180, 40, 200, 230, 30];
+        let mut parts = Vec::new();
+        let mut idents = Vec::new();
+        for i in 0..10 {
+            let (lane, role) = lanes[i % 5];
+            let id = i + 1;
+            parts.push(serde_json::json!({ "participantId": id, "teamId": if i < 5 { 100 } else { 200 }, "championId": id,
+                "spell1Id": 4, "spell2Id": if i % 5 == 1 { 11 } else { 14 }, "timeline": { "lane": lane, "role": role },
+                "stats": { "totalMinionsKilled": cs[i % 5] } }));
+            idents.push(serde_json::json!({ "participantId": id, "player": { "puuid": format!("p{id}") } }));
+        }
+        let g = serde_json::json!({ "mapId": 11, "gameDuration": 1800, "participants": parts, "participantIdentities": idents,
+            "teams": [{ "teamId": 100 }, { "teamId": 200 }] });
+        let pg = parse(&g, "p5", "").unwrap();
+        let mine: Vec<_> = pg.teams[0].players.iter().map(|p| p.position).collect();
+        assert_eq!(mine, [Some("top"), Some("jungle"), Some("mid"), Some("adc"), Some("support")]);
+        assert_eq!(pg.teams[1].players[3].position, Some("adc"));
+        let mut aram = g.clone();
+        aram["mapId"] = serde_json::json!(12);
+        assert!(parse(&aram, "p5", "").unwrap().teams[0].players.iter().all(|p| p.position.is_none()));
     }
 
     #[test]

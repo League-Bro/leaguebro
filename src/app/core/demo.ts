@@ -137,7 +137,7 @@ export function demoSnapshot(): Snapshot {
   };
 }
 
-/** The demo snapshot for `?scene=` (champselect, swiftplay, postgame); in game otherwise. */
+/** The demo snapshot for `?scene=` (champselect, swiftplay, postgame, postgame-bad); in game otherwise. */
 export function demoScene(scene: string | null): Snapshot {
   const snap = demoSnapshot();
   const away = { loading: null, overlay: null };
@@ -147,7 +147,8 @@ export function demoScene(scene: string | null): Snapshot {
     case 'swiftplay':
       return { ...snap, ...away, status: { ...snap.status, phase: 'Lobby' }, rec: null, lastImport: null, swiftplay: demoSwiftplay() };
     case 'postgame':
-      return { ...snap, ...away, status: { ...snap.status, phase: 'EndOfGame' }, rec: null, postGame: demoPostGame() };
+    case 'postgame-bad':
+      return { ...snap, ...away, status: { ...snap.status, phase: 'EndOfGame' }, rec: null, postGame: demoPostGame(scene === 'postgame-bad') };
     default:
       return snap;
   }
@@ -292,34 +293,41 @@ function demoInsights(matches: MatchLine[]): Insights {
   };
 }
 
-export function demoPostGame(): PostGame {
+/** The post-game summary demo: a good game, or with `bad`, one worth roasting. */
+export function demoPostGame(bad = false): PostGame {
+  const lanes = ['top', 'jungle', 'mid', 'adc', 'support'] as const;
+  let seat = 0;
   const p = (
     puuid: string, name: string | null, championId: number, k: number, d: number, a: number,
     cs: number, gold: number, damage: number, vision: number, items: number[], isMe = false,
   ): PostPlayer => ({
-    puuid, name, isMe, championId, level: 13 + ((k + a) % 5), kills: k, deaths: d, assists: a, cs, gold, damage, vision,
+    puuid, name, isMe, position: lanes[seat++ % 5], championId, level: 13 + ((k + a) % 5), kills: k, deaths: d, assists: a, cs, gold, damage, vision,
     items: [...items, 0, 0, 0, 0, 0, 0].slice(0, 6).concat(3340), spells: [4, 14],
   });
+  const me = bad
+    ? p('me', 'Dom#NA1', 103, 2, 11, 3, 128, 8400, 9100, 9, [3118, 3020, 1058], true)
+    : p('me', 'Dom#NA1', 103, 11, 2, 9, 226, 14650, 32400, 22, [3118, 3020, 4645, 3157, 1058], true);
+  const [mineKills, theirKills] = bad ? [22, 31] : [31, 20];
   return {
-    gameId: 1,
+    gameId: bad ? 2 : 1,
     queueId: 420,
     queueName: 'Ranked Solo/Duo',
     gameMode: 'CLASSIC',
     duration: 1834,
-    result: 'win',
+    result: bad ? 'loss' : 'win',
     teams: [
       {
-        teamId: 100, win: true, isMine: true, kills: 31, gold: 61200, dragons: 3, barons: 1, towers: 9,
+        teamId: 100, win: !bad, isMine: true, kills: mineKills, gold: 61200, dragons: 3, barons: 1, towers: 9,
         players: [
           p('a1', 'TreeHugger#NA1', 516, 2, 4, 9, 198, 10900, 14200, 18, [3020, 1058]),
           p('a2', 'Gank Plank#0001', 64, 7, 5, 12, 41, 11800, 17600, 39, [3135]),
-          p('me', 'Dom#NA1', 103, 11, 2, 9, 226, 14650, 32400, 22, [3118, 3020, 4645, 3157, 1058], true),
+          me,
           p('a4', 'Cannon Minion#7777', 222, 10, 3, 8, 245, 14100, 29800, 14, [3089, 3020]),
           p('', null, 412, 1, 6, 21, 33, 9750, 6100, 71, [2003]),
         ],
       },
       {
-        teamId: 200, win: false, isMine: false, kills: 20, gold: 52300, dragons: 1, barons: 0, towers: 3,
+        teamId: 200, win: bad, isMine: false, kills: theirKills, gold: 52300, dragons: 1, barons: 0, towers: 3,
         players: [
           p('e1', 'Noxian Pride#EUW', 122, 6, 7, 3, 201, 11200, 21900, 12, [3020]),
           p('e2', 'Punch First#NA1', 254, 4, 8, 8, 52, 9900, 15300, 33, []),

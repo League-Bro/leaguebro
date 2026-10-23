@@ -198,7 +198,7 @@ pub fn opponents(game: &Value, my_puuid: &str) -> Option<Opponents> {
 /// Best guess at each player's position. The client's `timeline.lane`/`role`
 /// is often wrong, so Smite decides jungle, and in bot lane the one with less
 /// CS is the support when the roles aren't given. None where it's unclear.
-fn positions(team: &[&Value]) -> Vec<Option<&'static str>> {
+pub fn positions(team: &[&Value]) -> Vec<Option<&'static str>> {
     let text = |v: &Value, k: &str| v.pointer(k).and_then(Value::as_str).unwrap_or("").to_string();
     let mut pos: Vec<Option<&'static str>> = team
         .iter()

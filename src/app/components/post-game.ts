@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, output } f
 import { RiftService } from '../core/rift.service';
 import { championIcon, clock, kdaRatio } from '../core/assets';
 import { PostGame, PostPlayer, PostTeam } from '../core/models';
+import { roasts } from '../core/roast';
 import { ItemTip } from './item-tip';
 
 const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as const;
@@ -42,6 +43,18 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
           </div>
         </div>
         <button class="ghost" (click)="closed.emit()">Close</button>
+      </section>
+    }
+
+    @if (roasts().length) {
+      <section class="roast card" aria-label="Trash talk">
+        <h3>The Bro's review</h3>
+        @for (r of roasts(); track r.kind) {
+          <div class="roast-line">
+            <span class="stat mono" [title]="r.why">{{ r.stat }}</span>
+            <span>{{ r.line }}</span>
+          </div>
+        }
       </section>
     }
 
@@ -168,6 +181,14 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .gval { font-size: 11.5px; color: var(--text-dim); flex: none; }
     .bar-row.me .gval { color: var(--text); }
 
+    .roast { margin-top: 14px; padding: 14px 18px; display: flex; flex-direction: column; gap: 8px; border-left: 3px solid var(--loss); }
+    .roast h3 { margin: 0 0 2px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--loss); }
+    .roast-line { display: grid; grid-template-columns: 96px 1fr; align-items: baseline; gap: 12px; font-size: 14px; }
+    .roast-line .stat {
+      justify-self: start; padding: 1px 7px; border-radius: 6px; font-size: 12px; white-space: nowrap; cursor: help;
+      color: var(--loss); background: var(--bg-sunken); border: 1px solid var(--line-strong);
+    }
+
     .hero { position: relative; display: flex; align-items: center; gap: 20px; padding: 24px; border-left: 3px solid var(--text-faint); }
     .hero > :not(.splash) { position: relative; }
     .hero.win { border-left-color: var(--win); }
@@ -242,6 +263,7 @@ export class PostGameView {
   protected readonly myTeam = computed(() => this.game().teams.find((t) => t.isMine) ?? null);
   protected readonly me = computed(() => this.myTeam()?.players.find((p) => p.isMe) ?? null);
   protected readonly label = computed(() => RESULT_LABEL[this.game().result]);
+  protected readonly roasts = computed(() => roasts(this.game()));
   protected readonly maxDamage = computed(() =>
     Math.max(1, ...this.game().teams.flatMap((t) => t.players.map((p) => p.damage))),
   );

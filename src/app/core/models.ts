@@ -430,6 +430,8 @@ export interface PostPlayer {
   /** Riot ID, or null for bots and hidden players. */
   name: string | null;
   isMe: boolean;
+  /** Null outside a 5v5 on Summoner's Rift or when it's unclear. */
+  position: 'top' | 'jungle' | 'mid' | 'adc' | 'support' | null;
   championId: number;
   level: number;
   kills: number;
