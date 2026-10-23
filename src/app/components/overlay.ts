@@ -78,7 +78,7 @@ const PREVIEW: OverlayState = {
             <div class="cap">Next · OP.GG build</div>
             @for (it of o.nextItems; track it.id) {
               <div class="item" [class.ready]="it.affordable">
-                @if (rift.itemIcon(it.id); as url) { <img [src]="url" alt="" /> }
+                @if (rift.itemIcon(it.id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
                 <span class="name">{{ it.name }}</span>
                 <span class="price">{{ it.price }}</span>
               </div>

@@ -107,21 +107,24 @@ import { buildWhy, rolesLabel } from '../core/why';
             @if (r.runes; as ru) {
               <div class="block runes">
                 <div class="label">Runes</div>
-                @if (r.runeOptions.length > 1) {
-                  <div class="opts" role="radiogroup" aria-label="Rune page">
-                    @for (o of r.runeOptions; track $index) {
-                      <button class="opt" role="radio" [attr.aria-checked]="s.choice.runes === $index" [class.on]="s.choice.runes === $index"
-                        [disabled]="pickBusy()" [title]="optTip(o, runeOptionNames(o))" (click)="pick('runes', $index)">
-                        <span class="n">{{ $index + 1 }}</span>
-                        @if (perkIcon(o.perkIds[0]); as url) { <img class="round" [src]="url" alt="" (error)="rift.hideImg($event)" /> }
-                        <span class="opt-name">{{ styleName(o.subStyleId, o.secondaryName) }}</span>
-                        <span class="wr">{{ pct(o.winRate) }}</span>
+                @if (runePages(); as pages) {
+                  <div class="pages" role="radiogroup" aria-label="Rune page">
+                    <div class="pages-head" aria-hidden="true"><span>Page</span><span>Win</span><span>Played</span></div>
+                    @for (p of pages; track $index) {
+                      <button class="page" role="radio" [attr.aria-checked]="s.choice.runes === $index" [class.on]="s.choice.runes === $index"
+                        [disabled]="pickBusy()" [title]="optTip(p.o, runeOptionNames(p.o))" (click)="pick('runes', $index)">
+                        <span class="page-what">
+                          @if (p.icon) { <img class="round" [src]="p.icon" alt="" (error)="rift.hideImg($event)" /> }
+                          <span class="page-name">{{ p.label }}</span>
+                        </span>
+                        <span class="num">{{ pct(p.o.winRate) }}</span>
+                        <span class="num faint">{{ pct(p.o.pickRate) }}</span>
                       </button>
                     }
                   </div>
                 }
                 <div class="row">
-                  @if (perkIcon(ru.perkIds[0]); as url) { <img class="keystone" [src]="url" alt="" /> }
+                  @if (perkIcon(ru.perkIds[0]); as url) { <img class="keystone" [src]="url" alt="" (error)="rift.hideImg($event)" /> }
                   <div>
                     <div class="strong">{{ perkLabel(ru.perkIds[0], ru.keystoneName) }}</div>
                     <div class="muted small">{{ styleName(ru.primaryStyleId, ru.primaryName) }} / {{ styleName(ru.subStyleId, ru.secondaryName) }}</div>
@@ -130,7 +133,7 @@ import { buildWhy, rolesLabel } from '../core/why';
                 <div class="perks">
                   @for (id of ru.perkIds.slice(1); track $index) {
                     @if (perkIcon(id); as url) {
-                      <img [src]="url" [title]="perkName(id)" alt="" [class.shard]="$index >= 5" />
+                      <img [src]="url" [title]="perkName(id)" alt="" [class.shard]="$index >= 5" (error)="rift.hideImg($event)" />
                     }
                   }
                 </div>
@@ -154,7 +157,7 @@ import { buildWhy, rolesLabel } from '../core/why';
                 }
                 <div class="row spells">
                   @for (id of r.spells; track $index) {
-                    @if (spellIcon(id); as url) { <img [src]="url" alt="" /> }
+                    @if (spellIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
                     <span>{{ spellName(id) }}</span>
                   }
                 </div>
@@ -181,7 +184,7 @@ import { buildWhy, rolesLabel } from '../core/why';
                 <div class="label">Start</div>
                 <div class="row">
                   @for (id of st.ids; track $index) {
-                    @if (rift.itemIcon(id); as url) { <img [src]="url" [title]="itemName(id, st, $index)" alt="" /> } @else { <span class="chip">{{ itemName(id, st, $index) }}</span> }
+                    @if (rift.itemIcon(id); as url) { <img [src]="url" [title]="itemName(id, st, $index)" alt="" (error)="rift.hideImg($event)" /> } @else { <span class="chip">{{ itemName(id, st, $index) }}</span> }
                   }
                 </div>
               }
@@ -211,7 +214,7 @@ import { buildWhy, rolesLabel } from '../core/why';
                 }
                 <div class="row build">
                   @for (id of r.buildOrder; track id; let last = $last) {
-                    @if (rift.itemIcon(id); as url) { <img [src]="url" [title]="itemNameAny(id, r)" alt="" /> } @else { <span class="chip">{{ itemNameAny(id, r) }}</span> }
+                    @if (rift.itemIcon(id); as url) { <img [src]="url" [title]="itemNameAny(id, r)" alt="" (error)="rift.hideImg($event)" /> } @else { <span class="chip">{{ itemNameAny(id, r) }}</span> }
                     @if (!last) { <span class="faint arrow">›</span> }
                   }
                 </div>
@@ -300,9 +303,22 @@ import { buildWhy, rolesLabel } from '../core/why';
     .opt:disabled { cursor: progress; }
     .opts .opt img { width: 18px; height: 18px; border-radius: 4px; border: 0; }
     .opts .opt img.round { border-radius: 50%; }
-    .opt .n { font: 700 10px var(--mono); color: var(--text-faint); }
-    .opt.on .n { color: var(--accent); }
-    .opt .opt-name { max-width: 78px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* Rune pages: one row each, named by how it differs from the most played page. */
+    .pages { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
+    .pages-head, .page { display: grid; grid-template-columns: 1fr 38px 46px; align-items: center; gap: 6px; }
+    .pages-head { padding: 0 8px; font-size: 10.5px; color: var(--text-faint); }
+    .pages-head span:not(:first-child) { text-align: right; }
+    .page {
+      padding: 4px 8px; border-radius: 8px; border: 1px solid transparent; background: none;
+      color: var(--text-dim); font-size: 12.5px; text-align: left; cursor: pointer;
+    }
+    .page:hover:not(:disabled) { background: var(--bg-sunken); color: var(--text); }
+    .page.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+    .page:disabled { cursor: progress; }
+    .page-what { display: flex; align-items: center; gap: 7px; min-width: 0; }
+    .page-what img { width: 20px; height: 20px; flex: none; }
+    .page-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .page .num { text-align: right; font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
     .opt .wr { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     .picked { color: var(--win); }
     .strong { font-weight: 600; }
@@ -453,6 +469,37 @@ export class RecCard {
       this.pickBusy.set(false);
     }
   }
+
+  /**
+   * OP.GG's rune pages, each named by what sets it apart from the most played one
+   * (they often share the keystone and trees, so "Inspiration" three times says nothing).
+   */
+  protected readonly runePages = computed(() => {
+    const opts = this.state()?.rec?.runeOptions ?? [];
+    if (opts.length < 2) return null;
+    const base = opts[0];
+    return opts.map((o, i) => {
+      let id = o.perkIds[0];
+      let label = 'Most played';
+      if (i > 0) {
+        const minor = (r: RuneRec) => r.perkIds.slice(1, 6);
+        const swapped = minor(o).filter((p) => !minor(base).includes(p));
+        if (o.perkIds[0] !== base.perkIds[0]) {
+          label = this.perkLabel(id, o.keystoneName);
+        } else if (o.subStyleId !== base.subStyleId) {
+          label = `${this.styleName(o.subStyleId, o.secondaryName)} secondary`;
+          id = o.subStyleId;
+        } else if (swapped.length) {
+          label = swapped.map((p) => this.perkLabel(p, o.perkNames[o.perkIds.indexOf(p)] ?? '')).filter(Boolean).join(' + ') || 'Other runes';
+          id = swapped[0];
+        } else {
+          label = 'Other shards';
+        }
+      }
+      const icon = id === o.subStyleId ? assetUrl(this.rift.styleById().get(id)?.iconPath) : this.perkIcon(id);
+      return { o, label, icon };
+    });
+  });
 
   pct(winRate: number): string {
     return `${Math.round(winRate * 100)}%`;

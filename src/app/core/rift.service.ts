@@ -165,16 +165,23 @@ export class RiftService {
   }
 
   itemIcon(id: number): string {
-    return id > 0 ? assetUrl(this.itemById().get(id)?.iconPath) : '';
+    const url = id > 0 ? assetUrl(this.itemById().get(id)?.iconPath) : '';
+    return this.brokenIcons().has(url) ? '' : url;
   }
 
   itemName(id: number): string {
     return this.itemById().get(id)?.name ?? '';
   }
 
+  /** Icon URLs CommunityDragon didn't have, so `itemIcon` can fall back to the item's name. */
+  private readonly brokenIcons = signal(new Set<string>());
+
   /** For an icon's (error) handler: hides an image CommunityDragon doesn't have. */
   hideImg(e: Event): void {
-    (e.target as HTMLElement).style.display = 'none';
+    const img = e.target as HTMLImageElement;
+    img.style.display = 'none';
+    const src = img.getAttribute('src');
+    if (src && !this.brokenIcons().has(src)) this.brokenIcons.update((s) => new Set(s).add(src));
   }
 
   /** Runs a backend command, or `demo` in the browser demo (after `delayMs`, like a real lookup). */
