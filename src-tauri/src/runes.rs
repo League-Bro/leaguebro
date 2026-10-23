@@ -215,6 +215,21 @@ pub async fn import(
     Ok(ImportResult { page_name: page.name, source })
 }
 
+/// Ids of earlier League Bro pages to delete. Skips Swiftplay's temporary
+/// pages: `set_quick_play_page` renames them to "League Bro: ...", but the
+/// client refuses to delete them (403 "Page is not deletable").
+fn old_pages(pages: &[Value]) -> Vec<i64> {
+    pages
+        .iter()
+        .filter(|p| {
+            is_ours(text(p, "name"))
+                && !flag(p, "isTemporary")
+                && p.get("isDeletable").and_then(Value::as_bool).unwrap_or(true)
+        })
+        .filter_map(|p| p.get("id").and_then(Value::as_i64))
+        .collect()
+}
+
 /// Writes `page` as the League Bro rune page (replacing the last one) and
 /// makes it current.
 pub async fn write_page(lcu: &Lcu, config: &Config, page: &RunePage) -> Result<()> {
@@ -229,14 +244,11 @@ pub async fn write_page(lcu: &Lcu, config: &Config, page: &RunePage) -> Result<(
     let pages = lcu.get_req("/lol-perks/v1/pages").await?;
     let pages = pages.as_array().cloned().unwrap_or_default();
 
-    // Remove the page League Bro made last time.
-    for p in &pages {
-        let name = text(p, "name");
-        let deletable = p.get("isDeletable").and_then(Value::as_bool).unwrap_or(true);
-        if is_ours(name) && deletable {
-            if let Some(id) = p.get("id").and_then(Value::as_i64) {
-                lcu.delete(&format!("/lol-perks/v1/pages/{id}")).await?;
-            }
+    // Remove the page League Bro made last time. A failed delete isn't fatal:
+    // the new page is still written.
+    for id in old_pages(&pages) {
+        if let Err(e) = lcu.delete(&format!("/lol-perks/v1/pages/{id}")).await {
+            eprintln!("couldn't delete old rune page {id}: {e:#}");
         }
     }
 
@@ -350,6 +362,17 @@ mod tests {
         assert_eq!(body["name"], "League Bro: Nautilus");
         assert_eq!(body["subStyleId"], 8300);
         assert_eq!(body["selectedPerkIds"], json!([8439, 8401, 8473, 8242, 8345, 8347, 5007, 5001, 5001]));
+    }
+
+    #[test]
+    fn old_pages_skip_temporary() {
+        let pages = json!([
+            {"id": 1, "name": "League Bro: Nautilus", "isTemporary": true},
+            {"id": 2, "name": "League Bro: Nami Support", "isTemporary": false, "isDeletable": true},
+            {"id": 3, "name": "LB: Jinx Bot", "isDeletable": false},
+            {"id": 4, "name": "My Ahri page"},
+        ]);
+        assert_eq!(old_pages(pages.as_array().unwrap()), vec![2]);
     }
 
     #[test]
