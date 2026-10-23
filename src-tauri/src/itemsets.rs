@@ -36,10 +36,17 @@ fn block(label: &str, set: &ItemSet) -> Option<Value> {
 
 /// Builds the item set for a recommendation, or None if it has no items.
 pub fn build_set(rec: &Recommendation, champion_name: &str, role_label: &str, map_id: i64, uid: &str) -> Option<Value> {
-    let mut blocks: Vec<Value> = [("Starter", &rec.starter), ("Boots", &rec.boots), ("Core build", &rec.core)]
-        .into_iter()
-        .filter_map(|(label, set)| set.as_ref().and_then(|s| block(label, s)))
-        .collect();
+    // The full purchase order (what the overlay reminds you of), right after the starter.
+    let order = (!rec.build_order.is_empty()).then(|| ItemSet { ids: rec.build_order.clone(), ..Default::default() });
+    let mut blocks: Vec<Value> = [
+        ("Starter", rec.starter.as_ref()),
+        ("Build order (left to right)", order.as_ref()),
+        ("Boots", rec.boots.as_ref()),
+        ("Core build", rec.core.as_ref()),
+    ]
+    .into_iter()
+    .filter_map(|(label, set)| set.and_then(|s| block(label, s)))
+    .collect();
     for (i, options) in rec.later.iter().enumerate() {
         let mut merged = ItemSet::default();
         for opt in options {
@@ -316,6 +323,7 @@ mod tests {
             boots: Some(set(&[3020], 4455, 0.51)),
             core: Some(set(&[3118, 4645, 3157], 619, 0.53)),
             later: vec![vec![set(&[3089], 10, 0.5), set(&[3135], 8, 0.5)], vec![set(&[3135], 5, 0.5)]],
+            build_order: vec![3118, 3020, 4645, 3157, 3089],
             ..Default::default()
         }
     }
@@ -329,9 +337,14 @@ mod tests {
         let blocks = s["blocks"].as_array().unwrap();
         let headers: Vec<&str> = blocks.iter().map(|b| b["type"].as_str().unwrap()).collect();
         // Merged options have no single win rate.
-        assert_eq!(headers, ["Starter - 51% WR", "Boots - 51% WR", "Core build - 53% WR", "4th item options", "5th item options"]);
+        assert_eq!(
+            headers,
+            ["Starter - 51% WR", "Build order (left to right)", "Boots - 51% WR", "Core build - 53% WR", "4th item options", "5th item options"]
+        );
         assert_eq!(blocks[0]["items"], json!([{ "id": "1056", "count": 1 }, { "id": "2003", "count": 2 }]));
-        assert_eq!(blocks[3]["items"], json!([{ "id": "3089", "count": 1 }, { "id": "3135", "count": 1 }]));
+        let order: Vec<&str> = blocks[1]["items"].as_array().unwrap().iter().map(|i| i["id"].as_str().unwrap()).collect();
+        assert_eq!(order, ["3118", "3020", "4645", "3157", "3089"]);
+        assert_eq!(blocks[4]["items"], json!([{ "id": "3089", "count": 1 }, { "id": "3135", "count": 1 }]));
     }
 
     #[test]
