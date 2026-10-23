@@ -1161,7 +1161,7 @@ impl Engine {
             (st, enemies, items)
         };
         let (mut state, enemies, items) = state;
-        let owned = live::my_items(&data);
+        let owned = live::my_items(&data, &items);
         if let Some(sit) = self.update_situational(enemies, owned, true).await {
             if cfg.show_situational {
                 state.situational = live::price_situational(&data, sit.items, &items);

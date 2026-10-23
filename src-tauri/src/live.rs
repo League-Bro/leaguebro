@@ -161,9 +161,23 @@ pub fn enemies(data: &Value) -> Vec<ScoreboardEnemy> {
         .collect()
 }
 
-/// Your item ids.
-pub fn my_items(data: &Value) -> Vec<i64> {
-    find_me(data).map(|p| list(p, "items").iter().map(|i| int(i, "itemID")).collect()).unwrap_or_default()
+/// Your item ids, as the normal items (`base_item`), so they match OP.GG's builds.
+pub fn my_items(data: &Value, items: &HashMap<i64, ShopItem>) -> Vec<i64> {
+    find_me(data)
+        .map(|p| list(p, "items").iter().map(|i| base_item(int(i, "itemID"), items)).collect())
+        .unwrap_or_default()
+}
+
+/// The normal item behind a variant. The client lists some items again under
+/// a prefixed id with the same name but another price or recipe, e.g. the
+/// support versions (Locket of the Iron Solari bought on a support is 323190,
+/// not 3190; seen in a real game, October 2026). OP.GG's builds use the normal id.
+pub fn base_item(id: i64, items: &HashMap<i64, ShopItem>) -> i64 {
+    let base = id % 10_000;
+    match (items.get(&id), items.get(&base)) {
+        (Some(variant), Some(normal)) if id >= 100_000 && variant.name == normal.name => base,
+        _ => id,
+    }
 }
 
 /// Every player's identifying names, so event KillerName can be matched.
@@ -304,7 +318,7 @@ pub fn next_items(
     limit: usize,
 ) -> Vec<NextItem> {
     let gold = float(data, "/activePlayer/currentGold");
-    let mut owned_left = my_items(data);
+    let mut owned_left = my_items(data, items);
     let mut out = Vec::new();
     for id in build {
         // Each owned copy satisfies one entry, so a build listing an item
@@ -329,7 +343,7 @@ pub fn next_items(
 /// on its own, since they're alternatives rather than a build.
 pub fn price_situational(data: &Value, picks: Vec<SituationalItem>, items: &HashMap<i64, ShopItem>) -> Vec<SituationalPick> {
     let gold = float(data, "/activePlayer/currentGold");
-    let owned = my_items(data);
+    let owned = my_items(data, items);
     picks
         .into_iter()
         .map(|item| {
@@ -464,6 +478,23 @@ mod tests {
     }
 
     #[test]
+    fn support_variants_count_as_the_normal_item() {
+        // Ids as a real Swiftplay game on Blitzcrank reported them (October 2026).
+        let items = shop(&[
+            (3190, "Locket of the Iron Solari", 2200, &[3067]),
+            (323190, "Locket of the Iron Solari", 2600, &[3067]),
+            (3050, "Zeke's Convergence", 2200, &[3067]),
+            (3067, "Kindlegem", 800, &[]),
+            (323070, "Tear of the Goddess", 400, &[]),
+        ]);
+        let mut d = sample(600.0, json!([]));
+        d["allPlayers"][0]["items"] = json!([{"itemID": 323190}, {"itemID": 323070}]);
+        assert_eq!(my_items(&d, &items), vec![3190, 323070], "unknown base items keep their id");
+        let next = next_items(&d, &[3190, 3050], &items, 5);
+        assert_eq!(next.iter().map(|n| n.id).collect::<Vec<_>>(), vec![3050]);
+    }
+
+    #[test]
     fn situational_prices() {
         let items = shop(&[(3165, "Morellonomicon", 2950, &[3916, 1026]), (3916, "Oblivion Orb", 800, &[]), (1026, "Blasting Wand", 850, &[]), (3102, "Banshee's Veil", 3000, &[])]);
         let mut d = sample(600.0, json!([]));
@@ -500,7 +531,7 @@ mod tests {
         let foes = enemies(&d);
         assert_eq!(foes.len(), 1);
         assert_eq!((foes[0].champion_name.as_str(), foes[0].items.clone(), foes[0].kills, foes[0].deaths), ("Zed", vec![3075], 5, 2));
-        assert_eq!(my_items(&d), vec![1056, 3020]);
+        assert_eq!(my_items(&d, &HashMap::new()), vec![1056, 3020]);
     }
 
     #[test]
