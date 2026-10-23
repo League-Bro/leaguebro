@@ -179,6 +179,25 @@ export function demoProfile(): MyProfile {
     puuid: 'me', name: 'Dom#NA1', iconId: 938, level: 214,
     solo: { tier: 'GOLD', division: 'II', lp: 47, wins: 38, losses: 31 }, flex: null,
     matches, insights: demoInsights(matches), modes, currentQueueId: 420, error: null,
+    source: 'client', updatedAt: null, renewableAt: null,
+  };
+}
+
+/** The profile as OP.GG has it (?profile=opgg): last updated two days ago, no enemy data or vision. */
+export function demoOpggProfile(): MyProfile {
+  const p = demoProfile();
+  const matches = p.matches.slice(2).map((m) => ({
+    ...m, created: m.created - 2 * 86_400_000, vision: 0, laneOpponent: null, enemies: [],
+    queueId: m.queueId === 400 ? 0 : m.queueId, gameMode: m.queueId === 400 ? 'NORMAL' : m.gameMode,
+  }));
+  const queueIds = [...new Set(matches.map((m) => m.queueId))];
+  const modes = queueIds
+    .map((queueId) => ({ queueId, insights: demoInsights(matches.filter((m) => m.queueId === queueId)) }))
+    .sort((a, b) => b.insights.games - a.insights.games);
+  return {
+    ...p, matches, insights: demoInsights(matches), modes, currentQueueId: null,
+    solo: { tier: 'GOLD', division: 'II', lp: 21, wins: 36, losses: 31 },
+    source: 'opgg', updatedAt: Date.now() - 2 * 86_400_000, renewableAt: Date.now() - 60_000,
   };
 }
 
@@ -353,6 +372,8 @@ export function demoConfig(): Config {
     timers: { firstDragon: 300, firstBaron: 1200, dragonRespawn: 300, elderRespawn: 360, baronRespawn: 360, inhibRespawn: 300 },
     favoriteChampions: [103, 222],
     installDir: null,
+    riotId: 'Dom#NA1',
+    region: 'na',
   };
 }
 

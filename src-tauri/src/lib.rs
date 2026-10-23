@@ -5,6 +5,7 @@ mod engine;
 mod itemsets;
 mod lcu;
 mod opgg;
+mod opgg_profile;
 mod live;
 mod matchup;
 mod patch;
@@ -62,11 +63,72 @@ async fn import_swiftplay_now(app: AppHandle) -> Result<Vec<engine::ImportEvent>
     engine::import_swiftplay_now(&app).await
 }
 
-/// Your rank, recent matches and insights (the Profile page).
+/// Your rank, recent matches and insights (the Profile page): from the League
+/// client while it's running, else from OP.GG by the Riot ID in settings.
 #[tauri::command]
-async fn get_my_profile(state: State<'_, AppState>) -> Result<profile::MyProfile, String> {
-    let lcu = state.shared.lock().await.lcu.clone().ok_or("Open the League client to see your profile")?;
-    profile::load(&lcu).await.map_err(msg)
+async fn get_my_profile(app: AppHandle, state: State<'_, AppState>) -> Result<profile::MyProfile, String> {
+    let lcu = state.shared.lock().await.lcu.clone();
+    if let Some(lcu) = lcu {
+        let p = profile::load(&lcu).await.map_err(msg)?;
+        remember_riot_id(&app, &state, &lcu, &p.name).await;
+        return Ok(p);
+    }
+    let (riot_id, region) = riot_id(&state)?;
+    load_web_statics(&app, &state).await;
+    opgg_profile::load(&state.opgg, &riot_id, &region).await.map_err(msg)
+}
+
+/// Has OP.GG fetch your latest games and rank (its "Update" button), then
+/// loads the profile again. `updated_at` is the shown profile's `updatedAt`.
+#[tauri::command]
+async fn renew_profile(state: State<'_, AppState>, updated_at: Option<i64>) -> Result<profile::MyProfile, String> {
+    let (riot_id, region) = riot_id(&state)?;
+    opgg_profile::renew(&state.opgg, &riot_id, &region, updated_at).await.map_err(msg)
+}
+
+/// The Riot ID and OP.GG region from settings.
+fn riot_id(state: &State<'_, AppState>) -> Result<(String, String), String> {
+    let config = state.config();
+    let id = config.riot_id.filter(|id| !id.trim().is_empty());
+    id.map(|id| (id, config.region)).ok_or_else(|| "Open the League client, or enter your Riot ID, to see your profile".into())
+}
+
+/// Saves the client's Riot ID and region the first time the Profile page
+/// loads with the client running, so it also works without the client later.
+async fn remember_riot_id(app: &AppHandle, state: &State<'_, AppState>, lcu: &lcu::Lcu, name: &str) {
+    if state.config().riot_id.is_some() || !name.contains('#') {
+        return;
+    }
+    let locale = lcu.get("/riotclient/region-locale").await.ok().flatten().unwrap_or_default();
+    let mut config = state.config();
+    config.riot_id = Some(name.to_string());
+    let region = text(&locale, "region");
+    if !region.is_empty() {
+        config.region = opgg_profile::region_from_client(region);
+    }
+    if config.save(&state.config_path).is_ok() {
+        *state.config.write().unwrap() = config.clone();
+        let _ = app.emit("config", config);
+    }
+}
+
+/// Champion and item names from CommunityDragon while the client isn't
+/// running (the client's own replace them when it connects).
+async fn load_web_statics(app: &AppHandle, state: &State<'_, AppState>) {
+    if state.shared.lock().await.statics.is_some() {
+        return;
+    }
+    match engine::load_statics_web().await {
+        Ok(s) => {
+            let mut sh = state.shared.lock().await;
+            if sh.statics.is_none() {
+                sh.statics = Some(s.clone());
+                drop(sh);
+                let _ = app.emit("static", s);
+            }
+        }
+        Err(e) => eprintln!("couldn't load game data from CommunityDragon: {e:#}"),
+    }
 }
 
 /// The full scoreboard of one of your past games.
@@ -343,6 +405,7 @@ pub fn run() {
             move_global_item_sets,
             restore_global_item_sets,
             get_my_profile,
+            renew_profile,
             get_match,
             preview_overlay,
             set_overlay_locked,

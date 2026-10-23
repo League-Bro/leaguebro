@@ -88,6 +88,12 @@ pub struct Config {
     pub favorite_champions: Vec<i64>,
     /// League install folder, only needed if auto-detection fails.
     pub install_dir: Option<String>,
+    /// Your Riot ID ("Name#TAG"), for the Profile page while the League
+    /// client isn't running (looked up on OP.GG). Filled in from the client
+    /// the first time the Profile page loads with it running.
+    pub riot_id: Option<String>,
+    /// OP.GG's region code for `riot_id` ("na", "euw", "kr"…).
+    pub region: String,
 }
 
 impl Default for Config {
@@ -113,6 +119,8 @@ impl Default for Config {
             timers: TimerConfig::default(),
             favorite_champions: Vec::new(),
             install_dir: None,
+            riot_id: None,
+            region: "na".into(),
         }
     }
 }

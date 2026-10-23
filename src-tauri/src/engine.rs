@@ -377,28 +377,34 @@ pub fn parse_loading(session: &Value, my_puuid: &str) -> Option<LoadingView> {
     })
 }
 
-/// Where static data comes from: the League client, or CommunityDragon's
-/// copy of the same files while the client isn't open.
-enum GameData<'a> {
-    Client(&'a Lcu),
-    Web(&'a reqwest::Client),
+async fn load_statics(lcu: &Lcu) -> anyhow::Result<StaticData> {
+    let champs = lcu.get_req("/lol-game-data/assets/v1/champion-summary.json").await?;
+    let items = lcu.get_req("/lol-game-data/assets/v1/items.json").await?;
+    let perks = lcu.get("/lol-game-data/assets/v1/perks.json").await.ok().flatten().unwrap_or(Value::Null);
+    let styles = lcu.get("/lol-game-data/assets/v1/perkstyles.json").await.ok().flatten().unwrap_or(Value::Null);
+    let spells = lcu.get("/lol-game-data/assets/v1/summoner-spells.json").await.ok().flatten().unwrap_or(Value::Null);
+    Ok(build_statics(&champs, &items, &perks, &styles, &spells))
 }
 
-impl GameData<'_> {
-    async fn get(&self, file: &str) -> anyhow::Result<Value> {
-        match self {
-            GameData::Client(lcu) => lcu.get_req(&format!("/lol-game-data/assets/v1/{file}")).await,
-            GameData::Web(http) => get_json(http.get(format!("{CDRAGON_GAME_DATA}/{file}")), "CommunityDragon").await,
-        }
-    }
+/// The same files from CommunityDragon's copy of the client's game data, for
+/// when the client isn't running (the Champions and Tier List tabs, champion
+/// names and item icons on the Profile page). Kept until the client connects
+/// and replaces them.
+pub async fn load_statics_web() -> anyhow::Result<StaticData> {
+    let http = web_client(20);
+    let get = |file: &str| get_json(http.get(format!("{CDRAGON_GAME_DATA}/{file}")), "CommunityDragon");
+    let (champs, items, perks, styles, spells) = tokio::join!(
+        get("champion-summary.json"),
+        get("items.json"),
+        get("perks.json"),
+        get("perkstyles.json"),
+        get("summoner-spells.json"),
+    );
+    let or_null = |v: anyhow::Result<Value>| v.unwrap_or(Value::Null);
+    Ok(build_statics(&champs?, &items?, &or_null(perks), &or_null(styles), &or_null(spells)))
 }
 
-async fn load_statics(src: GameData<'_>) -> anyhow::Result<StaticData> {
-    let champs = src.get("champion-summary.json").await?;
-    let items = src.get("items.json").await?;
-    let perks = src.get("perks.json").await.unwrap_or(Value::Null);
-    let styles = src.get("perkstyles.json").await.unwrap_or(Value::Null);
-    let spells = src.get("summoner-spells.json").await.unwrap_or(Value::Null);
+fn build_statics(champs: &Value, items: &Value, perks: &Value, styles: &Value, spells: &Value) -> StaticData {
     let mut champions: Vec<ChampInfo> = champs
         .as_array()
         .into_iter()
@@ -442,13 +448,13 @@ async fn load_statics(src: GameData<'_>) -> anyhow::Result<StaticData> {
         desc: plain_text(text(p, desc_key)),
         tag: text(p, "recommendationDescriptor").into(),
     };
-    Ok(StaticData {
+    StaticData {
         champions,
         items,
         perks: perks.as_array().into_iter().flatten().map(|p| perk(p, "shortDesc")).collect(),
-        styles: list(&styles, "styles").iter().map(|p| perk(p, "tooltip")).collect(),
+        styles: list(styles, "styles").iter().map(|p| perk(p, "tooltip")).collect(),
         spells: spells.as_array().into_iter().flatten().map(|p| perk(p, "description")).collect(),
-    })
+    }
 }
 
 /// Strips the client's tooltip markup (`<br>`, `<magicDamage>`, `@vars@`…) to plain text.
@@ -688,7 +694,7 @@ impl Engine {
         let summoner = Summoner { puuid: text(&me, "puuid").into(), name: riot_name(&me).unwrap_or_default() };
         self.my_puuid = summoner.puuid.clone();
         // Replaces any web copy: the client's is in the player's language and patch.
-        let statics = load_statics(GameData::Client(&client)).await.ok();
+        let statics = load_statics(&client).await.ok();
         {
             let state = self.state();
             let mut sh = state.shared.lock().await;
@@ -732,7 +738,7 @@ impl Engine {
         self.last_web_statics = Some(Instant::now());
         let app = self.app.clone();
         tauri::async_runtime::spawn(async move {
-            let statics = match load_statics(GameData::Web(&web_client(15))).await {
+            let statics = match load_statics_web().await {
                 Ok(s) => s,
                 Err(e) => return eprintln!("champion data from CommunityDragon failed: {e:#}"),
             };
