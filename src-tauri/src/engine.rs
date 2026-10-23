@@ -383,6 +383,28 @@ async fn load_statics(lcu: &Lcu) -> anyhow::Result<StaticData> {
     let perks = lcu.get("/lol-game-data/assets/v1/perks.json").await.ok().flatten().unwrap_or(Value::Null);
     let styles = lcu.get("/lol-game-data/assets/v1/perkstyles.json").await.ok().flatten().unwrap_or(Value::Null);
     let spells = lcu.get("/lol-game-data/assets/v1/summoner-spells.json").await.ok().flatten().unwrap_or(Value::Null);
+    Ok(build_statics(&champs, &items, &perks, &styles, &spells))
+}
+
+/// The same files from CommunityDragon's copy of the client's game data, for
+/// when the client isn't running (champion names and item icons on the
+/// Profile page). Kept until the client connects and replaces them.
+pub async fn load_statics_web() -> anyhow::Result<StaticData> {
+    const BASE: &str = "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1";
+    let http = crate::util::web_client(20);
+    let get = |file: &str| crate::util::get_json(http.get(format!("{BASE}/{file}")), "CommunityDragon");
+    let (champs, items, perks, styles, spells) = tokio::join!(
+        get("champion-summary.json"),
+        get("items.json"),
+        get("perks.json"),
+        get("perkstyles.json"),
+        get("summoner-spells.json"),
+    );
+    let or_null = |v: anyhow::Result<Value>| v.unwrap_or(Value::Null);
+    Ok(build_statics(&champs?, &items?, &or_null(perks), &or_null(styles), &or_null(spells)))
+}
+
+fn build_statics(champs: &Value, items: &Value, perks: &Value, styles: &Value, spells: &Value) -> StaticData {
     let mut champions: Vec<ChampInfo> = champs
         .as_array()
         .into_iter()
@@ -426,13 +448,13 @@ async fn load_statics(lcu: &Lcu) -> anyhow::Result<StaticData> {
         desc: plain_text(text(p, desc_key)),
         tag: text(p, "recommendationDescriptor").into(),
     };
-    Ok(StaticData {
+    StaticData {
         champions,
         items,
         perks: perks.as_array().into_iter().flatten().map(|p| perk(p, "shortDesc")).collect(),
-        styles: list(&styles, "styles").iter().map(|p| perk(p, "tooltip")).collect(),
+        styles: list(styles, "styles").iter().map(|p| perk(p, "tooltip")).collect(),
         spells: spells.as_array().into_iter().flatten().map(|p| perk(p, "description")).collect(),
-    })
+    }
 }
 
 /// Strips the client's tooltip markup (`<br>`, `<magicDamage>`, `@vars@`…) to plain text.

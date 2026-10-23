@@ -146,6 +146,12 @@ export interface MyProfile {
   /** The queue of the lobby, champ select or game you're in. */
   currentQueueId: number | null;
   error: string | null;
+  /** 'client' = the League client's match history; 'opgg' = looked up by Riot ID while it isn't running. */
+  source: 'client' | 'opgg';
+  /** When OP.GG last fetched this player from Riot (unix ms; OP.GG only). */
+  updatedAt: number | null;
+  /** When OP.GG next allows an update (unix ms; OP.GG only). */
+  renewableAt: number | null;
 }
 
 export interface GameLine {
@@ -554,6 +560,10 @@ export interface Config {
   /** Champion ids starred in the Champions tab, pinned to the top of its list. */
   favoriteChampions: number[];
   installDir: string | null;
+  /** Your Riot ID ("Name#TAG") for the Profile page while the client isn't running. */
+  riotId: string | null;
+  /** OP.GG region code for riotId ("na", "euw"…). */
+  region: string;
 }
 
 /** Where a tier list comes from (tierlist.rs `Source`). */

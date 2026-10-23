@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { championIcon, formatTier, kdaRatio, profileIcon, queueLabel, tierClass, winPct } from '../core/assets';
@@ -7,18 +7,42 @@ import { PostGameView } from './post-game';
 
 const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as const;
 
+/** OP.GG's region codes. */
+const REGIONS = [
+  ['na', 'North America'], ['euw', 'Europe West'], ['eune', 'Europe Nordic & East'], ['kr', 'Korea'], ['br', 'Brazil'],
+  ['lan', 'Latin America North'], ['las', 'Latin America South'], ['oce', 'Oceania'], ['tr', 'Türkiye'], ['ru', 'Russia'],
+  ['jp', 'Japan'], ['me', 'Middle East'], ['ph', 'Philippines'], ['sg', 'Singapore'], ['th', 'Thailand'], ['tw', 'Taiwan'], ['vn', 'Vietnam'],
+].map(([code, label]) => ({ code, label }));
+
 /** Your rank, insights from recent games, and match history. */
 @Component({
   selector: 'rl-profile',
   imports: [DecimalPipe, NgTemplateOutlet, PostGameView],
   template: `
-    @if (loading() && !profile()) {
-      <section class="card empty"><p class="muted">Loading your profile from the League client…</p></section>
+    @if (setup()) {
+      <section class="card empty">
+        <h2>{{ editing() ? 'Change your Riot ID' : 'See your profile without League running' }}</h2>
+        <p class="muted">While the League client is closed, League Bro looks you up on OP.GG. Your Riot ID is the Name#TAG the client shows.</p>
+        <form class="riot-form" (submit)="saveRiotId($event, idInput.value, regionSel.value)">
+          <input #idInput name="riotId" placeholder="Name#TAG" [value]="rift.config()?.riotId ?? ''" autocomplete="off" spellcheck="false" />
+          <select #regionSel name="region" aria-label="Region">
+            @for (r of regions; track r.code) { <option [value]="r.code" [selected]="r.code === (rift.config()?.region ?? 'na')">{{ r.label }}</option> }
+          </select>
+          <button type="submit">Show my profile</button>
+        </form>
+        @if (formError(); as e) { <p class="loss small">{{ e }}</p> }
+        @if (editing()) { <button class="ghost" (click)="editing.set(false)">Cancel</button> }
+      </section>
+    } @else if (loading() && !profile()) {
+      <section class="card empty"><p class="muted">Loading your profile from {{ rift.status().connected ? 'the League client' : 'OP.GG' }}…</p></section>
     } @else if (loadError(); as e) {
       <section class="card empty">
         <h2>Couldn't load your profile</h2>
         <p class="muted">{{ e }}</p>
-        <button (click)="load()">Try again</button>
+        <div class="row center">
+          <button (click)="load()">Try again</button>
+          @if (!rift.status().connected) { <button class="ghost" (click)="editing.set(true)">Change Riot ID</button> }
+        </div>
       </section>
     } @else if (profile(); as p) {
       <section class="card head">
@@ -26,6 +50,12 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
         <div class="who">
           <h2>{{ p.name }}</h2>
           <div class="muted small">Level {{ p.level }}</div>
+          @if (p.source === 'opgg') {
+            <div class="faint small">
+              From OP.GG · updated {{ p.updatedAt ? ago(p.updatedAt) : 'a while ago' }} ·
+              <button class="link" (click)="editing.set(true)">Change Riot ID</button>
+            </div>
+          }
         </div>
         <div class="ranks">
           @for (r of ranks(p); track r.label) {
@@ -40,9 +70,17 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
             </div>
           }
         </div>
-        <button class="ghost" [disabled]="loading()" (click)="load()">{{ loading() ? 'Refreshing…' : 'Refresh' }}</button>
+        <div class="actions">
+          @if (p.source === 'opgg') {
+            <button class="ghost" [disabled]="renewing() || loading()" title="Has OP.GG fetch your latest games and rank from Riot (once every 2 minutes)" (click)="renew(p.updatedAt)">
+              {{ renewing() ? 'Updating…' : 'Update on OP.GG' }}
+            </button>
+          }
+          <button class="ghost" [disabled]="loading() || renewing()" (click)="load()">{{ loading() ? 'Refreshing…' : 'Refresh' }}</button>
+        </div>
       </section>
       @if (p.error) { <p class="loss small note">Some data didn't load: {{ p.error }}</p> }
+      @if (renewError(); as e) { <p class="loss small note">Couldn't update OP.GG: {{ e }}</p> }
 
       @if (p.modes.length > 1) {
         <div class="seg modes">
@@ -70,7 +108,9 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
           <div class="tile"><div class="big mono">{{ ins.csPerMin | number: '1.1-1' }}</div><div class="faint small">CS per minute</div></div>
           <div class="tile"><div class="big mono">{{ ins.damagePerMin | number: '1.0-0' }}</div><div class="faint small">damage per minute</div></div>
           <div class="tile"><div class="big mono">{{ ins.goldPerMin | number: '1.0-0' }}</div><div class="faint small">gold per minute</div></div>
-          <div class="tile"><div class="big mono">{{ ins.visionPerGame | number: '1.0-0' }}</div><div class="faint small">vision per game</div></div>
+          @if (p.source !== 'opgg') {
+            <div class="tile"><div class="big mono">{{ ins.visionPerGame | number: '1.0-0' }}</div><div class="faint small">vision per game</div></div>
+          }
           <div class="tile">
             <div class="big mono" [class.win]="ins.streak > 1" [class.loss]="ins.streak < -1">{{ abs(ins.streak) }}{{ ins.streak >= 0 ? 'W' : 'L' }}</div>
             <div class="faint small">current streak</div>
@@ -143,9 +183,9 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
         <h3>Match history</h3>
         <span class="faint small">
           @if (mode() === 'all') {
-            Your last {{ p.matches.length }} games in the League client.
+            Your last {{ p.matches.length }} games {{ where() }}.
           } @else {
-            {{ matches().length }} {{ modeLabel() }} {{ matches().length === 1 ? 'game' : 'games' }} of your last {{ p.matches.length }} in the League client.
+            {{ matches().length }} {{ modeLabel() }} {{ matches().length === 1 ? 'game' : 'games' }} of your last {{ p.matches.length }} {{ where() }}.
           }
           Custom and practice games aren't included, and neither are Brawl or League Classic.
         </span>
@@ -173,7 +213,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
           </div>
           @for (m of day.matches; track m.gameId) {
           <div class="item" [class.open]="openId() === m.gameId">
-          <button class="match" [class]="m.result" [attr.aria-expanded]="openId() === m.gameId" (click)="toggle(m)">
+          <button class="match" [class]="m.result" [class.static]="p.source === 'opgg'" [attr.aria-expanded]="openId() === m.gameId" (click)="toggle(m)">
             <img class="champ-icon" [src]="champIcon(m.championId)" [title]="rift.champName(m.championId)" alt="" />
             <div class="what">
               <div class="res">{{ resultLabel(m) }}</div>
@@ -280,6 +320,13 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
       font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
     }
     .match:hover { border-color: var(--line-strong); }
+    .match.static { cursor: default; }
+    .actions { display: flex; gap: 8px; }
+    .riot-form { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 14px 0 6px; }
+    .riot-form input { flex: 1 1 180px; max-width: 240px; }
+    .center { justify-content: center; gap: 8px; }
+    .link { background: none; border: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; }
+    .link:hover { text-decoration: underline; }
     .match.win { border-left-color: var(--win); }
     .match.loss { border-left-color: var(--loss); }
     .match.win .res { color: var(--win); }
@@ -305,6 +352,18 @@ export class ProfileView {
   protected readonly openId = signal<number | null>(null);
   protected readonly detail = signal<PostGame | null>(null);
   protected readonly detailError = signal<string | null>(null);
+  /** Changing the Riot ID (the form over a loaded profile). */
+  protected readonly editing = signal(false);
+  protected readonly formError = signal<string | null>(null);
+  protected readonly renewing = signal(false);
+  protected readonly renewError = signal<string | null>(null);
+  protected readonly regions = REGIONS;
+  /** The Riot ID form: asked for, or needed because there's no client and no Riot ID. */
+  protected readonly setup = computed(() => {
+    const c = this.rift.config();
+    return this.editing() || (c !== null && !c.riotId && !this.rift.status().connected && this.profile()?.source !== 'client');
+  });
+  protected readonly where = computed(() => (this.profile()?.source === 'opgg' ? 'on OP.GG' : 'in the League client'));
 
   /** 'all' or a queue id. */
   protected readonly mode = signal<number | 'all'>('all');
@@ -363,6 +422,43 @@ export class ProfileView {
 
   constructor() {
     this.load();
+    // League opened or closed: switch between the client's data and OP.GG's.
+    effect(() => {
+      const connected = this.rift.status().connected;
+      untracked(() => {
+        const p = this.profile();
+        if (p && !this.loading() && (p.source === 'opgg') === connected) this.load();
+      });
+    });
+  }
+
+  async saveRiotId(event: Event, riotId: string, region: string): Promise<void> {
+    event.preventDefault();
+    const id = riotId.trim();
+    const hash = id.lastIndexOf('#');
+    if (hash <= 0 || hash === id.length - 1) {
+      this.formError.set('Enter your Riot ID as Name#TAG, for example Faker#KR1.');
+      return;
+    }
+    this.formError.set(null);
+    await this.rift.updateConfig((c) => ({ ...c, riotId: id, region }));
+    this.editing.set(false);
+    // Looked up again from scratch, so an error from the old ID doesn't linger.
+    this.profile.set(null);
+    this.loadError.set(null);
+    await this.load();
+  }
+
+  async renew(updatedAt: number | null): Promise<void> {
+    this.renewing.set(true);
+    this.renewError.set(null);
+    try {
+      this.profile.set(await this.rift.renewProfile(updatedAt));
+    } catch (e) {
+      this.renewError.set(String(e));
+    } finally {
+      this.renewing.set(false);
+    }
   }
 
   async load(): Promise<void> {
@@ -387,6 +483,8 @@ export class ProfileView {
   }
 
   async toggle(m: MatchLine): Promise<void> {
+    // OP.GG's match list has no full scoreboards.
+    if (this.profile()?.source === 'opgg') return;
     if (this.openId() === m.gameId) {
       this.openId.set(null);
       return;

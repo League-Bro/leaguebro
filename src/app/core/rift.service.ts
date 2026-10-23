@@ -36,6 +36,7 @@ import {
   demoPatchList,
   demoPostGame,
   demoProfile,
+  demoOpggProfile,
   demoMatchup,
   demoRec,
   demoWithChoice,
@@ -104,9 +105,12 @@ export class RiftService {
       const snap = demoScene(params.get('scene'));
       // ?fullscreen previews the "switch League to Borderless" hint.
       if (params.has('fullscreen')) snap.status.windowMode = 'fullscreen';
+      // ?profile=opgg / ?profile=setup: the Profile page without the League client.
+      const profile = params.get('profile');
+      if (profile === 'opgg' || profile === 'setup') snap.status = { ...snap.status, connected: false, phase: '', summoner: null, message: 'Waiting for the League client' };
       this.applySnapshot(snap);
       this.statics.set(demoStatic());
-      this.config.set(demoConfig());
+      this.config.set(profile === 'setup' ? { ...demoConfig(), riotId: null } : demoConfig());
       return;
     }
     this.windowLabel.set(getCurrentWindow().label);
@@ -251,8 +255,16 @@ export class RiftService {
     await this.call('set_overlay_locked', { locked }, () => undefined);
   }
 
+  /** From the League client while it's running, else from OP.GG by the Riot ID in settings. */
   getMyProfile(): Promise<MyProfile> {
-    return this.call('get_my_profile', {}, demoProfile, 300);
+    // Browser demo: ?profile=opgg shows the OP.GG version, ?profile=setup the Riot ID form.
+    const opgg = this.demo && ['opgg', 'setup'].includes(new URLSearchParams(location.search).get('profile') ?? '');
+    return this.call('get_my_profile', {}, opgg ? demoOpggProfile : demoProfile, 300);
+  }
+
+  /** OP.GG's "Update": has it fetch your latest games and rank, then loads the profile again. `updatedAt` is the shown profile's. */
+  renewProfile(updatedAt: number | null): Promise<MyProfile> {
+    return this.call('renew_profile', { updatedAt }, () => ({ ...demoOpggProfile(), updatedAt: Date.now(), renewableAt: Date.now() + 120_000 }), 1500);
   }
 
   /** Full scoreboard of one of your past games. */

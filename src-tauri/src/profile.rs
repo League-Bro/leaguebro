@@ -108,6 +108,13 @@ pub struct MyProfile {
     /// The queue of the lobby, champ select or game you're in, if any.
     pub current_queue_id: Option<i64>,
     pub error: Option<String>,
+    /// "client" (the League client's match history) or "opgg" (looked up by
+    /// Riot ID while the client isn't running; see `opgg_profile`).
+    pub source: String,
+    /// When OP.GG last fetched this player from Riot (unix ms; OP.GG only).
+    pub updated_at: Option<i64>,
+    /// When OP.GG next allows an update (unix ms; OP.GG only).
+    pub renewable_at: Option<i64>,
 }
 
 /// Games League Bro may show match data for. Brawl's markers (mode `BRAWL`,
@@ -377,6 +384,7 @@ pub async fn load(lcu: &Lcu) -> anyhow::Result<MyProfile> {
         icon_id: int(&me, "profileIconId"),
         level: int(&me, "summonerLevel"),
         puuid: puuid.clone(),
+        source: "client".into(),
         ..Default::default()
     };
     let mut errors = Vec::new();

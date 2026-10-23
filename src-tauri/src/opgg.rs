@@ -840,7 +840,7 @@ impl OpGg {
         Ok(sid)
     }
 
-    async fn call_tool(&self, name: &str, args: Value) -> Result<String> {
+    pub async fn call_tool(&self, name: &str, args: Value) -> Result<String> {
         for attempt in 0..2 {
             let session = self.ensure_session().await?;
             let body = json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
