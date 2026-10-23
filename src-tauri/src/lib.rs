@@ -8,6 +8,7 @@ mod opgg;
 mod opgg_profile;
 mod live;
 mod matchup;
+mod situational;
 mod patch;
 mod postgame;
 mod profile;
@@ -302,11 +303,11 @@ async fn clear_cache(state: State<'_, AppState>, which: CacheName) -> Result<Cac
     Ok(cache_usage(&state).await)
 }
 
-/// The overlay reports where its lock button is so it stays clickable while
+/// The overlay reports where its buttons are so they stay clickable while
 /// the rest of the overlay is click-through.
 #[tauri::command]
-fn set_overlay_button(state: State<'_, AppState>, rect: Option<[f64; 4]>) {
-    state.overlay_input.lock().unwrap().button = rect;
+fn set_overlay_buttons(state: State<'_, AppState>, rects: Vec<[f64; 4]>) {
+    state.overlay_input.lock().unwrap().buttons = rects;
 }
 
 /// Shows the overlay outside a game so you can check its position.
@@ -414,7 +415,7 @@ pub fn run() {
             get_tier_list,
             cache_info,
             clear_cache,
-            set_overlay_button,
+            set_overlay_buttons,
             open_issue_page
         ])
         .run(tauri::generate_context!())

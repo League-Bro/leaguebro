@@ -52,7 +52,7 @@ pub const MIN_GAMES: i64 = 20;
 const MIN_LATE_ITEM_GAMES: i64 = 10;
 /// Bump when `Recommendation` or `extract` changes, so saved answers are
 /// fetched again instead of read in an old shape.
-const CACHE_FORMAT: u32 = 2;
+const CACHE_FORMAT: u32 = 3;
 /// Rune pages, spell pairs, core builds and boots offered to pick from (the top one included).
 const PICK_OPTIONS: usize = 3;
 /// How long after a patch's notes come out OP.GG answers are kept for only a
@@ -258,6 +258,10 @@ pub struct Recommendation {
     pub core: Option<ItemSet>,
     /// Popular options for the 4th, 5th and 6th item.
     pub later: Vec<Vec<ItemSet>>,
+    /// Every 4th–6th item option with enough games (one entry per item, most
+    /// played first): what `situational` picks from for this game.
+    #[serde(default)]
+    pub situational_pool: Vec<ItemSet>,
     /// Full build in purchase order (core + boots + top later picks), for the overlay.
     pub build_order: Vec<i64>,
     /// Games behind the rune page; small numbers mean a rare pick.
@@ -412,6 +416,26 @@ pub fn build_order(core: Option<&ItemSet>, boots: Option<&ItemSet>, later: &[Vec
     out
 }
 
+/// The website's full list of 4th–6th items (`situational_items`), or the MCP
+/// tool's few `later` options; most played first, rarely bought ones dropped.
+fn situational_pool(data: &Value, later: &[Vec<ItemSet>]) -> Vec<ItemSet> {
+    let mut pool: Vec<ItemSet> = match list(data, "situational_items") {
+        [] => {
+            let mut out: Vec<ItemSet> = Vec::new();
+            for s in later.iter().flatten() {
+                if !out.iter().any(|o| o.ids == s.ids) {
+                    out.push(s.clone());
+                }
+            }
+            out
+        }
+        all => all.iter().filter_map(item_set).collect(),
+    };
+    pool.retain(|s| s.games >= MIN_LATE_ITEM_GAMES);
+    pool.sort_by(|a, b| b.games.cmp(&a.games));
+    pool
+}
+
 /// Extracts a Recommendation from a parsed lol_get_champion_analysis result.
 pub fn extract(parsed: &Value, champion_id: i64, position: &str, game_mode: &str) -> Result<Recommendation> {
     let data = parsed.get("data").ok_or_else(|| anyhow!("OP.GG response has no data"))?;
@@ -462,6 +486,7 @@ pub fn extract(parsed: &Value, champion_id: i64, position: &str, game_mode: &str
         starter: set("starter_items"),
         boots,
         core,
+        situational_pool: situational_pool(data, &later),
         later,
         games,
         source: "OP.GG".into(),
@@ -620,6 +645,18 @@ pub fn web_to_mcp(main: &Value, builds: &Value, damage_type: &str) -> Result<Val
         let options = list(builds, "/data/single_items").iter().find(|s| int(s, "depth") == depth).map_or(&[][..], |s| list(s, "items"));
         data.insert(key.into(), options.iter().take(LATE_ITEM_OPTIONS).cloned().collect());
     }
+    // All of them for situational picks, each item once (the slot it was bought in most).
+    let mut pool: Vec<Value> = Vec::new();
+    for s in list(builds, "/data/single_items").iter().filter(|s| (4..=6).contains(&int(s, "depth"))) {
+        for it in list(s, "items") {
+            match pool.iter_mut().find(|p| ints(p, "ids") == ints(it, "ids")) {
+                Some(p) if int(p, "play") >= int(it, "play") => {}
+                Some(p) => *p = it.clone(),
+                None => pool.push(it.clone()),
+            }
+        }
+    }
+    data.insert("situational_items".into(), pool.into());
     data.insert("damage_type".into(), damage_type.into());
     Ok(json!({ "data": data }))
 }
@@ -984,10 +1021,15 @@ impl OpGg {
         Ok((main?, builds, damage))
     }
 
+    /// The damage type if it's been looked up already (no request).
+    pub async fn known_damage_type(&self, champion_id: i64) -> Option<String> {
+        self.damage_types.lock().await.get(&champion_id).cloned()
+    }
+
     /// From the League client's own champion data (local, a few ms), or
     /// CommunityDragon's copy when the client isn't open. Empty when neither
     /// can say; the UI then just leaves it out.
-    async fn damage_type(&self, champion_id: i64, lcu: Option<&Lcu>) -> String {
+    pub async fn damage_type(&self, champion_id: i64, lcu: Option<&Lcu>) -> String {
         if let Some(d) = self.damage_types.lock().await.get(&champion_id) {
             return d.clone();
         }
@@ -1121,10 +1163,17 @@ mod tests {
         // Same build as the MCP answer: 6th-item options have under 10 games.
         assert_eq!(r.build_order, vec![3118, 3020, 4645, 3157, 3089, 3135]);
         assert_eq!(r.damage_type, "AP");
+        // The situational pool has every 4th-6th option once, more than the three per slot.
+        let pool: Vec<i64> = r.situational_pool.iter().map(|s| s.ids[0]).collect();
+        assert!(pool.len() > LATE_ITEM_OPTIONS, "{pool:?}");
+        assert!(pool.iter().enumerate().all(|(i, id)| !pool[..i].contains(id)));
+        assert!(r.situational_pool.iter().all(|s| s.games >= MIN_LATE_ITEM_GAMES));
+        assert!(r.situational_pool.windows(2).all(|w| w[0].games >= w[1].games));
+        assert!(pool.contains(&3089));
 
         // Without /builds there are just no 4th-6th options.
         let r = extract(&web_to_mcp(&main, &Value::Null, "").unwrap(), 103, "mid", "ranked").unwrap();
-        assert!(r.later.is_empty());
+        assert!(r.later.is_empty() && r.situational_pool.is_empty());
         assert_eq!(r.build_order, vec![3118, 3020, 4645, 3157]);
         // Unknown champions come back without a data object.
         assert!(web_to_mcp(&json!({"data": []}), &Value::Null, "").is_err());

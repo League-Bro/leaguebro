@@ -21,6 +21,7 @@ import {
   RecState,
   Recommendation,
   Snapshot,
+  SituationalState,
   StaticData,
   SwiftplaySlot,
   Status,
@@ -57,6 +58,8 @@ export class RiftService {
     () => this.status().connected && this.status().windowMode === 'fullscreen' && (this.config()?.overlayEnabled ?? true),
   );
   readonly champSelect = signal<ChampSelectView | null>(null);
+  /** Situational items for the current game (champ select picks, then the live scoreboard). */
+  readonly situational = signal<SituationalState | null>(null);
   readonly loading = signal<LoadingView | null>(null);
   readonly profiles = signal<Record<string, Profile>>({});
   readonly lastImport = signal<ImportEvent | null>(null);
@@ -124,6 +127,7 @@ export class RiftService {
       listen<OverlayState | null>('overlay', (e) => this.overlay.set(e.payload)),
       listen<RecState | null>('recommendation', (e) => this.rec.set(e.payload)),
       listen<PostGame | null>('post-game', (e) => this.postGame.set(e.payload)),
+      listen<SituationalState | null>('situational', (e) => this.situational.set(e.payload)),
       listen<boolean>('overlay-preview', (e) => this.overlayPreview.set(e.payload)),
       listen<boolean>('overlay-locked', (e) => this.overlayLocked.set(e.payload)),
       listen<Config>('config', (e) => this.config.set(e.payload)),
@@ -143,6 +147,7 @@ export class RiftService {
     this.overlay.set(s.overlay);
     this.rec.set(s.rec);
     this.postGame.set(s.postGame);
+    this.situational.set(s.situational);
     const p: Record<string, Profile> = {};
     for (const x of s.profiles) p[x.puuid] = x;
     this.profiles.set(p);
@@ -330,12 +335,13 @@ export class RiftService {
     await this.call('open_issue_page', { url }, () => void window.open(url, '_blank', 'noopener'));
   }
 
-  private lastButtonRect = '';
-  setOverlayButton(rect: [number, number, number, number] | null): void {
+  private lastButtonRects = '';
+  /** Where the overlay's buttons are (padlock, "show more"), so they stay clickable while locked. */
+  setOverlayButtons(rects: [number, number, number, number][]): void {
     if (this.demo || this.windowLabel() !== 'overlay') return;
-    const key = JSON.stringify(rect);
-    if (key === this.lastButtonRect) return;
-    this.lastButtonRect = key;
-    invoke('set_overlay_button', { rect }).catch(() => (this.lastButtonRect = ''));
+    const key = JSON.stringify(rects);
+    if (key === this.lastButtonRects) return;
+    this.lastButtonRects = key;
+    invoke('set_overlay_buttons', { rects }).catch(() => (this.lastButtonRects = ''));
   }
 }

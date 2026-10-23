@@ -2,7 +2,7 @@
 // comes from real data: OP.GG's pick and win rates, the client's own rune and
 // item descriptions, and what an item's stats mean for the champion's damage
 // type and class. Nothing is invented per champion.
-import { ChampInfo, ItemInfo, ItemSet, PerkInfo, Recommendation } from './models';
+import { ChampInfo, ItemInfo, ItemSet, PerkInfo, Recommendation, SituationTag } from './models';
 
 export interface Why {
   id: number;
@@ -98,6 +98,38 @@ function itemReasons(item: ItemInfo, champ: ChampInfo | undefined, damageType: s
   if (cats.has('GoldPer')) out.push('Earns gold over time.');
   return out;
 }
+
+/** When to buy a 4th–6th item option. The start, boots and core are bought every game, so they get none. */
+function situationalReasons(item: ItemInfo, slot: string): string[] {
+  if (['Start', 'Core', 'Boots'].includes(slot)) return [];
+  return item.situations.map((t) => `Situational: ${SITUATION_WHEN[t]}`);
+}
+
+/** Short names, as the Rust side labels threats. */
+export const SITUATION_LABEL: Record<SituationTag, string> = {
+  antiHeal: 'Anti-heal',
+  armorPen: 'Armor pen',
+  magicPen: 'Magic pen',
+  antiShield: 'Anti-shield',
+  antiTank: '%HP damage',
+  armor: 'Armor',
+  magicResist: 'Magic resist',
+  survive: 'Survive burst',
+  cleanse: 'Cleanse',
+};
+
+/** When an item with this quality is worth buying (`ItemInfo.situations`). */
+export const SITUATION_WHEN: Record<SituationTag, string> = {
+  antiHeal: 'applies Grievous Wounds, so buy it against healers, lifesteal and omnivamp.',
+  armorPen: 'armor penetration, for when enemies stack armor (tanks, Plated Steelcaps, Randuin’s).',
+  magicPen: 'magic penetration, for when enemies stack Magic Resist.',
+  antiShield: 'cuts shields, so buy it against shielding supports and items like Sterak’s.',
+  antiTank: 'damage based on the target’s Health, strong against tanks and Health stacking.',
+  armor: 'Armor, worth it when most enemy damage is physical.',
+  magicResist: 'Magic Resist, worth it when most enemy damage is magic.',
+  survive: 'keeps you alive through burst, so buy it against assassins or a fed carry.',
+  cleanse: 'removes crowd control, so buy it against heavy lockdown.',
+};
 
 /**
  * The item's passives/actives as "Name: text" sentences. Tooltips put the
@@ -210,7 +242,7 @@ export function buildWhy(
       tag,
       what: info ? itemWhat(info) : '',
       stats: info?.stats ?? [],
-      reasons: info ? itemReasons(info, champ, rec.damageType) : [],
+      reasons: info ? [...itemReasons(info, champ, rec.damageType), ...situationalReasons(info, tag)] : [],
       data,
     };
   };

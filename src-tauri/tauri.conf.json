@@ -24,7 +24,7 @@
         "label": "overlay",
         "title": "League Bro Overlay",
         "width": 270,
-        "height": 360,
+        "height": 460,
         "visible": false,
         "transparent": true,
         "decorations": false,

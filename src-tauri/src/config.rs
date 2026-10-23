@@ -75,6 +75,8 @@ pub struct Config {
     pub show_timers: bool,
     /// Show your item value against your lane opponent's in the overlay.
     pub show_lane_diff: bool,
+    /// Show the top situational item for this game in the overlay.
+    pub show_situational: bool,
     pub ability_keys: AbilityKeys,
     pub scout_in_champ_select: bool,
     pub scout_on_loading: bool,
@@ -109,6 +111,7 @@ impl Default for Config {
             show_skill_hint: true,
             show_timers: true,
             show_lane_diff: true,
+            show_situational: true,
             ability_keys: AbilityKeys::default(),
             scout_in_champ_select: true,
             scout_on_loading: true,

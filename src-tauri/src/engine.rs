@@ -11,11 +11,13 @@ use crate::opgg::{self, OpGg, RecChoice, Recommendation};
 use crate::postgame::{self, PostGame};
 use crate::runes;
 use crate::scout::{self, Profile};
+use crate::situational::{self, SituationalState};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::RwLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition};
 use tokio::sync::Mutex;
@@ -51,6 +53,10 @@ pub struct ItemInfo {
     pub desc: String,
     /// Client shop categories, e.g. ["SpellDamage", "Mana"].
     pub categories: Vec<String>,
+    /// Items this one builds into (the client's `to`).
+    pub into: Vec<i64>,
+    /// What it's good against (`situational::item_tags`), e.g. ["antiHeal"].
+    pub situations: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -226,6 +232,8 @@ pub struct Shared {
     pub swiftplay: Vec<SwiftplaySlot>,
     /// The lane opponent the player chose in champ select (0 = none); None = guess.
     pub opponent_pick: Option<i64>,
+    /// Situational items for this game (champ select picks, then the live scoreboard).
+    pub situational: Option<SituationalState>,
 }
 
 impl Shared {
@@ -264,12 +272,12 @@ pub struct AppState {
 }
 
 /// Mouse handling for the overlay window. While locked the window is
-/// click-through except over its lock button.
+/// click-through except over its buttons (the padlock, "show more").
 #[derive(Debug, Default)]
 pub struct OverlayInput {
     pub unlocked: bool,
-    /// Lock button bounds (x, y, width, height) in CSS pixels inside the overlay.
-    pub button: Option<[f64; 4]>,
+    /// Button bounds (x, y, width, height) in CSS pixels inside the overlay.
+    pub buttons: Vec<[f64; 4]>,
     /// What `set_ignore_cursor_events` was last set to.
     pub passthrough: bool,
 }
@@ -292,6 +300,7 @@ pub struct Snapshot {
     pub rec: Option<RecState>,
     pub post_game: Option<PostGame>,
     pub swiftplay: Vec<SwiftplaySlot>,
+    pub situational: Option<SituationalState>,
 }
 
 // ---------- parsing helpers ----------
@@ -429,14 +438,17 @@ fn build_statics(champs: &Value, items: &Value, perks: &Value, styles: &Value, s
         .filter(|it| int(it, "id") > 0 && !text(it, "name").is_empty())
         .map(|it| {
             let (stats, desc) = item_tooltip(text(it, "description"));
+            let categories = strings(it, "categories");
             ItemInfo {
                 id: int(it, "id"),
                 name: text(it, "name").into(),
                 price_total: int(it, "priceTotal"),
                 icon_path: text(it, "iconPath").into(),
+                situations: situational::item_tags(&stats, &desc, &categories),
                 stats,
                 desc,
-                categories: strings(it, "categories"),
+                categories,
+                into: ints(it, "to"),
             }
         })
         .collect();
@@ -555,8 +567,8 @@ pub fn set_overlay_locked(app: &AppHandle, locked: bool) {
     let _ = app.emit("overlay-locked", locked);
 }
 
-/// Makes the locked overlay clickable only while the cursor is over its lock
-/// button, so the rest of it never takes clicks away from the game.
+/// Makes the locked overlay clickable only while the cursor is over one of its
+/// buttons, so the rest of it never takes clicks away from the game.
 pub async fn watch_overlay_cursor(app: AppHandle) {
     let mut tick = tokio::time::interval(Duration::from_millis(50));
     loop {
@@ -566,16 +578,17 @@ pub async fn watch_overlay_cursor(app: AppHandle) {
             continue;
         }
         let state = app.state::<AppState>();
-        let (unlocked, button, passthrough) = {
+        let (unlocked, buttons, passthrough) = {
             let i = state.overlay_input.lock().unwrap();
-            (i.unlocked, i.button, i.passthrough)
+            (i.unlocked, i.buttons.clone(), i.passthrough)
         };
         if unlocked {
             continue;
         }
-        let over = match (button, app.cursor_position(), w.inner_position(), w.scale_factor()) {
-            (Some(b), Ok(cursor), Ok(origin), Ok(scale)) => {
-                over_button(b, (cursor.x - origin.x as f64) / scale, (cursor.y - origin.y as f64) / scale)
+        let over = match (app.cursor_position(), w.inner_position(), w.scale_factor()) {
+            (Ok(cursor), Ok(origin), Ok(scale)) => {
+                let (cx, cy) = ((cursor.x - origin.x as f64) / scale, (cursor.y - origin.y as f64) / scale);
+                buttons.iter().any(|b| over_button(*b, cx, cy))
             }
             _ => false,
         };
@@ -615,6 +628,8 @@ struct Engine {
     /// Last try at loading static data from CommunityDragon (client closed).
     last_web_statics: Option<Instant>,
     live_http: reqwest::Client,
+    /// A background damage-type lookup for situational items is running.
+    damage_lookup: Arc<AtomicBool>,
 }
 
 /// A finished game whose match-history record hasn't been fetched yet. The
@@ -624,6 +639,15 @@ struct PendingPostGame {
     queue_name: String,
     since: Instant,
     last_try: Option<Instant>,
+}
+
+/// An enemy for the situational items: their pick, and in game their items and score.
+struct EnemySeen {
+    champion_id: i64,
+    items: Vec<i64>,
+    kills: i64,
+    deaths: i64,
+    assists: i64,
 }
 
 const POST_GAME_RETRY: Duration = Duration::from_secs(3);
@@ -812,12 +836,13 @@ impl Engine {
         let loading = {
             let state = self.state();
             let mut sh = state.shared.lock().await;
-            (sh.my_champion_id, sh.rec, sh.post_game, sh.opponent_pick) = (0, None, None, None);
+            (sh.my_champion_id, sh.rec, sh.post_game, sh.opponent_pick, sh.situational) = (0, None, None, None, None);
             sh.loading.take()
         };
         let _ = self.app.emit("loading", Option::<LoadingView>::None);
         let _ = self.app.emit("recommendation", Option::<RecState>::None);
         let _ = self.app.emit("post-game", Option::<PostGame>::None);
+        let _ = self.app.emit("situational", Option::<SituationalState>::None);
         loading
     }
 
@@ -939,6 +964,14 @@ impl Engine {
             let app = self.app.clone();
             tauri::async_runtime::spawn(async move { matchup::refresh(&app).await });
         }
+        // Enemy picks only: names stay hidden (ranked rules), champions are public.
+        let enemies = view
+            .enemies
+            .iter()
+            .filter(|e| e.champion_id != 0)
+            .map(|e| EnemySeen { champion_id: e.champion_id, items: Vec::new(), kills: 0, deaths: 0, assists: 0 })
+            .collect();
+        self.update_situational(enemies, Vec::new(), false).await;
         let should_import = cfg.auto_import_runes
             && view.my_champion_id != 0
             && (view.locked || cfg.import_on_hover);
@@ -1073,8 +1106,23 @@ impl Engine {
             let guide = live::Guidance { build, skill_max, skill_order };
             let st = live::overlay_state(&data, &cfg.timers, &guide, &items);
             sh.overlay = Some(st.clone());
-            st
+            let enemies: Vec<EnemySeen> = live::enemies(&data)
+                .into_iter()
+                .filter_map(|e| {
+                    let c = sh.statics.as_ref()?.champions.iter().find(|c| c.name == e.champion_name && !c.classic)?;
+                    Some(EnemySeen { champion_id: c.id, items: e.items, kills: e.kills, deaths: e.deaths, assists: e.assists })
+                })
+                .collect();
+            (st, enemies)
         };
+        let (mut state, enemies) = state;
+        let owned = live::my_items(&data);
+        if let Some(sit) = self.update_situational(enemies, owned, true).await {
+            if cfg.show_situational {
+                state.situational = sit.items;
+                self.state().shared.lock().await.overlay = Some(state.clone());
+            }
+        }
         if let Some((champ, pos, mode)) = fetch_rec {
             self.last_rec_key = Some((champ, pos.clone()));
             let app = self.app.clone();
@@ -1096,6 +1144,81 @@ impl Engine {
                 let _ = w.set_always_on_top(true);
             }
         }
+    }
+
+    /// Ranks OP.GG's 4th–6th item options against the enemy team and publishes
+    /// the result when it changes. Needs a recommendation for your champion.
+    async fn update_situational(&self, enemies: Vec<EnemySeen>, owned: Vec<i64>, live: bool) -> Option<SituationalState> {
+        let state = self.state();
+        // Damage types come from the client's champion files. Only what's already
+        // known is used here; missing ones are fetched in the background, so a slow
+        // or failing lookup never holds up the loop (the next tick picks them up).
+        let mut damage = HashMap::new();
+        let mut missing = Vec::new();
+        for e in &enemies {
+            match state.opgg.known_damage_type(e.champion_id).await {
+                Some(d) => {
+                    damage.insert(e.champion_id, d);
+                }
+                None if !missing.contains(&e.champion_id) => missing.push(e.champion_id),
+                None => {}
+            }
+        }
+        // One lookup at a time; failures aren't cached, so they're retried by a later one.
+        if !missing.is_empty() && !self.damage_lookup.swap(true, Ordering::AcqRel) {
+            let (app, running) = (self.app.clone(), self.damage_lookup.clone());
+            tauri::async_runtime::spawn(async move {
+                let state = app.state::<AppState>();
+                let lcu = state.shared.lock().await.lcu.clone();
+                for id in missing {
+                    state.opgg.damage_type(id, lcu.as_ref()).await;
+                }
+                running.store(false, Ordering::Release);
+            });
+        }
+        let mut sh = state.shared.lock().await;
+        let champ = sh.my_champion_id;
+        let rs = sh.rec.as_ref().filter(|r| r.champion_id == champ && champ != 0)?;
+        // The pool from all games: the matchup build has too few for 4th–6th items.
+        let base = rs.rec.as_ref()?;
+        let effective = rs.effective()?;
+        let core: Vec<i64> = effective.core.iter().chain(effective.boots.iter()).flat_map(|s| s.ids.clone()).collect();
+        let statics = sh.statics.as_ref()?;
+        let me = statics.champions.iter().find(|c| c.id == champ);
+        let foes: Vec<situational::Enemy> = enemies
+            .iter()
+            .filter_map(|e| {
+                let c = statics.champions.iter().find(|c| c.id == e.champion_id)?;
+                Some(situational::Enemy {
+                    name: c.name.clone(),
+                    alias: c.alias.clone(),
+                    roles: c.roles.clone(),
+                    damage_type: damage.get(&e.champion_id).cloned().unwrap_or_default(),
+                    items: e.items.clone(),
+                    kills: e.kills,
+                    deaths: e.deaths,
+                    assists: e.assists,
+                })
+            })
+            .collect();
+        let previous: Vec<i64> = sh.situational.as_ref().map(|s| s.items.iter().map(|i| i.id).collect()).unwrap_or_default();
+        let next = situational::suggest(&situational::Input {
+            champion_id: champ,
+            my_roles: me.map(|c| c.roles.as_slice()).unwrap_or(&[]),
+            pool: &base.situational_pool,
+            core: &core,
+            owned: &owned,
+            enemies: &foes,
+            items: &statics.items,
+            previous: &previous,
+            live,
+        });
+        if sh.situational.as_ref() != Some(&next) {
+            sh.situational = Some(next.clone());
+            drop(sh);
+            let _ = self.app.emit("situational", Some(next.clone()));
+        }
+        Some(next)
     }
 
     async fn hide_overlay(&mut self) {
@@ -1447,6 +1570,7 @@ pub async fn snapshot(app: &AppHandle) -> Snapshot {
         rec: sh.rec.as_ref().map(RecState::for_ui),
         post_game: sh.post_game.clone(),
         swiftplay: sh.swiftplay.clone(),
+        situational: sh.situational.clone(),
     }
 }
 
@@ -1468,6 +1592,7 @@ pub async fn run(app: AppHandle) {
         last_window_check: None,
         last_web_statics: None,
         live_http: lcu::localhost_http_client(),
+        damage_lookup: Arc::new(AtomicBool::new(false)),
     };
     engine.set_status(false, "", None, "Waiting for the League client").await;
     loop {

@@ -25,6 +25,8 @@ import {
   SpellOption,
   StaticData,
   SwiftplaySlot,
+  SituationalState,
+  SituationTag,
   TierEntry,
   TierList,
   TierSource,
@@ -117,10 +119,12 @@ export function demoSnapshot(): Snapshot {
       skillMax: ['Q', 'W', 'E'],
       nextSkill: 'Q',
       lane: { opponent: 'Zed', mine: 5350, theirs: 3967 },
+      situational: demoSituational(true).items,
     },
     rec: demoRec(),
     postGame: null,
     swiftplay: [],
+    situational: demoSituational(true),
   };
 }
 
@@ -130,7 +134,7 @@ export function demoScene(scene: string | null): Snapshot {
   const away = { loading: null, overlay: null };
   switch (scene) {
     case 'champselect':
-      return { ...snap, ...away, status: { ...snap.status, phase: 'ChampSelect' }, champSelect: demoChampSelect() };
+      return { ...snap, ...away, status: { ...snap.status, phase: 'ChampSelect' }, champSelect: demoChampSelect(), situational: demoSituational(false) };
     case 'swiftplay':
       return { ...snap, ...away, status: { ...snap.status, phase: 'Lobby' }, rec: null, lastImport: null, swiftplay: demoSwiftplay() };
     case 'postgame':
@@ -138,6 +142,42 @@ export function demoScene(scene: string | null): Snapshot {
     default:
       return snap;
   }
+}
+
+/**
+ * Ahri's situational items: in champ select from the enemy picks (Darius, Zed),
+ * in game from the scoreboard (Zed ahead, Darius and Vi building sustain and Magic Resist).
+ */
+export function demoSituational(live: boolean): SituationalState {
+  const banshee = { id: 3102, name: "Banshee's Veil", tag: 'survive' as const, label: 'Survive burst', started: false, offPool: false, games: 210, winRate: 112 / 210 };
+  if (!live) {
+    return {
+      championId: 103,
+      live: false,
+      threats: [{ tag: 'survive', label: 'Survive burst', level: 0.8, detail: 'Burst from Zed' }],
+      items: [{ ...banshee, reason: 'Burst from Zed', score: 1.1 }],
+    };
+  }
+  return {
+    championId: 103,
+    live: true,
+    threats: [
+      { tag: 'survive', label: 'Survive burst', level: 2.2, detail: 'Burst from Zed (assassin, 7/2)' },
+      { tag: 'magicPen', label: 'Magic pen', level: 1.4, detail: 'Magic Resist on Vi (55 Magic Resist from items) and Darius (40 Magic Resist from items)' },
+      { tag: 'antiHeal', label: 'Anti-heal', level: 1.2, detail: 'Healing from Darius (Ravenous Hydra) and Vi (Sundered Sky)' },
+    ],
+    items: [
+      { ...banshee, reason: 'Burst from Zed (assassin, 7/2)', score: 2.5 },
+      {
+        id: 3135, name: 'Void Staff', tag: 'magicPen', label: 'Magic pen', score: 1.8, started: true, offPool: false, games: 247, winRate: 138 / 247,
+        reason: 'Magic Resist on Vi (55 Magic Resist from items) and Darius (40 Magic Resist from items)',
+      },
+      {
+        id: 3165, name: 'Morellonomicon', tag: 'antiHeal', label: 'Anti-heal', score: 1.3, started: false, offPool: false, games: 120, winRate: 61 / 120,
+        reason: 'Healing from Darius (Ravenous Hydra) and Vi (Sundered Sky)',
+      },
+    ],
+  };
 }
 
 /** A Swiftplay lobby with a champion picked for one of the two positions. */
@@ -290,8 +330,10 @@ const roles: Record<number, string[]> = {
   555: ['support', 'assassin'], 1: ['mage', 'support'], 84: ['assassin'],
 };
 
-function demoItem(id: number, name: string, priceTotal: number, file: string, stats: string[], desc: string, categories: string[]): ItemInfo {
-  return { id, name, priceTotal, iconPath: `/lol-game-data/assets/ASSETS/Items/Icons2D/${file}`, stats, desc, categories };
+function demoItem(
+  id: number, name: string, priceTotal: number, file: string, stats: string[], desc: string, categories: string[], situations: SituationTag[] = [],
+): ItemInfo {
+  return { id, name, priceTotal, iconPath: `/lol-game-data/assets/ASSETS/Items/Icons2D/${file}`, stats, desc, categories, into: [], situations };
 }
 
 export function demoStatic(): StaticData {
@@ -308,10 +350,12 @@ export function demoStatic(): StaticData {
       demoItem(6655, "Luden's Companion", 2850, '6655_Mage_T4_LudensTempest.png', ['100 Ability Power', '600 Mana', '10 Ability Haste'], 'Echo\nDamaging abilities fire bonus magic damage at the target and nearby enemies.', ['SpellDamage', 'Mana', 'AbilityHaste']),
       demoItem(1058, 'Needlessly Large Rod', 1200, '1058_Mage_T1_LargeRod.png', ['60 Ability Power'], '', ['SpellDamage']),
       demoItem(3089, "Rabadon's Deathcap", 3600, '3089_Mage_T3_Deathcap.png', ['130 Ability Power'], 'Magical Opus\nIncreases your total Ability Power.', ['SpellDamage']),
-      demoItem(3157, "Zhonya's Hourglass", 3250, '3157_Mage_T3_ZhonyasHourglass.png', ['105 Ability Power', '50 Armor'], 'Time Stop\nBecome invulnerable and untargetable for a short time, but unable to act.', ['SpellDamage', 'Armor', 'Active']),
+      demoItem(3157, "Zhonya's Hourglass", 3250, '3157_Mage_T3_ZhonyasHourglass.png', ['105 Ability Power', '50 Armor'], 'Time Stop\nBecome invulnerable and untargetable for a short time, but unable to act.', ['SpellDamage', 'Armor', 'Active'], ['armor', 'survive']),
       demoItem(3118, 'Malignance', 2700, '3118_Malignance.png', ['80 Ability Power', '600 Mana', '25 Ability Haste'], 'Scorn\nGain Ultimate Ability Haste.\nHatefog\nYour ultimate burns the ground and lowers Magic Resist of enemies inside.', ['SpellDamage', 'Mana', 'AbilityHaste']),
       demoItem(4645, 'Shadowflame', 3200, '4645_Shadowflame.png', ['110 Ability Power', '15 Magic Penetration'], 'Cinderbloom\nMagic and true damage crit against low health enemies.', ['SpellDamage', 'MagicPenetration']),
-      demoItem(3135, 'Void Staff', 3000, '3135_Mage_T3_VoidStaff.png', ['95 Ability Power', '40% Magic Penetration'], '', ['SpellDamage', 'MagicPenetration']),
+      demoItem(3135, 'Void Staff', 3000, '3135_Mage_T3_VoidStaff.png', ['95 Ability Power', '40% Magic Penetration'], '', ['SpellDamage', 'MagicPenetration'], ['magicPen']),
+      demoItem(3102, "Banshee's Veil", 3000, '3102_Mage_T3_BansheesVeil.png', ['105 Ability Power', '40 Magic Resist'], 'Annul\nGrants a Spell Shield that blocks the next enemy ability.', ['SpellDamage', 'SpellBlock'], ['magicResist', 'survive']),
+      demoItem(3165, 'Morellonomicon', 2950, '3165_Mage_T3_Morellonomicon.png', ['75 Ability Power', '350 Health'], 'Affliction\nDealing magic damage applies 40% Grievous Wounds to enemy champions.', ['SpellDamage', 'Health'], ['antiHeal']),
       demoItem(3100, 'Lich Bane', 3200, '3100_Mage_T3_Lichbane.png', ['100 Ability Power', '10% Move Speed'], 'Spellblade\nYour next attack after using an ability deals bonus magic damage.', ['SpellDamage', 'NonbootsMovement']),
       demoItem(3158, 'Ionian Boots of Lucidity', 900, '3158_Class_T2_IonianBootsofLucidity.png', ['10 Ability Haste', '45 Move Speed'], '', ['Boots', 'AbilityHaste']),
       demoItem(3111, "Mercury's Treads", 1250, '3111_Class_T2_MercurysTreads.png', ['20 Magic Resist', '45 Move Speed', '30% Tenacity'], '', ['Boots', 'SpellBlock', 'Tenacity']),
@@ -363,6 +407,7 @@ export function demoConfig(): Config {
     showSkillHint: true,
     showTimers: true,
     showLaneDiff: true,
+    showSituational: true,
     abilityKeys: { q: 'Q', w: 'W', e: 'E', r: 'R' },
     scoutInChampSelect: true,
     scoutOnLoading: true,
@@ -441,6 +486,7 @@ export function demoRec(withMatchup = true): RecState {
         [set([3089], 950, 540), set([3157], 739, 446), set([3135], 247, 138)],
         [set([3089], 148, 96), set([3135], 126, 64), set([3157], 116, 64)],
       ],
+      situationalPool: [set([3089], 950, 540), set([3157], 739, 446), set([3135], 247, 138), set([3102], 210, 112), set([3165], 120, 61), set([3100], 90, 47)],
       buildOrder: [3118, 3020, 4645, 3157, 3089, 3135],
       games: 6015,
       source: 'OP.GG',

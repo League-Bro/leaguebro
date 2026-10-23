@@ -1,4 +1,4 @@
-import { Component, ElementRef, afterRenderEffect, computed, inject, viewChild } from '@angular/core';
+import { Component, ElementRef, afterRenderEffect, computed, inject, signal, viewChild } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { clock } from '../core/assets';
@@ -25,6 +25,10 @@ const PREVIEW: OverlayState = {
   skillMax: ['Q', 'W', 'E'],
   nextSkill: 'Q',
   lane: { opponent: 'Zed', mine: 5350, theirs: 3967 },
+  situational: [
+    { id: 3102, name: "Banshee's Veil", tag: 'survive', label: 'Survive burst', reason: 'Burst from Zed (assassin, 7/2)', score: 2, started: false, offPool: false, games: 210, winRate: 0.53 },
+    { id: 3165, name: 'Morellonomicon', tag: 'antiHeal', label: 'Anti-heal', reason: 'Healing from Darius (Ravenous Hydra)', score: 1.2, started: false, offPool: false, games: 120, winRate: 0.51 },
+  ],
 };
 
 @Component({
@@ -86,6 +90,24 @@ const PREVIEW: OverlayState = {
           </div>
         } @else if (o.hasBuild) {
           <div class="build"><div class="cap">Build complete</div></div>
+        }
+        @if (showSit() && o.situational.length) {
+          <div class="build sit">
+            <div class="cap">Situational · vs this team</div>
+            @for (it of expanded() ? o.situational : o.situational.slice(0, 1); track it.id) {
+              <div class="item" [title]="it.reason">
+                @if (rift.itemIcon(it.id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+                <span class="name">{{ it.name }}</span>
+                <span class="tag" [class.started]="it.started">{{ it.started ? 'Started' : it.label }}</span>
+              </div>
+              <div class="why">{{ it.reason }}</div>
+            }
+            @if (o.situational.length > 1) {
+              <button #moreBtn class="more" (click)="expanded.set(!expanded())">
+                {{ expanded() ? 'Show fewer' : '+' + (o.situational.length - 1) + ' more counter' + (o.situational.length > 2 ? 's' : '') }}
+              </button>
+            }
+          </div>
         }
         @if (preview() && !rift.overlay()) {
           <div class="cap center">Preview</div>
@@ -150,6 +172,18 @@ const PREVIEW: OverlayState = {
     .item .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .item .price { font: 12px var(--mono); color: var(--text-faint); }
     .item.ready .price { color: var(--win); }
+    .sit .tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); white-space: nowrap; }
+    .sit .tag.started { color: var(--win); }
+    /* One line each, so the expanded list fits the window; the full reason is the row's tooltip. */
+    .sit .why {
+      margin: -2px 0 2px 32px; font-size: 11.5px; color: var(--text-dim); line-height: 1.3;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .more {
+      all: unset; position: relative; z-index: 11; align-self: flex-start; margin-left: 32px;
+      font-size: 11px; color: var(--accent); cursor: pointer; padding: 1px 6px; border-radius: 5px;
+    }
+    .more:hover { background: rgba(255, 79, 163, 0.16); }
   `,
 })
 export class Overlay {
@@ -160,14 +194,24 @@ export class Overlay {
   // Overlay-only switches: the Live tab's in-game bar still shows both.
   protected readonly showTimers = computed(() => this.rift.config()?.showTimers ?? true);
   protected readonly showLane = computed(() => this.rift.config()?.showLaneDiff ?? true);
+  protected readonly showSit = computed(() => this.rift.config()?.showSituational ?? true);
+  protected readonly expanded = signal(false);
   protected readonly locked = this.rift.overlayLocked;
   protected time = clock;
   private readonly lockBtn = viewChild<ElementRef<HTMLElement>>('lockBtn');
+  private readonly moreBtn = viewChild<ElementRef<HTMLElement>>('moreBtn');
 
   constructor() {
     afterRenderEffect(() => {
-      const r = this.lockBtn()?.nativeElement.getBoundingClientRect();
-      this.rift.setOverlayButton(r ? [r.x, r.y, r.width, r.height] : null);
+      // Both buttons stay clickable while the rest of the locked overlay is click-through.
+      // Re-measured on every update: rows above "more" (timers, items) move it.
+      this.state();
+      this.expanded();
+      const rects = [this.lockBtn(), this.moreBtn()]
+        .map((b) => b?.nativeElement.getBoundingClientRect())
+        .filter((r): r is DOMRect => !!r)
+        .map((r): [number, number, number, number] => [r.x, r.y, r.width, r.height]);
+      this.rift.setOverlayButtons(rects);
     });
   }
 

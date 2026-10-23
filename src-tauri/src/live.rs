@@ -7,6 +7,7 @@
 
 use crate::util::{float, int, list, text};
 use crate::config::TimerConfig;
+use crate::situational::SituationalItem;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -52,6 +53,8 @@ pub struct OverlayState {
     pub next_skill: Option<String>,
     /// Your item value against your lane opponent's; None without roles (ARAM etc.).
     pub lane: Option<LaneDiff>,
+    /// Situational items for this game, best first (empty when off in Settings).
+    pub situational: Vec<SituationalItem>,
 }
 
 /// Item value (total cost of the items each of you holds). The game doesn't
@@ -111,6 +114,36 @@ pub fn next_skill(data: &Value, order: &[String]) -> Option<String> {
         return None;
     }
     order.get(spent as usize).cloned()
+}
+
+/// An enemy as the scoreboard shows them.
+pub struct ScoreboardEnemy {
+    pub champion_name: String,
+    pub items: Vec<i64>,
+    pub kills: i64,
+    pub deaths: i64,
+    pub assists: i64,
+}
+
+/// The other team, with their items and scores.
+pub fn enemies(data: &Value) -> Vec<ScoreboardEnemy> {
+    let Some(team) = find_me(data).map(|p| text(p, "team")) else { return Vec::new() };
+    list(data, "allPlayers")
+        .iter()
+        .filter(|p| text(p, "team") != team)
+        .map(|p| ScoreboardEnemy {
+            champion_name: text(p, "championName").to_string(),
+            items: list(p, "items").iter().map(|i| int(i, "itemID")).collect(),
+            kills: int(p, "/scores/kills"),
+            deaths: int(p, "/scores/deaths"),
+            assists: int(p, "/scores/assists"),
+        })
+        .collect()
+}
+
+/// Your item ids.
+pub fn my_items(data: &Value) -> Vec<i64> {
+    find_me(data).map(|p| list(p, "items").iter().map(|i| int(i, "itemID")).collect()).unwrap_or_default()
 }
 
 /// Every player's identifying names, so event KillerName can be matched.
@@ -232,7 +265,7 @@ pub fn next_items(
     limit: usize,
 ) -> Vec<NextItem> {
     let gold = float(data, "/activePlayer/currentGold");
-    let mut owned_left: Vec<i64> = find_me(data).map(|p| list(p, "items").iter().map(|i| int(i, "itemID")).collect()).unwrap_or_default();
+    let mut owned_left = my_items(data);
     let mut out = Vec::new();
     for id in build {
         // Each owned copy satisfies one entry, so a build listing an item
@@ -273,6 +306,7 @@ pub fn overlay_state(
         skill_max: guide.skill_max.to_vec(),
         next_skill: next_skill(data, guide.skill_order),
         lane: lane_diff(data, items),
+        situational: Vec::new(),
     }
 }
 
@@ -363,6 +397,17 @@ mod tests {
             p["position"] = json!("");
         }
         assert_eq!(lane_diff(&d, &items), None);
+    }
+
+    #[test]
+    fn scoreboard_enemies() {
+        let mut d = sample(600.0, json!([]));
+        d["allPlayers"][2]["items"] = json!([{"itemID": 3075}]);
+        d["allPlayers"][2]["scores"] = json!({"kills": 5, "deaths": 2, "assists": 1});
+        let foes = enemies(&d);
+        assert_eq!(foes.len(), 1);
+        assert_eq!((foes[0].champion_name.as_str(), foes[0].items.clone(), foes[0].kills, foes[0].deaths), ("Zed", vec![3075], 5, 2));
+        assert_eq!(my_items(&d), vec![1056, 3020]);
     }
 
     #[test]

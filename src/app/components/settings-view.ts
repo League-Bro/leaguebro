@@ -12,7 +12,8 @@ type BoolKey =
   | 'importOnHover'
   | 'reuseCurrentPageWhenFull'
   | 'showTimers'
-  | 'showLaneDiff';
+  | 'showLaneDiff'
+  | 'showSituational';
 
 @Component({
   selector: 'rl-settings',
@@ -76,6 +77,11 @@ type BoolKey =
             <input type="checkbox" [checked]="cfg.useRecommendedBuilds" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('useRecommendedBuilds', $any($event.target).checked)" />
             <span class="track"></span>
             <span class="label"><b>Next items to buy</b><span>The next two items from OP.GG's build, priced green when you can afford them.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
+          </label>
+          <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
+            <input type="checkbox" [checked]="cfg.showSituational" [disabled]="cfg.recSource !== 'opgg'" (change)="setBool('showSituational', $any($event.target).checked)" />
+            <span class="track"></span>
+            <span class="label"><b>Situational items</b><span>The best counter item for this game from OP.GG's 4th–6th item options, updated as enemies buy items, with a button for the rest. The Live tab shows them either way.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
           </label>
         </section>
 

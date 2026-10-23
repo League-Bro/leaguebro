@@ -256,6 +256,8 @@ export interface Recommendation {
   boots: ItemSet | null;
   core: ItemSet | null;
   later: ItemSet[][];
+  /** Every 4th–6th item option with enough games, most played first: what situational picks rank. */
+  situationalPool: ItemSet[];
   buildOrder: number[];
   games: number;
   source: string;
@@ -352,6 +354,8 @@ export interface OverlayState {
   nextSkill: string | null;
   /** Your item value vs your lane opponent's; null without roles (ARAM etc.). */
   lane: LaneDiff | null;
+  /** Situational items for this game, best first (empty when off in Settings). */
+  situational: SituationalItem[];
 }
 
 export interface Snapshot {
@@ -364,6 +368,54 @@ export interface Snapshot {
   rec: RecState | null;
   postGame: PostGame | null;
   swiftplay: SwiftplaySlot[];
+  situational: SituationalState | null;
+}
+
+/** What an item is good against (`situational.rs`). */
+export type SituationTag =
+  | 'antiHeal'
+  | 'armorPen'
+  | 'magicPen'
+  | 'antiShield'
+  | 'antiTank'
+  | 'armor'
+  | 'magicResist'
+  | 'survive'
+  | 'cleanse';
+
+/** One kind of threat on the enemy team, e.g. healing. */
+export interface Threat {
+  tag: SituationTag;
+  /** Short name for a chip, e.g. "Anti-heal". */
+  label: string;
+  /** Roughly 1 = worth answering, 2+ = a lot of it. */
+  level: number;
+  /** Who it comes from, e.g. "Healing from Soraka and Draven (Bloodthirster)". */
+  detail: string;
+}
+
+export interface SituationalItem {
+  id: number;
+  name: string;
+  tag: SituationTag;
+  label: string;
+  /** Why, naming the enemies. */
+  reason: string;
+  score: number;
+  /** You own a component that builds into it. */
+  started: boolean;
+  /** Not one of OP.GG's options for your champion (anti-heal fallback). */
+  offPool: boolean;
+  games: number;
+  winRate: number;
+}
+
+/** Situational items for the current game: champ select picks, then the live scoreboard. */
+export interface SituationalState {
+  championId: number;
+  live: boolean;
+  threats: Threat[];
+  items: SituationalItem[];
 }
 
 export interface PostPlayer {
@@ -430,6 +482,10 @@ export interface ItemInfo {
   desc: string;
   /** Client shop categories, e.g. ["SpellDamage", "Mana"]. */
   categories: string[];
+  /** Items this one builds into. */
+  into: number[];
+  /** What it's good against, e.g. ["antiHeal"]. */
+  situations: SituationTag[];
 }
 
 export interface PerkInfo {
@@ -548,6 +604,8 @@ export interface Config {
   showTimers: boolean;
   /** Item value vs your lane opponent on the overlay. */
   showLaneDiff: boolean;
+  /** The top situational item (and a "more" list) on the overlay. */
+  showSituational: boolean;
   /** The player's ability keybinds, shown in place of Q/W/E/R. */
   abilityKeys: AbilityKeys;
   scoutInChampSelect: boolean;

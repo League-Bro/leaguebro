@@ -2,7 +2,8 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { assetUrl, championIcon } from '../core/assets';
-import { ItemSet, MIN_GAMES, RecChoice, RecState, RuneRec } from '../core/models';
+import { ItemSet, MIN_GAMES, RecChoice, RecState, Recommendation, RuneRec } from '../core/models';
+import { SituationalCard } from './situational-card';
 import { buildWhy, rolesLabel } from '../core/why';
 
 /** One of OP.GG's options in a pick list: icons, a name, and its win and play rates. */
@@ -17,7 +18,7 @@ interface ChoiceRow {
 /** OP.GG's recommendation for your current champion: runes, spells, skills, items. */
 @Component({
   selector: 'rl-rec-card',
-  imports: [DecimalPipe, NgTemplateOutlet],
+  imports: [DecimalPipe, NgTemplateOutlet, SituationalCard],
   template: `
     @if (rift.config()?.recSource === 'opgg' && state(); as s) {
       <section class="card rec">
@@ -238,6 +239,7 @@ interface ChoiceRow {
                 }
               </section>
             }
+            <rl-situational class="wide" [pool]="r.situationalPool" [core]="coreIds(r)" [state]="situational()" [championId]="s.championId" />
           </div>
           @if (pickBusy()) {
             <p class="muted small">Applying your pick…</p>
@@ -340,7 +342,9 @@ interface ChoiceRow {
       display: flex; flex-direction: column; gap: 14px; min-width: 0;
       padding: 14px 16px 16px; border-radius: var(--radius-sm); background: var(--bg-hover); border: 1px solid var(--line);
     }
-    .panel.wide { grid-column: 1 / -1; }
+    .panel.wide, rl-situational.wide { grid-column: 1 / -1; }
+    /* No situational items to show: no empty grid row either. */
+    rl-situational:empty { display: none; }
     .panel header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
     .panel h4 { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
     .hint { font-size: 12px; color: var(--text-faint); }
@@ -515,6 +519,16 @@ export class RecCard {
     const r = m?.matchup?.rec;
     return m && r && r.games >= MIN_GAMES ? { opponentId: m.opponentId, games: r.games, winRate: m.matchup!.winRate } : null;
   });
+
+  /** Situational picks for this game (champ select or live), for the champion shown; none on the Champions tab. */
+  protected readonly situational = computed(() => {
+    const sit = this.lookup() === undefined ? this.rift.situational() : null;
+    return sit && sit.championId === this.state()?.championId ? sit : null;
+  });
+
+  coreIds(r: Recommendation): number[] {
+    return [...(r.core?.ids ?? []), ...(r.boots?.ids ?? [])];
+  }
 
   /** Switches between the build from all games and the one against your lane opponent. */
   async pickSource(vs: boolean): Promise<void> {
