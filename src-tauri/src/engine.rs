@@ -6,6 +6,7 @@ use crate::config::Config;
 use crate::itemsets;
 use crate::lcu::{self, Lcu};
 use crate::live::{self, OverlayState};
+use crate::matchup::{self, MatchupState};
 use crate::opgg::{self, OpGg, RecChoice, Recommendation};
 use crate::postgame::{self, PostGame};
 use crate::runes;
@@ -181,13 +182,22 @@ pub struct RecState {
     /// The rune page, spells and build the player picked. Starts on the top
     /// options for each new champion/role.
     pub choice: RecChoice,
+    /// Your lane opponent and how you match up (lane modes, once enemies pick).
+    pub matchup: Option<MatchupState>,
 }
 
 impl RecState {
-    /// The recommendation with the player's picks in place; what imports,
-    /// the shop build and the overlay use.
+    /// OP.GG's build against the lane opponent, when there are enough games.
+    fn matchup_rec(&self) -> Option<&Recommendation> {
+        let m = self.matchup.as_ref()?.matchup.as_ref()?;
+        m.rec.as_ref().filter(|r| r.games >= opgg::MIN_GAMES)
+    }
+
+    /// The recommendation with the player's picks in place (the matchup build
+    /// if they chose it); what imports, the shop build and the overlay use.
     pub fn effective(&self) -> Option<Recommendation> {
-        self.rec.as_ref().map(|r| opgg::with_choice(r, &self.choice))
+        let base = if self.choice.matchup { self.matchup_rec().or(self.rec.as_ref()) } else { self.rec.as_ref() };
+        base.map(|r| opgg::with_choice(r, &self.choice))
     }
 
     /// As the UI gets it: `rec` already has the picks in place.
@@ -214,11 +224,13 @@ pub struct Shared {
     pub post_game: Option<PostGame>,
     /// Slots of the Swiftplay lobby you're in (empty otherwise).
     pub swiftplay: Vec<SwiftplaySlot>,
+    /// The lane opponent the player chose in champ select (0 = none); None = guess.
+    pub opponent_pick: Option<i64>,
 }
 
 impl Shared {
     /// The map you're on; Summoner's Rift (11) until known.
-    fn map(&self) -> i64 {
+    pub(crate) fn map(&self) -> i64 {
         if self.map_id == 0 { 11 } else { self.map_id }
     }
 
@@ -569,6 +581,8 @@ struct Engine {
     last_connect_try: Option<Instant>,
     last_import_key: Option<(i64, String)>,
     last_rec_key: Option<(i64, String)>,
+    /// Champion, position, enemy picks and opponent pick the matchup was worked out for.
+    last_matchup_key: Option<MatchupKey>,
     /// Swiftplay lobby slots (champion, position) already imported.
     last_slot_keys: Vec<(i64, String)>,
     requested: HashSet<String>,
@@ -740,10 +754,11 @@ impl Engine {
     /// Forgets the last game's teams, recommendation and summary; returns its teams.
     async fn clear_game(&mut self) -> Option<LoadingView> {
         self.last_rec_key = None;
+        self.last_matchup_key = None;
         let loading = {
             let state = self.state();
             let mut sh = state.shared.lock().await;
-            (sh.my_champion_id, sh.rec, sh.post_game) = (0, None, None);
+            (sh.my_champion_id, sh.rec, sh.post_game, sh.opponent_pick) = (0, None, None, None);
             sh.loading.take()
         };
         let _ = self.app.emit("loading", Option::<LoadingView>::None);
@@ -861,6 +876,14 @@ impl Engine {
             tauri::async_runtime::spawn(async move {
                 ensure_rec(&app, champ, &pos, None).await;
             });
+        }
+        // The lane matchup, once you've locked in (and again when the enemy picks change).
+        let opponent_pick = self.state().shared.lock().await.opponent_pick;
+        let matchup_key = matchup_key(&view, opponent_pick);
+        if matchup_key.is_some() && self.last_matchup_key != matchup_key {
+            self.last_matchup_key = matchup_key;
+            let app = self.app.clone();
+            tauri::async_runtime::spawn(async move { matchup::refresh(&app).await });
         }
         let should_import = cfg.auto_import_runes
             && view.my_champion_id != 0
@@ -1097,7 +1120,7 @@ pub async fn import_for(app: &AppHandle, champion_id: i64, position: &str) -> Re
     Ok(format!("{result}{spells}{items}"))
 }
 
-async fn publish_import(app: &AppHandle, champion_id: i64, result: Result<String, String>) -> ImportEvent {
+pub(crate) async fn publish_import(app: &AppHandle, champion_id: i64, result: Result<String, String>) -> ImportEvent {
     let ev = match result {
         Ok(m) => ImportEvent { ok: true, champion_id, message: m },
         Err(m) => ImportEvent { ok: false, champion_id, message: m },
@@ -1306,13 +1329,17 @@ pub async fn ensure_rec(app: &AppHandle, champion_id: i64, position: &str, live_
         (sh.opgg_alias(champion_id), mode, sh.lcu.clone())
     };
     let (Some(alias), Some(game_mode)) = (alias, game_mode) else { return None };
-    let publish = |rs: RecState| async move {
+    let publish = |mut rs: RecState| async move {
         let state = app.state::<AppState>();
         let mut sh = state.shared.lock().await;
         // A slower lookup for a champion you've since swapped off of
         // shouldn't replace the current one.
         if sh.my_champion_id != 0 && sh.my_champion_id != rs.champion_id {
             return;
+        }
+        // The matchup is loaded on its own (matchup.rs); keep it.
+        if let Some(old) = sh.rec.as_ref().filter(|r| r.champion_id == rs.champion_id && r.position == rs.position) {
+            rs.matchup = old.matchup.clone();
         }
         sh.rec = Some(rs.clone());
         drop(sh);
@@ -1330,6 +1357,16 @@ pub async fn ensure_rec(app: &AppHandle, champion_id: i64, position: &str, live_
             None
         }
     }
+}
+
+type MatchupKey = (i64, String, Vec<i64>, Option<i64>);
+
+/// What the lane matchup depends on, or None before you've locked in: each
+/// lookup costs OP.GG's slow guide call and a match history read, so hovering
+/// through champions doesn't start one.
+fn matchup_key(view: &ChampSelectView, opponent_pick: Option<i64>) -> Option<MatchupKey> {
+    let enemies = view.enemies.iter().map(|e| e.champion_id).collect();
+    (view.locked && view.my_champion_id != 0).then(|| (view.my_champion_id, view.my_position.clone(), enemies, opponent_pick))
 }
 
 /// OP.GG game mode from the live game's gameMode.
@@ -1368,6 +1405,7 @@ pub async fn run(app: AppHandle) {
         last_connect_try: None,
         last_import_key: None,
         last_rec_key: None,
+        last_matchup_key: None,
         last_slot_keys: Vec::new(),
         requested: HashSet::new(),
         loading_game_id: None,
@@ -1393,6 +1431,22 @@ pub async fn run(app: AppHandle) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn matchup_waits_for_lock_in() {
+        let enemy = |id| CsPlayer { champion_id: id, ..Default::default() };
+        let mut view = ChampSelectView { my_champion_id: 103, my_position: "middle".into(), enemies: vec![enemy(238), enemy(0)], ..Default::default() };
+        // Hovering Ahri: no lookup.
+        assert_eq!(matchup_key(&view, None), None);
+        view.locked = true;
+        let key = matchup_key(&view, None);
+        assert_eq!(key, Some((103, "middle".to_string(), vec![238, 0], None)));
+        // After lock-in it follows the enemy picks and the player's opponent pick.
+        view.enemies[1].champion_id = 64;
+        assert_ne!(matchup_key(&view, None), key);
+        assert_ne!(matchup_key(&view, Some(64)), matchup_key(&view, None));
+        assert_eq!(matchup_key(&ChampSelectView { locked: true, ..Default::default() }, None), None);
+    }
 
     #[test]
     fn swiftplay_perks_helpers() {

@@ -3,6 +3,7 @@ import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { PlayerCard } from './player-card';
 import { RecCard } from './rec-card';
+import { MatchupCard } from './matchup-card';
 import { PostGameView } from './post-game';
 import { FullscreenHint } from './fullscreen-hint';
 import { championIcon, clock, positionLabel } from '../core/assets';
@@ -10,7 +11,7 @@ import { ImportEvent } from '../core/models';
 
 @Component({
   selector: 'rl-live',
-  imports: [PlayerCard, RecCard, PostGameView, DecimalPipe, FullscreenHint],
+  imports: [PlayerCard, RecCard, MatchupCard, PostGameView, DecimalPipe, FullscreenHint],
   template: `
     @if (rift.fullscreenHint()) {
       <rl-fullscreen-hint class="top-hint" />
@@ -50,6 +51,7 @@ import { ImportEvent } from '../core/models';
         </div>
         <button class="primary" [disabled]="!cs.myChampionId || busy()" (click)="importNow()">Import now</button>
       </section>
+      <rl-matchup />
       <rl-rec-card />
 
       <h3 class="section">Your team</h3>
@@ -103,6 +105,7 @@ import { ImportEvent } from '../core/models';
           }
         </section>
       }
+      <rl-matchup />
       <rl-rec-card />
       <div class="row head">
         <h3 class="section">{{ l.queueName || 'Game' }}</h3>

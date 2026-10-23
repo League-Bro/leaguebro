@@ -288,6 +288,10 @@ pub struct RecChoice {
     pub spells: usize,
     pub core: usize,
     pub boots: usize,
+    /// Use OP.GG's build against the lane opponent instead of the overall one
+    /// (the indexes then pick from the matchup's options). Champ select only.
+    #[serde(default)]
+    pub matchup: bool,
 }
 
 /// The recommendation with the picked options in place of the top ones, so
@@ -665,7 +669,7 @@ pub fn expires_at(fetched_at: u64) -> u64 {
     (fetched_at + keep).min(next)
 }
 
-/// A saved answer: a `Recommendation`, or a `Matchup` (files starting `m-`).
+/// A saved answer: a `Recommendation`, or a `Matchup` (files starting `rec-m-`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Saved<T> {
     format: u32,
@@ -1138,7 +1142,7 @@ mod tests {
         assert_eq!(with_choice(&r, &RecChoice::default()), r);
 
         // Picking Teleport, the Rabadon's core and Ionian boots flows into spells and the build.
-        let picked = with_choice(&r, &RecChoice { runes: 1, spells: 1, core: 1, boots: 1 });
+        let picked = with_choice(&r, &RecChoice { runes: 1, spells: 1, core: 1, boots: 1, matchup: false });
         assert_eq!(picked.spells, vec![4, 12]);
         assert_eq!(picked.spell_stats.as_ref().unwrap().games, 3639);
         assert_eq!(picked.runes.as_ref(), Some(&r.rune_options[1]));
@@ -1161,6 +1165,62 @@ mod tests {
         // The top one stays even when it's rare.
         let data = json!({ "data": { "summoner_spells_options": [opt(3), opt(2)] } });
         assert_eq!(extract(&data, 103, "mid", "ranked").unwrap().spell_options.len(), 1);
+    }
+
+    #[test]
+    fn ahri_vs_zed_matchup() {
+        // Real answers for Ahri mid vs Zed (October 2026): the website API with
+        // ?target_champion=238 and the MCP lane guide.
+        let main: Value = serde_json::from_str(&fixture("opgg_web_ahri_vs_zed.json")).unwrap();
+        let builds: Value = serde_json::from_str(&fixture("opgg_web_ahri_vs_zed_builds.json")).unwrap();
+        let guide: Value = serde_json::from_str(&fixture("opgg_mcp_ahri_vs_zed.json")).unwrap();
+        let m = parse_matchup(&main, &builds, "AP", Some(&guide), 103, 238, "mid", "ranked").unwrap();
+        assert_eq!((m.games, m.opponent_id), (852, 238));
+        assert!((m.win_rate - 423.0 / 852.0).abs() < 1e-9);
+        let rec = m.rec.as_ref().unwrap();
+        // The matchup's own numbers, far fewer games than Ahri's overall page.
+        assert_eq!(rec.runes.as_ref().unwrap().perk_ids, vec![8112, 8139, 8140, 8106, 8210, 8226, 5005, 5008, 5001]);
+        assert_eq!(rec.games, 462);
+        assert_eq!(rec.spells, vec![4, 14]);
+        assert!(!rec.later.is_empty());
+        let tip = m.tip.unwrap();
+        assert_eq!((tip.lane_advantage.as_str(), tip.solo_kills.as_str(), tip.play_style.as_str()), ("them", "them", "even"));
+        assert!(tip.text.starts_with("Do not use Charm"));
+
+        // The website failed: the guide alone gives the same matchup.
+        let g = parse_matchup(&guide, &guide, "AP", Some(&guide), 103, 238, "mid", "ranked").unwrap();
+        assert_eq!(g.games, 852);
+        assert_eq!(g.rec.unwrap().runes.unwrap().perk_ids, rec.runes.as_ref().unwrap().perk_ids);
+    }
+
+    #[test]
+    fn matchup_tip_sides() {
+        let guide = |lane: &str, kills: &str| {
+            json!({ "my_champion": "Darius", "opponent_champion": "Teemo", "data": {
+                "opponent_champion_tip": " Keep your distance. ", "lane_advantage_champion": lane,
+                "lane_solo_kill_advantage_champion": kills, "recommended_play_style": "Aggressive" } })
+        };
+        let t = matchup_tip(&guide("EVEN", "Darius")).unwrap();
+        assert_eq!((t.text.as_str(), t.lane_advantage.as_str(), t.solo_kills.as_str(), t.play_style.as_str()),
+                   ("Keep your distance.", "even", "you", "aggressive"));
+        assert_eq!(matchup_tip(&guide("Teemo", "")).unwrap().solo_kills, "");
+        assert!(matchup_tip(&json!({ "data": {} })).is_none());
+    }
+
+    /// Hits OP.GG for real: `cargo test live_matchup -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn live_matchup() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let op = OpGg::new(None);
+        rt.block_on(async {
+            let t = std::time::Instant::now();
+            let m = op.matchup(103, "Ahri", 238, "Zed", "middle", "ranked", None).await.unwrap();
+            let rec = m.rec.as_ref().unwrap();
+            println!("Ahri vs Zed in {} ms: {} games, {:.1}% win, page {} games, tip: {:?}",
+                     t.elapsed().as_millis(), m.games, m.win_rate * 100.0, rec.games, m.tip);
+            assert!(m.games > 0 && rec.games > 0 && m.tip.is_some());
+        });
     }
 
     /// Hits OP.GG for real and prints how long each source takes:
@@ -1271,13 +1331,13 @@ mod tests {
         let rec = extract(&parse_compact(&fixture("ahri_mid_full.txt")).unwrap(), 103, "mid", "ranked").unwrap();
         let disk = DiskCache { dir: Some(dir.clone()) };
         let now = now_secs();
-        disk.write(&rec_file("103:mid:ranked"), &SavedRec { format: CACHE_FORMAT, fetched_at: now, rec: rec.clone() });
+        disk.write(&rec_file("103:mid:ranked"), &Saved { format: CACHE_FORMAT, fetched_at: now, rec: rec.clone() });
         // A new client (as after restarting the app) reads it without the network.
         let client = OpGg::new(Some(dir.clone()));
         let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
         assert_eq!(rt.block_on(client.recommend(103, "Ahri", "middle", "ranked", None)).unwrap(), rec);
         // Saved in an older format: not used.
-        let old = SavedRec { format: CACHE_FORMAT + 1, fetched_at: now, rec: rec.clone() };
+        let old = Saved { format: CACHE_FORMAT + 1, fetched_at: now, rec: rec.clone() };
         assert!(!old.is_fresh(now));
         // Clearing removes the saved files and leaves anything else alone.
         std::fs::write(dir.join("keep.txt"), "x").unwrap();
@@ -1292,7 +1352,7 @@ mod tests {
     #[test]
     fn expired_answers_only_stand_in_within_the_patch() {
         let at = |s: &str| crate::patch::iso_to_secs(s).unwrap();
-        let saved = |fetched_at| SavedRec { format: CACHE_FORMAT, fetched_at, rec: Recommendation::default() };
+        let saved = |fetched_at| Saved { format: CACHE_FORMAT, fetched_at, rec: Recommendation::default() };
         // 26.21's notes came out Oct 20 12:00 UTC.
         let now = at("2026-10-25T00:00:00Z");
         assert!(saved(at("2026-10-21T00:00:00Z")).is_this_patch(now));

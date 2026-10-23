@@ -349,6 +349,26 @@ pub fn insights<'a>(matches: impl IntoIterator<Item = &'a MatchLine>) -> Insight
     ins
 }
 
+/// Your recent games (the few dozen the client keeps) with `opponent_id` as
+/// your lane opponent, remakes left out. Uses the same full-record fetches as
+/// the Profile page, kept for the session.
+pub async fn record_against(lcu: &Lcu, opponent_id: i64) -> anyhow::Result<ChampStat> {
+    let me = lcu.get_req("/lol-summoner/v1/current-summoner").await?;
+    let puuid = text(&me, "puuid").to_string();
+    let history = lcu.get_req(&format!("/lol-match-history/v1/products/lol/{puuid}/matches?begIndex=0&endIndex=99")).await?;
+    let mut matches = parse_matches(&history);
+    fill_opponents(lcu, &puuid, &mut matches).await;
+    Ok(lane_record(&matches, opponent_id))
+}
+
+fn lane_record(matches: &[MatchLine], opponent_id: i64) -> ChampStat {
+    let mut stats = HashMap::new();
+    for m in matches.iter().filter(|m| m.result != "remake" && m.lane_opponent == Some(opponent_id)) {
+        add(&mut stats, opponent_id, m);
+    }
+    stats.remove(&opponent_id).unwrap_or(ChampStat { champion_id: opponent_id, ..Default::default() })
+}
+
 pub async fn load(lcu: &Lcu) -> anyhow::Result<MyProfile> {
     let me = lcu.get_req("/lol-summoner/v1/current-summoner").await?;
     let puuid = text(&me, "puuid").to_string();
@@ -509,6 +529,8 @@ mod tests {
         m[1].result = "loss".into();
         let ins = insights(&m);
         assert_eq!(ins.toughest_lanes, vec![ChampStat { champion_id: 238, games: 3, wins: 1, kills: 15, deaths: 12, assists: 11 }]);
+        assert_eq!(lane_record(&m, 238), ins.toughest_lanes[0]);
+        assert_eq!((lane_record(&m, 7).games, lane_record(&m, 7).champion_id), (0, 7));
         // The remake doesn't count: 238 is 0-2, 7 is 1-2.
         let tough: Vec<_> = ins.toughest_enemies.iter().map(|c| (c.champion_id, c.games, c.wins)).collect();
         assert_eq!(tough, vec![(238, 2, 0), (7, 3, 1)]);

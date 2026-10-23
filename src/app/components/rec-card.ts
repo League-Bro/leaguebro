@@ -1,11 +1,9 @@
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
-import { assetUrl } from '../core/assets';
-import { ItemSet, RecChoice, RecState, RuneRec } from '../core/models';
+import { assetUrl, championIcon } from '../core/assets';
+import { ItemSet, MIN_GAMES, RecChoice, RecState, RuneRec } from '../core/models';
 import { buildWhy, rolesLabel } from '../core/why';
-
-const MIN_GAMES = 20;
 
 /** OP.GG's recommendation for your current champion: runes, spells, skills, items. */
 @Component({
@@ -89,6 +87,21 @@ const MIN_GAMES = 20;
         } @else if (s.rec; as r) {
           @if (r.games < minGames) {
             <p class="warn small">Only {{ r.games }} games on OP.GG for this pick, so runes and spells use the League client's suggestion instead. The data below is shown for reference.</p>
+          }
+          @if (vsRec(); as vs) {
+            <div class="opts source" role="radiogroup" aria-label="Which games the build comes from">
+              <button class="opt" role="radio" [attr.aria-checked]="!s.choice.matchup" [class.on]="!s.choice.matchup"
+                [disabled]="pickBusy()" (click)="pickSource(false)" title="OP.GG's picks from all of this champion's games in the role">
+                All games
+              </button>
+              <button class="opt" role="radio" [attr.aria-checked]="!!s.choice.matchup" [class.on]="!!s.choice.matchup"
+                [disabled]="pickBusy()" (click)="pickSource(true)"
+                [title]="'OP.GG\\'s picks from ' + vs.games.toLocaleString() + ' games against ' + rift.champName(vs.opponentId) + ' in lane'">
+                <img class="round" [src]="champIcon(vs.opponentId)" alt="" (error)="rift.hideImg($event)" />
+                vs {{ rift.champName(vs.opponentId) }}
+                <span class="wr faint">{{ vs.games | number }} games</span>
+              </button>
+            </div>
           }
           <div class="grid">
             @if (r.runes; as ru) {
@@ -276,6 +289,8 @@ const MIN_GAMES = 20;
     .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); margin-top: 2px; }
     /* Option chips: pick another rune page / spells / build. */
     .opts { display: flex; flex-wrap: wrap; gap: 4px; }
+    .opts.source { margin-bottom: 12px; }
+    .opts.source .opt { font-size: 12.5px; padding: 4px 10px 4px 6px; }
     .opt {
       display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px 3px 5px; border-radius: 999px;
       background: var(--bg-sunken); border: 1px solid var(--line); color: var(--text-dim); font-size: 11.5px; cursor: pointer;
@@ -362,6 +377,7 @@ const MIN_GAMES = 20;
 export class RecCard {
   protected readonly rift = inject(RiftService);
   protected readonly minGames = MIN_GAMES;
+  protected readonly champIcon = championIcon;
   protected readonly showWhy = signal(false);
   /** Skill-order placeholder: one box per level. */
   protected readonly levels = Array.from({ length: 18 });
@@ -405,7 +421,24 @@ export class RecCard {
   async pick(kind: keyof RecChoice, index: number): Promise<void> {
     const s = this.state();
     if (!s?.rec || this.pickBusy() || s.choice[kind] === index) return;
-    const choice: RecChoice = { ...s.choice, [kind]: index };
+    await this.apply({ ...s.choice, [kind]: index });
+  }
+
+  /** OP.GG's build against your lane opponent, when it has enough games (champ select only). */
+  protected readonly vsRec = computed(() => {
+    const m = this.lookup() === undefined ? this.state()?.matchup : null;
+    const r = m?.matchup?.rec;
+    return m && r && r.games >= MIN_GAMES ? { opponentId: m.opponentId, games: r.games, winRate: m.matchup!.winRate } : null;
+  });
+
+  /** Switches between the build from all games and the one against your lane opponent. */
+  async pickSource(vs: boolean): Promise<void> {
+    const s = this.state();
+    if (!s?.rec || this.pickBusy() || !!s.choice.matchup === vs) return;
+    await this.apply({ runes: 0, spells: 0, core: 0, boots: 0, matchup: vs });
+  }
+
+  private async apply(choice: RecChoice): Promise<void> {
     if (this.lookup() !== undefined) {
       this.choiceChange.emit(choice);
       return;

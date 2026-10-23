@@ -6,6 +6,7 @@ mod itemsets;
 mod lcu;
 mod opgg;
 mod live;
+mod matchup;
 mod patch;
 mod postgame;
 mod profile;
@@ -118,6 +119,13 @@ async fn restore_global_item_sets(state: State<'_, AppState>) -> Result<itemsets
 #[tauri::command]
 async fn choose_rec_option(app: AppHandle, choice: opgg::RecChoice) -> Result<String, String> {
     engine::choose(&app, choice).await
+}
+
+/// Sets your lane opponent in champ select (an enemy champion id; 0 = none)
+/// instead of League Bro's guess.
+#[tauri::command]
+async fn choose_lane_opponent(app: AppHandle, champion_id: i64) {
+    matchup::choose_opponent(&app, champion_id).await
 }
 
 /// A looked-up recommendation with picks in place (the Champions tab, which doesn't import).
@@ -329,6 +337,7 @@ pub fn run() {
             import_swiftplay_now,
             lookup_rec,
             choose_rec_option,
+            choose_lane_opponent,
             rec_with_choice,
             global_item_sets,
             move_global_item_sets,

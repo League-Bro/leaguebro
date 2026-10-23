@@ -267,12 +267,50 @@ export interface SpellOption {
   pickRate: number;
 }
 
+/** OP.GG pages with fewer games than this are noise (same as opgg::MIN_GAMES in Rust). */
+export const MIN_GAMES = 20;
+
 /** Which option is picked in each section (index into the `*Options` lists). */
 export interface RecChoice {
   runes: number;
   spells: number;
   core: number;
   boots: number;
+  /** Use OP.GG's build against the lane opponent (champ select only). */
+  matchup?: boolean;
+}
+
+/** OP.GG's lane guide for a matchup. Sides are "you", "them", "even" or "". */
+export interface MatchupTip {
+  text: string;
+  laneAdvantage: string;
+  soloKills: string;
+  /** "aggressive", "even" or "defensive". */
+  playStyle: string;
+}
+
+export interface Matchup {
+  championId: number;
+  opponentId: number;
+  position: string;
+  /** Head-to-head on OP.GG (0 games when it has none). */
+  games: number;
+  winRate: number;
+  /** OP.GG's runes, spells and build in this matchup only. */
+  rec: Recommendation | null;
+  tip: MatchupTip | null;
+  opponentDamageType: string;
+}
+
+export interface MatchupState {
+  /** 0 = no lane opponent (none guessed or picked yet). */
+  opponentId: number;
+  guessed: boolean;
+  loading: boolean;
+  matchup: Matchup | null;
+  error: string | null;
+  /** Your recent games against them in lane. */
+  myRecord: ChampStat | null;
 }
 
 export interface RecState {
@@ -283,6 +321,7 @@ export interface RecState {
   rec: Recommendation | null;
   error: string | null;
   choice: RecChoice;
+  matchup?: MatchupState | null;
 }
 
 /** Total cost of the items each of you holds (the game doesn't share enemy gold). */

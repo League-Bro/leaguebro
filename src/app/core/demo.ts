@@ -9,6 +9,7 @@ import {
   Insights,
   ItemInfo,
   MatchLine,
+  MatchupState,
   MyProfile,
   QueueStat,
   PatchInfo,
@@ -381,7 +382,7 @@ export function demoChampSelect(): ChampSelectView {
  * Real OP.GG answer for Ahri mid (website API, October 2026), as League Bro
  * shows it. Like that API it has no names; the UI takes them from the client's data.
  */
-export function demoRec(): RecState {
+export function demoRec(withMatchup = true): RecState {
   const total = 12836;
   const set = (ids: number[], games: number, wins: number) => ({ ids, names: [], games, winRate: wins / games, pickRate: games / total });
   return {
@@ -431,6 +432,7 @@ export function demoRec(): RecState {
       bootsOptions: [set([3020], 7253, 3743), set([3158], 3728, 1930), set([3111], 1330, 670)],
     },
     choice: { runes: 0, spells: 0, core: 0, boots: 0 },
+    matchup: withMatchup ? demoMatchup() : null,
   };
 
   function rune(primaryStyleId: number, subStyleId: number, perkIds: number[], games: number, wins: number): RuneRec {
@@ -439,6 +441,46 @@ export function demoRec(): RecState {
   function spell(ids: number[], games: number, wins: number): SpellOption {
     return { ids, games, winRate: wins / games, pickRate: games / total };
   }
+}
+
+/** Real OP.GG numbers for Ahri mid vs Zed (website API + MCP lane guide, October 2026). */
+export function demoMatchup(opponentId = 238, guessed = true): MatchupState {
+  const total = 1028;
+  const set = (ids: number[], games: number, wins: number) => ({ ids, names: [], games, winRate: wins / games, pickRate: games / total });
+  const spell = (ids: number[], games: number, wins: number): SpellOption => ({ ids, games, winRate: wins / games, pickRate: games / total });
+  const overall = demoRecBase();
+  const runes = { ...overall.runes!, games: 462, winRate: 227 / 462, pickRate: 0.449 };
+  const comet: RuneRec = { ...overall.runeOptions[1], games: 121, winRate: 0.512, pickRate: 0.118 };
+  const core = [set([3118, 4645, 3157], 86, 41), set([3118, 3157, 4645], 48, 24), set([3118, 3100, 3157], 41, 19)];
+  const boots = [set([3020], 512, 254), set([3111], 301, 156), set([3158], 160, 77)];
+  const spells = [spell([4, 14], 738, 369), spell([4, 12], 231, 111), spell([3, 4], 43, 21)];
+  const rec: Recommendation = {
+    ...overall, runes, games: 462, spells: [4, 14], spellStats: { games: 738, winRate: 0.5, pickRate: 0.718 },
+    core: core[0], boots: boots[0], runeOptions: [runes, comet], spellOptions: spells, coreOptions: core, bootsOptions: boots,
+    buildOrder: [3118, 3020, 4645, 3157, 3089, 3135],
+  };
+  if (opponentId !== 238) {
+    return { opponentId, guessed, loading: false, error: null, myRecord: { championId: opponentId, games: 0, wins: 0, kills: 0, deaths: 0, assists: 0 },
+      matchup: { championId: 103, opponentId, position: 'mid', games: 214, winRate: 0.537, rec: null, tip: null, opponentDamageType: 'AD' } };
+  }
+  return {
+    opponentId,
+    guessed,
+    loading: false,
+    error: null,
+    myRecord: { championId: 238, games: 3, wins: 1, kills: 14, deaths: 13, assists: 9 },
+    matchup: {
+      championId: 103, opponentId: 238, position: 'mid', games: 949, winRate: 468 / 949, rec, opponentDamageType: 'AD',
+      tip: {
+        text: 'Do not use Charm [E] until Zed closes in using Living Shadow (W). If Zed has Death Mark (R) off cooldown, try to use Charm [E] after he reappears when he uses Death Mark (R).',
+        laneAdvantage: 'them', soloKills: 'them', playStyle: 'even',
+      },
+    },
+  };
+}
+
+function demoRecBase(): Recommendation {
+  return demoRec(false).rec!;
 }
 
 /** The browser demo's stand-in for the Rust `with_choice`: the picked options in place. */

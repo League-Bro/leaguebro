@@ -26,6 +26,7 @@ import {
   Status,
   TierList,
   TierSource,
+  MIN_GAMES,
 } from './models';
 import { assetUrl, championSplash, positionLabel } from './assets';
 import {
@@ -35,6 +36,7 @@ import {
   demoPatchList,
   demoPostGame,
   demoProfile,
+  demoMatchup,
   demoRec,
   demoWithChoice,
   demoScene,
@@ -210,11 +212,24 @@ export class RiftService {
       { choice },
       () => {
         const s = this.rec();
-        if (s?.rec) this.rec.set({ ...s, choice, rec: demoWithChoice(s.rec, choice) });
+        const vs = choice.matchup ? s?.matchup?.matchup?.rec : null;
+        const base = vs && vs.games >= MIN_GAMES ? vs : demoRec(false).rec!;
+        if (s?.rec) this.rec.set({ ...s, choice, rec: demoWithChoice(base, choice) });
         return 'Set "League Bro: Ahri Mid" (OP.GG) · Flash + Ignite · build added to the shop';
       },
       300,
     );
+  }
+
+  /** Sets your lane opponent (an enemy champion id; 0 = none) instead of the guess. */
+  chooseLaneOpponent(championId: number): Promise<void> {
+    return this.call('choose_lane_opponent', { championId }, () => {
+      const s = this.rec();
+      if (!s) return;
+      const matchup = championId ? demoMatchup(championId, false) : { ...demoMatchup(), opponentId: 0, guessed: false, matchup: null, myRecord: null };
+      const choice = { runes: 0, spells: 0, core: 0, boots: 0 };
+      this.rec.set({ ...s, matchup, choice, rec: demoRec(false).rec });
+    }, 300);
   }
 
   /** A looked-up recommendation with picks in place (the Champions tab; nothing is imported). */

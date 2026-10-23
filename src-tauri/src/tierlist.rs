@@ -118,6 +118,9 @@ fn lolalytics_lane(position: &str) -> Option<&'static str> {
     }
 }
 
+/// The client's lane names, in the order `lane_games` uses.
+pub const LANES: [&str; 5] = ["top", "jungle", "middle", "bottom", "utility"];
+
 /// OP.GG's position name for each of the client's lanes.
 const OPGG_LANES: [(&str, &str); 5] =
     [("TOP", "top"), ("JUNGLE", "jungle"), ("MID", "middle"), ("ADC", "bottom"), ("SUPPORT", "utility")];
@@ -319,6 +322,19 @@ impl TierLists {
             // Offline: an older list still beats none.
             Err(e) => cached.ok_or(e),
         }
+    }
+
+    /// Each champion's OP.GG games (Emerald+) per lane, in `LANES` order: how
+    /// likely a pick is to be in each lane. One request fills all five lists.
+    pub async fn lane_games(&self, champions: Option<Vec<(i64, String)>>) -> Result<HashMap<i64, [i64; 5]>> {
+        let mut out: HashMap<i64, [i64; 5]> = HashMap::new();
+        for (i, lane) in LANES.iter().enumerate() {
+            let list = self.get(Source::Opgg, lane, "emerald_plus", champions.clone()).await?;
+            for e in list.entries {
+                out.entry(e.champion_id).or_default()[i] = e.games;
+            }
+        }
+        Ok(out)
     }
 
     async fn champion_names(&self) -> Result<Vec<(i64, String)>> {

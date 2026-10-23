@@ -28,6 +28,12 @@ When you hover or lock a champion, League Bro pulls OP.GG's ranked stats for tha
 
 When OP.GG has other popular choices (up to three rune pages, summoner spell pairs, core builds and boots, each with enough games to trust), they show as numbered chips with their win rates. Hover one for details, click it to switch. In champ select, once you've picked that champion, switching re-imports your runes, spells and shop build right away, and the overlay follows your choice.
 
+### Lane matchup
+
+Once you've locked in and the enemy team picks, League Bro works out who's probably in your lane (from which lanes each enemy champion is usually played in) and shows the matchup: OP.GG's win rate for your champion against them, who usually wins the lane and gets more solo kills, how to play it, the damage they deal, OP.GG's lane tip, and your own recent games against them. If the guess is wrong, click the right enemy (or None).
+
+When OP.GG has enough games of the matchup, the recommendation gets a **vs <Champion>** switch next to **All games**: it swaps in the runes, spells and build players use against that champion, and in champ select imports them right away. Only enemy champions are used, never names, so nothing hidden in ranked champ select is shown.
+
 To look up any champion outside champ select, use the **Champions** tab: pick a champion, then Ranked (with a role) or ARAM.
 
 ### Rune, summoner spell and shop build auto-import
