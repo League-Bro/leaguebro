@@ -1,8 +1,8 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { championIcon, clock, kdaRatio } from '../core/assets';
 import { PostGame, PostPlayer, PostTeam } from '../core/models';
-import { roasts } from '../core/roast';
+import { Roast, roasts } from '../core/roast';
 import { ItemTip } from './item-tip';
 
 const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as const;
@@ -46,14 +46,22 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
       </section>
     }
 
-    @if (roasts().length) {
-      <section class="roast card" aria-label="Trash talk">
-        <h3>The Bro's review</h3>
-        @for (r of roasts(); track r.kind) {
-          <div class="roast-line">
-            <span class="stat mono" [title]="r.why">{{ r.stat }}</span>
-            <span>{{ r.line }}</span>
+    @if (review(); as r) {
+      <section #reviewCard class="roast card" [class.all-good]="allGood(r.lines)" aria-live="polite">
+        <div class="roast-head">
+          <h3>The Bro's review</h3>
+          @if (!r.player.isMe) {
+            <span class="muted">{{ r.player.name ?? rift.champName(r.player.championId) }} · {{ rift.champName(r.player.championId) }}</span>
+            <button class="ghost" (click)="picked.set(null)">Back to you</button>
+          }
+        </div>
+        @for (x of r.lines; track x.kind) {
+          <div class="roast-line" [class.good]="x.good">
+            <span class="stat mono" [title]="x.why">{{ x.stat }}</span>
+            <span>{{ x.line }}</span>
           </div>
+        } @empty {
+          <p class="muted clean">Nothing to roast. {{ r.player.isMe ? 'You' : 'They' }} actually showed up this game.</p>
         }
       </section>
     }
@@ -77,7 +85,11 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
               <span>Vis</span>
             </div>
             @for (p of t.players; track $index) {
-              <div class="row-p" [class.me]="p.isMe" [class.enemy]="!t.isMine">
+              <div
+                class="row-p" [class.me]="p.isMe" [class.enemy]="!t.isMine" [class.picked]="isPicked(t, $index)"
+                role="button" tabindex="0" title="See what the Bro thinks of this player"
+                (click)="pick(t, $index)" (keydown.enter)="pick(t, $index)" (keydown.space)="$event.preventDefault(); pick(t, $index)"
+              >
                 <span class="pic" [title]="rift.champName(p.championId) + ' · level ' + p.level">
                   <img class="champ-icon" [src]="icon(p.championId)" alt="" />
                   <span class="lvl mono">{{ p.level }}</span>
@@ -182,12 +194,19 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .bar-row.me .gval { color: var(--text); }
 
     .roast { margin-top: 14px; padding: 14px 18px; display: flex; flex-direction: column; gap: 8px; border-left: 3px solid var(--loss); }
+    .roast-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+    .roast-head .ghost { margin-left: auto; }
+    .roast .clean { margin: 0; }
     .roast h3 { margin: 0 0 2px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--loss); }
     .roast-line { display: grid; grid-template-columns: 96px 1fr; align-items: baseline; gap: 12px; font-size: 14px; }
     .roast-line .stat {
       justify-self: start; padding: 1px 7px; border-radius: 6px; font-size: 12px; white-space: nowrap; cursor: help;
-      color: var(--loss); background: var(--bg-sunken); border: 1px solid var(--line-strong);
+      color: var(--loss); background: rgba(255, 90, 78, 0.1); border: 1px solid rgba(255, 90, 78, 0.35);
     }
+    /* Highlights (still roasts) in green, against the red for bad play. */
+    .roast-line.good .stat { color: var(--win); background: rgba(60, 207, 142, 0.1); border-color: rgba(60, 207, 142, 0.35); }
+    .roast.all-good { border-left-color: var(--win); }
+    .roast.all-good h3 { color: var(--win); }
 
     .hero { position: relative; display: flex; align-items: center; gap: 20px; padding: 24px; border-left: 3px solid var(--text-faint); }
     .hero > :not(.splash) { position: relative; }
@@ -240,6 +259,9 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     }
     .row-p.head .h-who { grid-column: 1 / 3; }
     .row-p.enemy { border-left-color: var(--enemy); }
+    .board .row-p:not(.head) { cursor: pointer; }
+    .board .row-p:not(.head):hover { background: var(--glass), var(--bg-hover); }
+    .row-p.picked { outline: 1px solid var(--loss); outline-offset: -1px; }
     .row-p.me { background: linear-gradient(90deg, var(--accent-soft), transparent 60%), var(--bg-raised); border-left-color: var(--accent); }
     .pic { grid-row: span 2; position: relative; width: 34px; height: 34px; }
     .pic .champ-icon { width: 34px; height: 34px; }
@@ -259,11 +281,31 @@ export class PostGameView {
   protected readonly rift = inject(RiftService);
   readonly game = input.required<PostGame>();
   readonly closed = output<void>();
+  private readonly reviewCard = viewChild<ElementRef<HTMLElement>>('reviewCard');
+
+  constructor() {
+    // A different game starts back on your own review.
+    effect(() => {
+      this.game();
+      this.picked.set(null);
+    });
+  }
 
   protected readonly myTeam = computed(() => this.game().teams.find((t) => t.isMine) ?? null);
   protected readonly me = computed(() => this.myTeam()?.players.find((p) => p.isMe) ?? null);
   protected readonly label = computed(() => RESULT_LABEL[this.game().result]);
-  protected readonly roasts = computed(() => roasts(this.game()));
+  /** The scoreboard player whose review is shown (team id and seat); null = you. */
+  protected readonly picked = signal<{ teamId: number; seat: number } | null>(null);
+  /** The review card: yours only when there's something to roast, anyone else's when clicked. */
+  protected readonly review = computed(() => {
+    const g = this.game();
+    const at = this.picked();
+    const team = at ? g.teams.find((t) => t.teamId === at.teamId) : this.myTeam();
+    const player = at ? team?.players[at.seat] : this.me();
+    if (!team || !player) return null;
+    const lines = roasts(g, team, player, this.rift.champName(player.championId));
+    return lines.length || !player.isMe ? { player, lines } : null;
+  });
   protected readonly maxDamage = computed(() =>
     Math.max(1, ...this.game().teams.flatMap((t) => t.players.map((p) => p.damage))),
   );
@@ -301,6 +343,20 @@ export class PostGameView {
     const who = p.name ?? this.rift.champName(p.championId);
     const unit = this.charts.find((c) => c.key === key)!.unit;
     return `${who} (${this.rift.champName(p.championId)}): ${p[key].toLocaleString()} ${unit}, ${share}% of ${t.isMine ? 'your' : 'their'} team`;
+  }
+
+  pick(t: PostTeam, seat: number): void {
+    const already = this.isPicked(t, seat);
+    this.picked.set(already || t.players[seat].isMe ? null : { teamId: t.teamId, seat });
+    // The card sits above the scoreboard, so bring it into view.
+    setTimeout(() => this.reviewCard()?.nativeElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+  }
+  allGood(lines: Roast[]): boolean {
+    return lines.length > 0 && lines.every((x) => x.good);
+  }
+  isPicked(t: PostTeam, seat: number): boolean {
+    const at = this.picked();
+    return !!at && at.teamId === t.teamId && at.seat === seat;
   }
 
   kda = (p: PostPlayer) => kdaRatio(p.kills, p.deaths, p.assists);

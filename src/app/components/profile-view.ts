@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, Injector, afterNextRender, computed, effect, inject, signal, untracked } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { championIcon, formatTier, kdaRatio, profileIcon, queueLabel, rankCrest, tierClass, winPct } from '../core/assets';
@@ -220,7 +220,7 @@ const REGIONS = [
           </div>
           @for (m of day.matches; track m.gameId) {
           <div class="item" [class.open]="openId() === m.gameId">
-          <button class="match" [class]="m.result" [class.static]="p.source === 'opgg'" [attr.aria-expanded]="openId() === m.gameId" (click)="toggle(m)">
+          <button class="match" [class]="m.result" [class.static]="p.source === 'opgg'" [attr.aria-expanded]="openId() === m.gameId" (click)="toggle(m, $event)">
             <img class="champ-icon" [src]="champIcon(m.championId)" [title]="rift.champName(m.championId)" alt="" />
             <div class="what">
               <div class="res">{{ resultLabel(m) }}</div>
@@ -356,6 +356,7 @@ const REGIONS = [
 })
 export class ProfileView {
   protected readonly rift = inject(RiftService);
+  private readonly injector = inject(Injector);
   protected readonly profile = signal<MyProfile | null>(null);
   protected readonly loading = signal(false);
   protected readonly loadError = signal<string | null>(null);
@@ -504,9 +505,10 @@ export class ProfileView {
     }
   }
 
-  async toggle(m: MatchLine): Promise<void> {
+  async toggle(m: MatchLine, ev?: Event): Promise<void> {
     // OP.GG's match list has no full scoreboards.
     if (this.profile()?.source === 'opgg') return;
+    this.keepInPlace(ev?.currentTarget as HTMLElement | undefined);
     if (this.openId() === m.gameId) {
       this.openId.set(null);
       return;
@@ -520,6 +522,24 @@ export class ProfileView {
     } catch (e) {
       if (this.openId() === m.gameId) this.detailError.set(String(e));
     }
+  }
+
+  /**
+   * Keeps a clicked match row where it was on screen. Opening a game closes the
+   * one that was open, and when that one is above, the page would otherwise
+   * jump by its whole scoreboard's height.
+   */
+  private keepInPlace(row: HTMLElement | undefined): void {
+    if (!row) return;
+    const before = row.getBoundingClientRect().top;
+    afterNextRender(
+      () => {
+        const moved = row.getBoundingClientRect().top - before;
+        const scroller = row.closest('main');
+        if (moved && scroller) scroller.scrollTop += moved;
+      },
+      { injector: this.injector },
+    );
   }
 
   pick(mode: number | 'all'): void {

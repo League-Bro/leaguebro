@@ -305,7 +305,7 @@ export function demoPostGame(bad = false): PostGame {
     items: [...items, 0, 0, 0, 0, 0, 0].slice(0, 6).concat(3340), spells: [4, 14],
   });
   const me = bad
-    ? p('me', 'Dom#NA1', 103, 2, 11, 3, 128, 8400, 9100, 9, [3118, 3020, 1058], true)
+    ? p('me', 'Dom#NA1', 103, 2, 11, 3, 128, 8400, 9100, 41, [3118, 3020, 1058], true)
     : p('me', 'Dom#NA1', 103, 11, 2, 9, 226, 14650, 32400, 22, [3118, 3020, 4645, 3157, 1058], true);
   const [mineKills, theirKills] = bad ? [22, 31] : [31, 20];
   return {
