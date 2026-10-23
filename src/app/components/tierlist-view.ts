@@ -106,18 +106,20 @@ let autoLane: string | null = null;
               @for (e of row.entries; track e.name) {
                 <button class="champ" [class.dim]="!matches(e)" [title]="tooltip(e)" (click)="open(e)" [disabled]="!e.championId">
                   <span class="rank mono faint">{{ e.rank }}</span>
-                  @if (e.championId) { <img class="champ-icon sm" [src]="icon(e.championId)" alt="" /> }
+                  @if (e.championId) { <img class="champ-icon md" [src]="icon(e.championId)" alt="" /> } @else { <span></span> }
                   <span class="info">
-                    <span class="name">{{ e.name }}</span>
-                    <span class="stats mono">
-                      <span [class.win]="e.winRate >= 51.5" [class.loss]="e.winRate < 48.5">{{ e.winRate | number: '1.1-1' }}%</span>
+                    <span class="head">
+                      <span class="name">{{ e.name }}</span>
+                      @if (e.label === 'OP') { <span class="op">OP</span> }
+                    </span>
+                    <span class="stats">
+                      <span class="wr" [class.win]="e.winRate >= 51.5" [class.loss]="e.winRate < 48.5">{{ e.winRate | number: '1.1-1' }}% win</span>
                       <span class="faint">· {{ e.pickRate | number: '1.1-1' }}% pick</span>
                     </span>
                   </span>
-                  <span class="label" [class]="'label t-' + e.tier">{{ labelText(e) }}</span>
                   @if (hasMoves()) {
-                    <span class="move" [class.win]="(e.rankChange ?? 0) > 0" [class.loss]="(e.rankChange ?? 0) < 0">
-                      @if (e.rankChange) { {{ e.rankChange > 0 ? '▲' : '▼' }}{{ abs(e.rankChange) }} }
+                    <span class="move mono" [class.win]="(e.rankChange ?? 0) > 0" [class.loss]="(e.rankChange ?? 0) < 0">
+                      @if (e.rankChange) { {{ e.rankChange > 0 ? '▲' : '▼' }}{{ abs(e.rankChange) }} } @else { <span class="faint">–</span> }
                     </span>
                   }
                 </button>
@@ -167,16 +169,21 @@ let autoLane: string | null = null;
     .t-C { --tc: #6fb2f0; }
     .t-D { --tc: #9aa3b8; }
     .letter { background: var(--tc); }
-    .champs { flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); gap: 4px; }
-    .champ { display: flex; align-items: center; gap: 8px; text-align: left; padding: 5px 10px; border-radius: var(--radius-sm); background: var(--bg-sunken); border-color: transparent; }
+    .champs { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px; align-content: start; }
+    /* rank · icon · name, tier and movement over win and pick rate */
+    .champ {
+      display: grid; grid-template-columns: 20px 30px minmax(0, 1fr) auto; align-items: center; gap: 9px;
+      text-align: left; padding: 7px 12px 7px 8px; border-radius: var(--radius-sm); background: var(--bg-sunken); border-color: transparent;
+    }
     .champ:disabled { opacity: 1; }
     .champ.dim { opacity: 0.25; }
-    .rank { width: 18px; text-align: right; font-size: 11px; }
-    .info { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+    .rank { text-align: right; font-size: 11px; }
+    .info { min-width: 0; display: flex; flex-direction: column; gap: 3px; line-height: 1.2; }
     .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
-    .stats { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
-    .label { font-size: 11px; font-weight: 700; color: var(--tc); border: 1px solid var(--tc); border-radius: 999px; padding: 0 6px; min-width: 24px; text-align: center; }
-    .move { flex: none; font-size: 10px; width: 26px; text-align: left; white-space: nowrap; }
+    .head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .op { flex: none; font-size: 10px; font-weight: 700; line-height: 14px; color: #ff8a5c; border: 1px solid #ff8a5c; border-radius: 999px; padding: 0 6px; }
+    .move { min-width: 26px; text-align: right; font-size: 11px; white-space: nowrap; }    .stats { font-size: 11.5px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+    .wr { font-weight: 600; color: var(--text); }
     .win { color: var(--win); }
     .loss { color: var(--loss); }
   `,
@@ -206,8 +213,8 @@ export class TierListView {
     const entries = this.list()?.entries ?? [];
     return ROWS.map((tier) => ({ tier, entries: entries.filter((e) => e.tier === tier) })).filter((r) => r.entries.length);
   });
-  /** Reserve the ▲/▼ column on every entry when any has one, so the tier labels line up. */
-  protected readonly hasMoves = computed(() => (this.list()?.entries ?? []).some((e) => e.rankChange));
+  /** Only OP.GG reports ▲/▼ rank changes; the column shows when the list has them. */
+  protected readonly hasMoves = computed(() => (this.list()?.entries ?? []).some((e) => e.rankChange != null));
   protected readonly newPatch = computed(() => {
     const l = this.list();
     const min = RANKS.find((r) => r.id === l?.rank)?.newPatchGames;
