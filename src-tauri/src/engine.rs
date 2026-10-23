@@ -1,7 +1,7 @@
 //! The background loop: watches the League client, reacts to champ select
 //! and loading, and feeds the overlay while a game is running.
 
-use crate::util::{flag, int, ints, list, msg, riot_name, strings, text};
+use crate::util::{flag, get_json, int, ints, list, msg, riot_name, strings, text, web_client, CDRAGON_GAME_DATA};
 use crate::config::Config;
 use crate::itemsets;
 use crate::lcu::{self, Lcu};
@@ -377,12 +377,28 @@ pub fn parse_loading(session: &Value, my_puuid: &str) -> Option<LoadingView> {
     })
 }
 
-async fn load_statics(lcu: &Lcu) -> anyhow::Result<StaticData> {
-    let champs = lcu.get_req("/lol-game-data/assets/v1/champion-summary.json").await?;
-    let items = lcu.get_req("/lol-game-data/assets/v1/items.json").await?;
-    let perks = lcu.get("/lol-game-data/assets/v1/perks.json").await.ok().flatten().unwrap_or(Value::Null);
-    let styles = lcu.get("/lol-game-data/assets/v1/perkstyles.json").await.ok().flatten().unwrap_or(Value::Null);
-    let spells = lcu.get("/lol-game-data/assets/v1/summoner-spells.json").await.ok().flatten().unwrap_or(Value::Null);
+/// Where static data comes from: the League client, or CommunityDragon's
+/// copy of the same files while the client isn't open.
+enum GameData<'a> {
+    Client(&'a Lcu),
+    Web(&'a reqwest::Client),
+}
+
+impl GameData<'_> {
+    async fn get(&self, file: &str) -> anyhow::Result<Value> {
+        match self {
+            GameData::Client(lcu) => lcu.get_req(&format!("/lol-game-data/assets/v1/{file}")).await,
+            GameData::Web(http) => get_json(http.get(format!("{CDRAGON_GAME_DATA}/{file}")), "CommunityDragon").await,
+        }
+    }
+}
+
+async fn load_statics(src: GameData<'_>) -> anyhow::Result<StaticData> {
+    let champs = src.get("champion-summary.json").await?;
+    let items = src.get("items.json").await?;
+    let perks = src.get("perks.json").await.unwrap_or(Value::Null);
+    let styles = src.get("perkstyles.json").await.unwrap_or(Value::Null);
+    let spells = src.get("summoner-spells.json").await.unwrap_or(Value::Null);
     let mut champions: Vec<ChampInfo> = champs
         .as_array()
         .into_iter()
@@ -590,6 +606,8 @@ struct Engine {
     overlay_shown: bool,
     pending_post_game: Option<PendingPostGame>,
     last_window_check: Option<Instant>,
+    /// Last try at loading static data from CommunityDragon (client closed).
+    last_web_statics: Option<Instant>,
     live_http: reqwest::Client,
 }
 
@@ -604,6 +622,7 @@ struct PendingPostGame {
 
 const POST_GAME_RETRY: Duration = Duration::from_secs(3);
 const POST_GAME_GIVE_UP: Duration = Duration::from_secs(180);
+const WEB_STATICS_RETRY: Duration = Duration::from_secs(60);
 
 fn in_game(phase: &str) -> bool {
     matches!(phase, "GameStart" | "InProgress" | "Reconnect")
@@ -668,7 +687,8 @@ impl Engine {
         };
         let summoner = Summoner { puuid: text(&me, "puuid").into(), name: riot_name(&me).unwrap_or_default() };
         self.my_puuid = summoner.puuid.clone();
-        let statics = load_statics(&client).await.ok();
+        // Replaces any web copy: the client's is in the player's language and patch.
+        let statics = load_statics(GameData::Client(&client)).await.ok();
         {
             let state = self.state();
             let mut sh = state.shared.lock().await;
@@ -700,10 +720,38 @@ impl Engine {
         self.set_status(false, "", None, "Waiting for the League client").await;
     }
 
+    /// While the client is closed, fetches champions, items and runes from
+    /// CommunityDragon so the Champions and Tier List tabs work. In the
+    /// background (five files, a few seconds), retried every minute if it fails.
+    async fn load_web_statics(&mut self) {
+        if self.last_web_statics.is_some_and(|t| t.elapsed() < WEB_STATICS_RETRY)
+            || self.state().shared.lock().await.statics.is_some()
+        {
+            return;
+        }
+        self.last_web_statics = Some(Instant::now());
+        let app = self.app.clone();
+        tauri::async_runtime::spawn(async move {
+            let statics = match load_statics(GameData::Web(&web_client(15))).await {
+                Ok(s) => s,
+                Err(e) => return eprintln!("champion data from CommunityDragon failed: {e:#}"),
+            };
+            let state = app.state::<AppState>();
+            let mut sh = state.shared.lock().await;
+            // The client may have connected meanwhile; its data wins.
+            if sh.statics.is_none() {
+                sh.statics = Some(statics.clone());
+                drop(sh);
+                let _ = app.emit("static", statics);
+            }
+        });
+    }
+
     async fn tick(&mut self) {
         if self.lcu.is_none() {
             self.connect().await;
             if self.lcu.is_none() {
+                self.load_web_statics().await;
                 return;
             }
         }
@@ -1412,6 +1460,7 @@ pub async fn run(app: AppHandle) {
         overlay_shown: false,
         pending_post_game: None,
         last_window_check: None,
+        last_web_statics: None,
         live_http: lcu::localhost_http_client(),
     };
     engine.set_status(false, "", None, "Waiting for the League client").await;

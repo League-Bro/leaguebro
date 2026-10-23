@@ -24,7 +24,7 @@
 //! `FRESH_SECS` (and never past the next patch notes); they're one small
 //! request, so they aren't saved to disk.
 
-use crate::util::{get_json, int, web_client};
+use crate::util::{get_json, int, web_client, CDRAGON_GAME_DATA};
 use anyhow::{bail, Context, Result};
 use crate::cache::now_secs;
 use crate::engine::is_league_classic;
@@ -37,9 +37,6 @@ use tokio::sync::Mutex;
 
 const LOLALYTICS: &str = "https://a1.lolalytics.com/mega/";
 const OPGG: &str = "https://lol-api-champion.op.gg/api/global/champions/ranked";
-/// Champion names when the League client isn't open.
-const CHAMPION_SUMMARY: &str =
-    "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-summary.json";
 /// Lolalytics' tier labels by index, from the site's own script.
 const LOLALYTICS_TIERS: [&str; 16] =
     ["", "S+", "S", "S-", "A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D+", "D", "D-"];
@@ -342,7 +339,9 @@ impl TierLists {
         if let Some(c) = guard.as_ref() {
             return Ok(c.clone());
         }
-        let body = get_json(self.http.get(CHAMPION_SUMMARY), "CommunityDragon").await?;
+        // Champion names when the League client isn't open.
+        let url = format!("{CDRAGON_GAME_DATA}/champion-summary.json");
+        let body = get_json(self.http.get(url), "CommunityDragon").await?;
         let names: Vec<(i64, String)> = body
             .as_array()
             .into_iter()

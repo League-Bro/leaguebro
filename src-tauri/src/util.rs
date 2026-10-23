@@ -54,6 +54,10 @@ pub fn use_ring() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
+/// CommunityDragon's copy of the League client's `lol-game-data/assets/v1`
+/// files (same shapes, live patch, English), for when the client isn't open.
+pub const CDRAGON_GAME_DATA: &str = "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1";
+
 /// Client for the internet (OP.GG, Riot's site, tier lists), identifying the app.
 pub fn web_client(timeout_secs: u64) -> reqwest::Client {
     use_ring();

@@ -38,7 +38,7 @@ const ROLES = [
             <ng-container *ngTemplateOutlet="row; context: { $implicit: c, fav: false }" />
           } @empty {
             @if (!favorites().length) {
-              <p class="faint small">{{ rift.statics() ? 'No champion matches.' : 'Champions load once the League client is open.' }}</p>
+              <p class="faint small">{{ rift.statics() ? 'No champion matches.' : 'Loading champions…' }}</p>
             }
           }
         </div>

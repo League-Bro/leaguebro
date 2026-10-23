@@ -23,7 +23,7 @@
 //! (`expires_at`): a day at a time for the week after each patch's notes come
 //! out, then a week at a time, and always when the next notes are due.
 
-use crate::util::{flag, float, get_json, int, ints, list, text, web_client};
+use crate::util::{flag, float, get_json, int, ints, list, text, web_client, CDRAGON_GAME_DATA};
 use anyhow::{anyhow, bail, Context, Result};
 use crate::cache::{now_secs, CacheUsage, DiskCache, Generation};
 use crate::lcu::Lcu;
@@ -984,14 +984,19 @@ impl OpGg {
         Ok((main?, builds, damage))
     }
 
-    /// From the League client's own champion data (local, a few ms). Empty
-    /// when the client can't say; the UI then just leaves it out.
+    /// From the League client's own champion data (local, a few ms), or
+    /// CommunityDragon's copy when the client isn't open. Empty when neither
+    /// can say; the UI then just leaves it out.
     async fn damage_type(&self, champion_id: i64, lcu: Option<&Lcu>) -> String {
         if let Some(d) = self.damage_types.lock().await.get(&champion_id) {
             return d.clone();
         }
-        let Some(lcu) = lcu else { return String::new() };
-        match lcu.get_req(&format!("/lol-game-data/assets/v1/champions/{champion_id}.json")).await {
+        let file = format!("champions/{champion_id}.json");
+        let data = match lcu {
+            Some(lcu) => lcu.get_req(&format!("/lol-game-data/assets/v1/{file}")).await,
+            None => get_json(self.http.get(format!("{CDRAGON_GAME_DATA}/{file}")).timeout(WEB_TIMEOUT), "CommunityDragon").await,
+        };
+        match data {
             Ok(v) => {
                 let d = damage_label(text(&v, "/tacticalInfo/damageType")).to_string();
                 self.damage_types.lock().await.insert(champion_id, d.clone());
