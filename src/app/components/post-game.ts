@@ -45,52 +45,54 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
       </section>
     }
 
-    @for (t of g.teams; track t.teamId) {
-      <div class="team-head" [class.ally]="t.isMine" [class.enemy]="!t.isMine">
-        <h3>{{ t.isMine ? 'Your team' : 'Enemy team' }}</h3>
-        @if (g.result !== 'remake') { <span [class]="t.win ? 'win' : 'loss'">{{ t.win ? 'Victory' : 'Defeat' }}</span> }
-        <span class="faint mono">{{ t.kills }} kills · {{ k(t.gold) }} gold</span>
-        <span class="faint mono">{{ objectives(t) }}</span>
-      </div>
-      <div class="board">
-        <div class="row-p head" aria-hidden="true">
-          <span>Player</span>
-          <span>Level</span>
-          <span>KDA</span>
-          <span>CS</span>
-          <span>Damage</span>
-          <span>Gold</span>
-          <span>Vision</span>
-          <span>Build</span>
-        </div>
-        @for (p of t.players; track $index) {
-          <div class="row-p" [class.me]="p.isMe" [class.enemy]="!t.isMine">
-            <div class="who">
-              <img class="champ-icon sm" [src]="icon(p.championId)" [title]="rift.champName(p.championId)" alt="" />
-              <span class="name">
-                @if (p.name) { {{ p.name }} } @else { <span class="faint">{{ rift.champName(p.championId) }}</span> }
-              </span>
-            </div>
-            <span class="mono muted">{{ p.level }}</span>
-            <span class="mono">{{ p.kills }}/{{ p.deaths }}/{{ p.assists }}</span>
-            <span class="mono muted">{{ p.cs }}</span>
-            <div class="dmg" [title]="p.damage + ' damage to champions'">
-              <span class="mono">{{ k(p.damage) }}</span>
-              <span class="bar"><span [style.width.%]="(p.damage / maxDamage()) * 100"></span></span>
-            </div>
-            <span class="mono muted">{{ k(p.gold) }}</span>
-            <span class="mono muted">{{ p.vision }}</span>
-            <div class="items sm">
-              @for (id of p.items; track $index) {
-                <span class="slot" [rlItemTip]="id" [attr.aria-label]="rift.itemName(id) || null">
-                  @if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
-                </span>
-              }
-            </div>
+    <div class="teams" [class.solo]="g.teams.length < 2">
+      @for (t of g.teams; track t.teamId) {
+        <div class="team">
+          <div class="team-head" [class.ally]="t.isMine" [class.enemy]="!t.isMine">
+            <h3>{{ t.isMine ? 'Your team' : 'Enemy team' }}</h3>
+            @if (g.result !== 'remake') { <span [class]="t.win ? 'win' : 'loss'">{{ t.win ? 'Victory' : 'Defeat' }}</span> }
+            <span class="faint mono">{{ t.kills }} kills · {{ k(t.gold) }} gold</span>
+            <span class="faint mono">{{ objectives(t) }}</span>
           </div>
-        }
-      </div>
-    }
+          <div class="board">
+            <div class="row-p head" aria-hidden="true">
+              <span class="h-who">Player</span>
+              <span>KDA</span>
+              <span>CS</span>
+              <span>Dmg</span>
+              <span>Gold</span>
+              <span>Vis</span>
+            </div>
+            @for (p of t.players; track $index) {
+              <div class="row-p" [class.me]="p.isMe" [class.enemy]="!t.isMine">
+                <span class="pic" [title]="rift.champName(p.championId) + ' · level ' + p.level">
+                  <img class="champ-icon" [src]="icon(p.championId)" alt="" />
+                  <span class="lvl mono">{{ p.level }}</span>
+                </span>
+                <span class="name">
+                  @if (p.name) { {{ p.name }} } @else { <span class="faint">{{ rift.champName(p.championId) }}</span> }
+                </span>
+                <span class="mono">{{ p.kills }}/{{ p.deaths }}/{{ p.assists }}</span>
+                <span class="mono muted">{{ p.cs }}</span>
+                <div class="dmg" [title]="p.damage + ' damage to champions'">
+                  <span class="mono">{{ k(p.damage) }}</span>
+                  <span class="bar"><span [style.width.%]="(p.damage / maxDamage()) * 100"></span></span>
+                </div>
+                <span class="mono muted">{{ k(p.gold) }}</span>
+                <span class="mono muted">{{ p.vision }}</span>
+                <div class="items sm">
+                  @for (id of p.items; track $index) {
+                    <span class="slot" [rlItemTip]="id" [attr.aria-label]="rift.itemName(id) || null">
+                      @if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+                    </span>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </div>
 
     <section class="graphs">
       <div class="graphs-head">
@@ -191,28 +193,43 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .items .slot:last-child { margin-left: 4px; border-radius: 50%; }
     .items.sm .slot { width: 22px; height: 22px; border-radius: 4px; }
     .items.sm .slot:last-child { border-radius: 50%; }
-    .team-head { display: flex; align-items: baseline; gap: 14px; margin: 22px 0 8px; font-size: 13px; }
+    /* The two teams sit side by side once there's room, stacked below that. */
+    :host { display: block; container-type: inline-size; }
+    .teams { display: grid; grid-template-columns: 1fr; gap: 0 18px; }
+    @container (min-width: 780px) {
+      .teams:not(.solo) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    .team { min-width: 0; }
+    .team-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin: 22px 0 8px; font-size: 13px; }
     .team-head h3 { margin: 0; }
     .team-head.ally h3 { color: var(--ally); }
     .team-head.enemy h3 { color: var(--enemy); }
     .board { display: flex; flex-direction: column; gap: 4px; }
+    /* Champion (with level) spans both lines; name and stats on top, build underneath. */
     .row-p {
-      display: grid; align-items: center; gap: 12px;
-      grid-template-columns: minmax(150px, 1.6fr) 36px 72px 40px minmax(90px, 1fr) 46px 44px 182px;
-      padding: 7px 14px; border-radius: 12px; background: var(--glass), var(--bg-raised); border: 1px solid var(--line);
+      display: grid; align-items: center; gap: 2px 10px;
+      grid-template-columns: 34px minmax(0, 1fr) 60px 30px 50px 40px 26px;
+      padding: 6px 10px; border-radius: 12px; background: var(--glass), var(--bg-raised); border: 1px solid var(--line);
       border-left: 3px solid var(--ally); font-size: 13px;
     }
+    .row-p > .items { grid-column: 2 / -1; }
     .row-p.head {
       background: none; border-color: transparent; padding-top: 0; padding-bottom: 0;
       font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
     }
+    .row-p.head .h-who { grid-column: 1 / 3; }
     .row-p.enemy { border-left-color: var(--enemy); }
     .row-p.me { background: linear-gradient(90deg, var(--accent-soft), transparent 60%), var(--bg-raised); border-left-color: var(--accent); }
-    .who { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .pic { grid-row: span 2; position: relative; width: 34px; height: 34px; }
+    .pic .champ-icon { width: 34px; height: 34px; }
+    .lvl {
+      position: absolute; right: -4px; bottom: -4px; min-width: 16px; padding: 0 3px; border-radius: 6px;
+      font-size: 10px; line-height: 15px; text-align: center; color: var(--text-dim);
+      background: var(--bg-sunken); border: 1px solid var(--line-strong);
+    }
     .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .dmg { display: flex; align-items: center; gap: 8px; }
-    .dmg .mono { width: 40px; }
-    .bar { flex: 1; height: 6px; border-radius: 999px; background: var(--bg-sunken); overflow: hidden; }
+    .dmg { display: flex; flex-direction: column; gap: 3px; }
+    .bar { width: 100%; height: 4px; border-radius: 999px; background: var(--bg-sunken); overflow: hidden; }
     .bar span { display: block; height: 100%; background: var(--accent); opacity: 0.75; }
     .row-p.enemy .bar span { background: var(--enemy); }
   `,
