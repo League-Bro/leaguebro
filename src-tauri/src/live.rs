@@ -35,6 +35,16 @@ pub struct NextItem {
     pub affordable: bool,
 }
 
+/// A situational item on the overlay, with what's left to pay for it.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SituationalPick {
+    #[serde(flatten)]
+    pub item: SituationalItem,
+    pub price: i64,
+    pub affordable: bool,
+}
+
 /// What the live view needs from the client's item list.
 pub struct ShopItem {
     pub name: String,
@@ -54,6 +64,7 @@ pub struct OverlayState {
     pub deaths: i64,
     pub assists: i64,
     pub timers: Vec<Timer>,
+    /// Everything left of the recommended build, in purchase order (owned items drop off).
     pub next_items: Vec<NextItem>,
     pub has_build: bool,
     /// Ability max order, e.g. ["Q", "W", "E"]; empty when the hint is off.
@@ -63,7 +74,7 @@ pub struct OverlayState {
     /// Your item value against your lane opponent's; None without roles (ARAM etc.).
     pub lane: Option<LaneDiff>,
     /// Situational items for this game, best first (empty when off in Settings).
-    pub situational: Vec<SituationalItem>,
+    pub situational: Vec<SituationalPick>,
 }
 
 /// Item value (total cost of the items each of you holds). The game doesn't
@@ -314,6 +325,20 @@ pub fn next_items(
     out
 }
 
+/// Prices the situational items after the components you own. Each is priced
+/// on its own, since they're alternatives rather than a build.
+pub fn price_situational(data: &Value, picks: Vec<SituationalItem>, items: &HashMap<i64, ShopItem>) -> Vec<SituationalPick> {
+    let gold = float(data, "/activePlayer/currentGold");
+    let owned = my_items(data);
+    picks
+        .into_iter()
+        .map(|item| {
+            let price = items.get(&item.id).map_or(0, |it| (it.price - owned_discount(item.id, items, &mut owned.clone(), 0)).max(0));
+            SituationalPick { item, price, affordable: price > 0 && gold >= price as f64 }
+        })
+        .collect()
+}
+
 pub fn overlay_state(
     data: &Value,
     cfg: &TimerConfig,
@@ -332,7 +357,7 @@ pub fn overlay_state(
         deaths: score("deaths"),
         assists: score("assists"),
         timers: compute_timers(data, cfg),
-        next_items: build.map(|b| next_items(data, b, items, 2)).unwrap_or_default(),
+        next_items: build.map(|b| next_items(data, b, items, usize::MAX)).unwrap_or_default(),
         has_build: build.map(|b| !b.is_empty()).unwrap_or(false),
         skill_max: guide.skill_max.to_vec(),
         next_skill: next_skill(data, guide.skill_order),
@@ -436,6 +461,18 @@ mod tests {
         let next = next_items(&d, &[6655], &items, 1);
         assert_eq!(next[0].price, 2850 - 1200);
         assert!(next[0].affordable);
+    }
+
+    #[test]
+    fn situational_prices() {
+        let items = shop(&[(3165, "Morellonomicon", 2950, &[3916, 1026]), (3916, "Oblivion Orb", 800, &[]), (1026, "Blasting Wand", 850, &[]), (3102, "Banshee's Veil", 3000, &[])]);
+        let mut d = sample(600.0, json!([]));
+        d["allPlayers"][0]["items"] = json!([{"itemID": 3916}]);
+        d["activePlayer"]["currentGold"] = json!(2200.0);
+        let pick = |id| SituationalItem { id, ..Default::default() };
+        let priced = price_situational(&d, vec![pick(3165), pick(3102)], &items);
+        // The Oblivion Orb comes off Morellonomicon; both are priced against the same items.
+        assert_eq!(priced.iter().map(|p| (p.item.id, p.price, p.affordable)).collect::<Vec<_>>(), vec![(3165, 2150, true), (3102, 3000, false)]);
     }
 
     #[test]

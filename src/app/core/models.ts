@@ -348,6 +348,7 @@ export interface OverlayState {
   deaths: number;
   assists: number;
   timers: Timer[];
+  /** Everything left of the recommended build, in purchase order (owned items drop off). */
   nextItems: NextItem[];
   hasBuild: boolean;
   skillMax: string[];
@@ -355,7 +356,7 @@ export interface OverlayState {
   /** Your item value vs your lane opponent's; null without roles (ARAM etc.). */
   lane: LaneDiff | null;
   /** Situational items for this game, best first (empty when off in Settings). */
-  situational: SituationalItem[];
+  situational: SituationalPick[];
 }
 
 export interface Snapshot {
@@ -408,6 +409,12 @@ export interface SituationalItem {
   offPool: boolean;
   games: number;
   winRate: number;
+}
+
+/** A situational item on the overlay, with what's left to pay for it. */
+export interface SituationalPick extends SituationalItem {
+  price: number;
+  affordable: boolean;
 }
 
 /** Situational items for the current game: champ select picks, then the live scoreboard. */

@@ -187,15 +187,16 @@ pub fn quick_play_body(existing: &Value, page: &RunePage) -> Value {
 }
 
 /// Puts `page`'s runes on the Swiftplay temporary page for this champion.
+/// Returns the page's id (the client may answer with a remade page's).
 /// (The per-slot `POST player-slots/{index}/{perks}` returns 400
 /// INVALID_REQUEST, checked October 2026.)
-pub async fn set_quick_play_page(lcu: &Lcu, champion_id: i64, page: &RunePage) -> Result<()> {
+pub async fn set_quick_play_page(lcu: &Lcu, champion_id: i64, page: &RunePage) -> Result<i64> {
     let pages = lcu.get_req("/lol-perks/v1/pages").await?;
     let existing = quick_play_page(&pages, champion_id)
         .ok_or_else(|| anyhow!("the client has no Swiftplay rune page for this champion"))?;
     let id = existing.get("id").and_then(Value::as_i64).unwrap_or_default();
-    lcu.put(&format!("/lol-perks/v1/pages/{id}"), &quick_play_body(existing, page)).await?;
-    Ok(())
+    let written = lcu.put(&format!("/lol-perks/v1/pages/{id}"), &quick_play_body(existing, page)).await?;
+    Ok(written.get("id").and_then(Value::as_i64).unwrap_or(id))
 }
 
 /// Creates (or replaces) the League Bro rune page and makes it current.

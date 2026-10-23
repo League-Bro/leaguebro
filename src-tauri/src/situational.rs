@@ -149,7 +149,7 @@ pub struct Threat {
     pub detail: String,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SituationalItem {
     pub id: i64,

@@ -1158,13 +1158,13 @@ impl Engine {
                     Some(EnemySeen { champion_id: c.id, items: e.items, kills: e.kills, deaths: e.deaths, assists: e.assists })
                 })
                 .collect();
-            (st, enemies)
+            (st, enemies, items)
         };
-        let (mut state, enemies) = state;
+        let (mut state, enemies, items) = state;
         let owned = live::my_items(&data);
         if let Some(sit) = self.update_situational(enemies, owned, true).await {
             if cfg.show_situational {
-                state.situational = sit.items;
+                state.situational = live::price_situational(&data, sit.items, &items);
                 self.state().shared.lock().await.overlay = Some(state.clone());
             }
         }
@@ -1433,10 +1433,19 @@ pub async fn import_slots(app: &AppHandle, lcu: &Lcu, wanted: Vec<(usize, i64, S
     // The runes themselves live on the slot's temporary rune page, which the
     // perks plugin puts back over the slot's `perks`; so replace that page.
     let mut failed: HashMap<usize, String> = HashMap::new();
+    let mut first_page = None;
     for (slot, champ, ..) in &done {
-        if let Err(e) = runes::set_quick_play_page(lcu, *champ, &pages[slot]).await {
-            failed.insert(*slot, format!("{e:#}"));
+        match runes::set_quick_play_page(lcu, *champ, &pages[slot]).await {
+            Ok(id) => first_page = first_page.or(Some(id)),
+            Err(e) => {
+                failed.insert(*slot, format!("{e:#}"));
+            }
         }
+    }
+    // Switch to the imported page, so the rune menu opens on it. Only one page
+    // can be current, so the first slot's (your primary position) wins.
+    if let Some(id) = first_page {
+        let _ = lcu.put("/lol-perks/v1/currentpage", &Value::from(id)).await;
     }
     let items = if cfg.set_item_sets { slot_item_sets(app, lcu, &done).await } else { String::new() };
     // Check that the client kept them.

@@ -117,12 +117,18 @@ export function demoSnapshot(): Snapshot {
       nextItems: [
         { id: 4645, name: 'Shadowflame', price: 3200, affordable: false },
         { id: 3157, name: "Zhonya's Hourglass", price: 3250, affordable: false },
+        { id: 3089, name: "Rabadon's Deathcap", price: 3600, affordable: false },
+        { id: 3135, name: 'Void Staff', price: 3000, affordable: false },
       ],
       hasBuild: true,
       skillMax: ['Q', 'W', 'E'],
       nextSkill: 'Q',
       lane: { opponent: 'Zed', mine: 5350, theirs: 3967 },
-      situational: demoSituational(true).items,
+      // Priced like the engine does; Void Staff's Blasting Wand is owned.
+      situational: demoSituational(true).items.map((it) => {
+        const price = { 3102: 3000, 3135: 2150, 3165: 2950 }[it.id] ?? 0;
+        return { ...it, price, affordable: price > 0 && price <= 1310 };
+      }),
     },
     rec: demoRec(),
     postGame: null,

@@ -19,15 +19,17 @@ const PREVIEW: OverlayState = {
   ],
   nextItems: [
     { id: 6655, name: "Luden's Companion", price: 2850, affordable: false },
-    { id: 1058, name: 'Needlessly Large Rod', price: 1200, affordable: true },
+    { id: 4645, name: 'Shadowflame', price: 3200, affordable: false },
+    { id: 3089, name: "Rabadon's Deathcap", price: 3600, affordable: false },
+    { id: 3135, name: 'Void Staff', price: 3000, affordable: false },
   ],
   hasBuild: true,
   skillMax: ['Q', 'W', 'E'],
   nextSkill: 'Q',
   lane: { opponent: 'Zed', mine: 5350, theirs: 3967 },
   situational: [
-    { id: 3102, name: "Banshee's Veil", tag: 'survive', label: 'Survive burst', reason: 'Burst from Zed (assassin, 7/2)', score: 2, started: false, offPool: false, games: 210, winRate: 0.53 },
-    { id: 3165, name: 'Morellonomicon', tag: 'antiHeal', label: 'Anti-heal', reason: 'Healing from Darius (Ravenous Hydra)', score: 1.2, started: false, offPool: false, games: 120, winRate: 0.51 },
+    { id: 3102, name: "Banshee's Veil", tag: 'survive', label: 'Survive burst', reason: 'Burst from Zed (assassin, 7/2)', score: 2, started: false, offPool: false, games: 210, winRate: 0.53, price: 3000, affordable: false },
+    { id: 3165, name: 'Morellonomicon', tag: 'antiHeal', label: 'Anti-heal', reason: 'Healing from Darius (Ravenous Hydra)', score: 1.2, started: true, offPool: false, games: 120, winRate: 0.51, price: 2150, affordable: false },
   ],
 };
 
@@ -81,7 +83,18 @@ const PREVIEW: OverlayState = {
         @if (o.nextItems.length) {
           <div class="build">
             <div class="cap">Next · OP.GG build</div>
-            @for (it of o.nextItems; track it.id) {
+            <!-- Everything left to buy, in order; items drop off as you finish them. -->
+            @if (o.nextItems.length > 1) {
+              <div class="order">
+                @for (it of o.nextItems; track $index; let first = $first) {
+                  <div class="step" [class.next]="first" [title]="it.name + ' · ' + it.price">
+                    @if (rift.itemIcon(it.id); as url) { <img [src]="url" [alt]="it.name" (error)="rift.hideImg($event)" /> }
+                    <span class="n">{{ $index + 1 }}</span>
+                  </div>
+                }
+              </div>
+            }
+            @for (it of o.nextItems.slice(0, 2); track $index) {
               <div class="item" [class.ready]="it.affordable">
                 @if (rift.itemIcon(it.id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
                 <span class="name">{{ it.name }}</span>
@@ -96,12 +109,12 @@ const PREVIEW: OverlayState = {
           <div class="build sit">
             <div class="cap">Situational · vs this team</div>
             @for (it of expanded() ? o.situational : o.situational.slice(0, 1); track it.id) {
-              <div class="item" [title]="it.reason">
+              <div class="item" [class.ready]="it.affordable" [title]="it.reason">
                 @if (rift.itemIcon(it.id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
                 <span class="name">{{ it.name }}</span>
-                <span class="tag" [class.started]="it.started">{{ it.started ? 'Started' : it.label }}</span>
+                @if (it.price) { <span class="price">{{ it.price }}</span> }
               </div>
-              <div class="why">{{ it.reason }}</div>
+              <div class="why"><span class="tag">{{ it.label }}</span> · {{ it.reason }}</div>
             }
             @if (o.situational.length > 1) {
               <button #moreBtn class="more" (click)="expanded.set(!expanded())">
@@ -173,8 +186,17 @@ const PREVIEW: OverlayState = {
     .item .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .item .price { font: 12px var(--mono); color: var(--text-faint); }
     .item.ready .price { color: var(--win); }
-    .sit .tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); white-space: nowrap; }
-    .sit .tag.started { color: var(--win); }
+    .order { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 2px; }
+    .step { position: relative; width: 28px; height: 28px; border-radius: 5px; border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(255, 255, 255, 0.04); }
+    .step img { width: 100%; height: 100%; border-radius: 4px; display: block; }
+    .step .n {
+      position: absolute; right: -3px; bottom: -3px; min-width: 13px; height: 13px; padding: 0 2px; box-sizing: border-box;
+      border-radius: 7px; background: #0f0d14; border: 1px solid rgba(255, 255, 255, 0.2);
+      font: 600 9px/11px var(--mono); text-align: center; color: var(--text-dim); text-shadow: none;
+    }
+    .step.next { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .step.next .n { color: var(--accent); border-color: var(--accent); }
+    .sit .tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); }
     /* One line each, so the expanded list fits the window; the full reason is the row's tooltip. */
     .sit .why {
       margin: -2px 0 2px 32px; font-size: 11.5px; color: var(--text-dim); line-height: 1.3;

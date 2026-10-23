@@ -38,15 +38,32 @@ fn block(label: &str, set: &ItemSet) -> Option<Value> {
 pub fn build_set(rec: &Recommendation, champion_name: &str, role_label: &str, map_id: i64, uid: &str) -> Option<Value> {
     // The full purchase order (what the overlay reminds you of), right after the starter.
     let order = (!rec.build_order.is_empty()).then(|| ItemSet { ids: rec.build_order.clone(), ..Default::default() });
-    let mut blocks: Vec<Value> = [
-        ("Starter", rec.starter.as_ref()),
-        ("Build order (left to right)", order.as_ref()),
-        ("Boots", rec.boots.as_ref()),
-        ("Core build", rec.core.as_ref()),
-    ]
-    .into_iter()
-    .filter_map(|(label, set)| set.and_then(|s| block(label, s)))
-    .collect();
+    let mut blocks: Vec<Value> = [("Starter", rec.starter.as_ref()), ("Build order (left to right)", order.as_ref())]
+        .into_iter()
+        .filter_map(|(label, set)| set.and_then(|s| block(label, s)))
+        .collect();
+    // Every core build and pair of boots the rec card offers, the picked one first.
+    let others = |picked: Option<&ItemSet>, options: &[ItemSet]| -> Vec<ItemSet> {
+        options.iter().filter(|o| picked.is_none_or(|p| p.ids != o.ids)).cloned().collect()
+    };
+    blocks.extend(rec.core.as_ref().and_then(|c| block("Core build", c)));
+    for (i, core) in others(rec.core.as_ref(), &rec.core_options).iter().enumerate() {
+        blocks.extend(block(&format!("Core option {}", i + 2), core));
+    }
+    let mut boots = rec.boots.clone().unwrap_or_default();
+    let picked = boots.ids.len();
+    for b in others(rec.boots.as_ref(), &rec.boots_options) {
+        for id in b.ids {
+            if !boots.ids.contains(&id) {
+                boots.ids.push(id);
+            }
+        }
+    }
+    if boots.ids.len() > picked {
+        // One win rate in the header would only describe the first pair.
+        boots.games = 0;
+    }
+    blocks.extend(block("Boots", &boots));
     for (i, options) in rec.later.iter().enumerate() {
         let mut merged = ItemSet::default();
         for opt in options {
@@ -339,12 +356,31 @@ mod tests {
         // Merged options have no single win rate.
         assert_eq!(
             headers,
-            ["Starter - 51% WR", "Build order (left to right)", "Boots - 51% WR", "Core build - 53% WR", "4th item options", "5th item options"]
+            ["Starter - 51% WR", "Build order (left to right)", "Core build - 53% WR", "Boots - 51% WR", "4th item options", "5th item options"]
         );
         assert_eq!(blocks[0]["items"], json!([{ "id": "1056", "count": 1 }, { "id": "2003", "count": 2 }]));
         let order: Vec<&str> = blocks[1]["items"].as_array().unwrap().iter().map(|i| i["id"].as_str().unwrap()).collect();
         assert_eq!(order, ["3118", "3020", "4645", "3157", "3089"]);
         assert_eq!(blocks[4]["items"], json!([{ "id": "3089", "count": 1 }, { "id": "3135", "count": 1 }]));
+    }
+
+    #[test]
+    fn every_core_and_boots_option() {
+        // The player picked the second core build on the rec card.
+        let mut r = rec();
+        let top = set(&[3118, 4645, 3157], 619, 0.53);
+        let picked = set(&[3118, 4645, 3089], 300, 0.55);
+        r.core_options = vec![top, picked.clone(), set(&[6655, 4645, 3157], 120, 0.5)];
+        r.core = Some(picked);
+        r.boots_options = vec![set(&[3020], 4455, 0.51), set(&[3158], 900, 0.52)];
+        let s = build_set(&r, "Ahri", "Mid", 11, "u").unwrap();
+        let blocks = s["blocks"].as_array().unwrap();
+        let ids = |b: &Value| -> Vec<String> { b["items"].as_array().unwrap().iter().map(|i| i["id"].as_str().unwrap().to_string()).collect() };
+        let headers: Vec<&str> = blocks.iter().map(|b| b["type"].as_str().unwrap()).collect();
+        assert_eq!(&headers[2..6], ["Core build - 55% WR", "Core option 2 - 53% WR", "Core option 3 - 50% WR", "Boots"]);
+        assert_eq!(ids(&blocks[2]), ["3118", "4645", "3089"]);
+        assert_eq!(ids(&blocks[3]), ["3118", "4645", "3157"]);
+        assert_eq!(ids(&blocks[5]), ["3020", "3158"]);
     }
 
     #[test]
