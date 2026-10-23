@@ -1,4 +1,4 @@
-import { Component, effect, inject, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, signal, untracked } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { UpdateService } from '../core/update.service';
 import { FullscreenHint } from './fullscreen-hint';
@@ -17,6 +17,7 @@ type BoolKey =
 
 @Component({
   selector: 'rl-settings',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FullscreenHint],
   template: `
     @if (rift.config(); as cfg) {

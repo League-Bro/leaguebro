@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { PlayerCard } from './player-card';
@@ -11,6 +11,7 @@ import { ImportEvent } from '../core/models';
 
 @Component({
   selector: 'rl-live',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [PlayerCard, RecCard, MatchupCard, PostGameView, DecimalPipe, FullscreenHint],
   template: `
     @if (rift.fullscreenHint()) {

@@ -480,12 +480,23 @@ export interface ItemInfo {
   stats: string[];
   /** Passive/active text, one line per paragraph. */
   desc: string;
+  /** The same text split into passives and actives (the item tooltip). */
+  effects: ItemEffect[];
   /** Client shop categories, e.g. ["SpellDamage", "Mana"]. */
   categories: string[];
   /** Items this one builds into. */
   into: number[];
+  /** Items this one is built from. */
+  from: number[];
   /** What it's good against, e.g. ["antiHeal"]. */
   situations: SituationTag[];
+}
+
+export interface ItemEffect {
+  /** '' for text that isn't under a Passive/Active heading. */
+  kind: 'passive' | 'active' | '';
+  name: string;
+  text: string;
 }
 
 export interface PerkInfo {

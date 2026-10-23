@@ -1,4 +1,4 @@
-import { Component, DestroyRef, ElementRef, computed, effect, inject, output, signal, untracked, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, output, signal, untracked, viewChild } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { POSITION_LABELS, championIcon, rankCrest } from '../core/assets';
@@ -46,6 +46,7 @@ let autoLane: string | null = null;
 /** Per-lane champion tiers from Lolalytics or OP.GG. Clicking a champion opens it in the Champions tab. */
 @Component({
   selector: 'rl-tierlist',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '(document:click)': 'closeRankMenu($event)' },
   imports: [DecimalPipe],
   template: `

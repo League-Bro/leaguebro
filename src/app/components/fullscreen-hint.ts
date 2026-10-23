@@ -1,9 +1,10 @@
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 
 /** Shown while League is set to Fullscreen, which covers the overlay. */
 @Component({
   selector: 'rl-fullscreen-hint',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (rift.fullscreenHint()) {
       <div class="hint" role="status">

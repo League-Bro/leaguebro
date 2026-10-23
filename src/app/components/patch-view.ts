@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { assetUrl, championIcon } from '../core/assets';
@@ -17,6 +17,7 @@ const VERDICT_LABELS: Record<string, string> = {
 /** Patch notes summary: every change from Riot's notes, sorted into buffs, nerfs and adjustments. */
 @Component({
   selector: 'rl-patch',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DatePipe],
   template: `
     <div class="top">

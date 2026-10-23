@@ -1,10 +1,11 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
 import { RiftService } from './core/rift.service';
 import { Shell } from './components/shell';
 import { Overlay } from './components/overlay';
 
 @Component({
   selector: 'app-root',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Shell, Overlay],
   template: `
     @if (rift.windowLabel() === 'overlay') {

@@ -1,12 +1,15 @@
-import { Component, computed, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { championIcon, clock, kdaRatio } from '../core/assets';
 import { PostGame, PostPlayer, PostTeam } from '../core/models';
+import { ItemTip } from './item-tip';
 
 const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as const;
 
 @Component({
   selector: 'rl-post-game',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ItemTip],
   template: `
     @let g = game();
     @if (me(); as m) {
@@ -32,7 +35,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
           </div>
           <div class="items">
             @for (id of m.items; track $index) {
-              <span class="slot" [title]="rift.itemName(id)">
+              <span class="slot" [rlItemTip]="id" [attr.aria-label]="rift.itemName(id) || null">
                 @if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
               </span>
             }
@@ -79,7 +82,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
             <span class="mono muted">{{ p.vision }}</span>
             <div class="items sm">
               @for (id of p.items; track $index) {
-                <span class="slot" [title]="rift.itemName(id)">
+                <span class="slot" [rlItemTip]="id" [attr.aria-label]="rift.itemName(id) || null">
                   @if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
                 </span>
               }

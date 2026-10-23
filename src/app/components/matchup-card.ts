@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { championIcon } from '../core/assets';
@@ -7,6 +7,7 @@ import { MIN_GAMES } from '../core/models';
 /** Your lane opponent and how the matchup goes: OP.GG's numbers and tip, plus your own games. */
 @Component({
   selector: 'rl-matchup',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DecimalPipe],
   template: `
     @if (rift.config()?.recSource === 'opgg' && state(); as m) {

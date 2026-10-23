@@ -1,7 +1,8 @@
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { ItemSet, SituationalState, SituationTag } from '../core/models';
 import { SITUATION_LABEL, SITUATION_WHEN, pct } from '../core/why';
+import { ItemTip } from './item-tip';
 
 /** Other options shown before "Show more". */
 const OTHERS_SHOWN = 3;
@@ -13,6 +14,8 @@ const OTHERS_SHOWN = 3;
  */
 @Component({
   selector: 'rl-situational',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ItemTip],
   template: `
     @if (picks().length || others().length) {
       <section class="panel">
@@ -38,7 +41,7 @@ const OTHERS_SHOWN = 3;
           }
           @for (p of picks(); track p.id) {
             <div class="pick">
-              @if (rift.itemIcon(p.id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+              @if (rift.itemIcon(p.id); as url) { <img [src]="url" alt="" [rlItemTip]="p.id" (error)="rift.hideImg($event)" /> }
               <div class="body">
                 <div class="title">
                   <span class="strong">{{ p.name }}</span>
@@ -68,7 +71,7 @@ const OTHERS_SHOWN = 3;
           @if (state()) { <div class="sub">Other options</div> }
           @for (o of shownOthers(); track o.id) {
             <div class="pick other">
-              @if (rift.itemIcon(o.id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+              @if (rift.itemIcon(o.id); as url) { <img [src]="url" alt="" [rlItemTip]="o.id" (error)="rift.hideImg($event)" /> }
               <div class="body">
                 <div class="title">
                   <span class="strong">{{ o.name }}</span>

@@ -1,10 +1,11 @@
-import { Component, computed, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { championIcon, formatTier, positionLabel, tierClass, winPct } from '../core/assets';
 
 @Component({
   selector: 'rl-player',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DecimalPipe],
   template: `
     <div class="player" [class.me]="isMe()" [class.enemy]="side() === 'enemy'">

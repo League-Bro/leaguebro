@@ -7,6 +7,7 @@ import {
   ChampStat,
   Config,
   Insights,
+  ItemEffect,
   ItemInfo,
   MatchLine,
   MatchupState,
@@ -333,8 +334,20 @@ const roles: Record<number, string[]> = {
 function demoItem(
   id: number, name: string, priceTotal: number, file: string, stats: string[], desc: string, categories: string[], situations: SituationTag[] = [],
 ): ItemInfo {
-  return { id, name, priceTotal, iconPath: `/lol-game-data/assets/ASSETS/Items/Icons2D/${file}`, stats, desc, categories, into: [], situations };
+  // Demo descriptions alternate heading and text lines, like the client's tooltips.
+  const lines = desc ? desc.split('\n') : [];
+  const effects: ItemEffect[] = [];
+  for (let i = 0; i < lines.length; i += 2) {
+    effects.push({ kind: categories.includes('Active') && i === 0 ? 'active' : 'passive', name: lines[i], text: lines[i + 1] ?? '' });
+  }
+  const from = demoFrom[id] ?? [];
+  const into = Object.entries(demoFrom).filter(([, f]) => f.includes(id)).map(([k]) => Number(k));
+  return { id, name, priceTotal, iconPath: `/lol-game-data/assets/ASSETS/Items/Icons2D/${file}`, stats, desc, effects, categories, into, from, situations };
 }
+
+const demoFrom: Record<number, number[]> = {
+  6655: [1058], 3089: [1058, 1058], 3157: [1058], 4645: [1058], 3135: [1058], 3102: [1058], 3100: [1058],
+};
 
 export function demoStatic(): StaticData {
   return {

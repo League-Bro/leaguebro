@@ -1,9 +1,10 @@
-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { championIcon, formatTier, kdaRatio, profileIcon, queueLabel, tierClass, winPct } from '../core/assets';
 import { MatchLine, MyProfile, PostGame, RankLine } from '../core/models';
 import { PostGameView } from './post-game';
+import { ItemTip } from './item-tip';
 
 const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as const;
 
@@ -17,7 +18,8 @@ const REGIONS = [
 /** Your rank, insights from recent games, and match history. */
 @Component({
   selector: 'rl-profile',
-  imports: [DecimalPipe, NgTemplateOutlet, PostGameView],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [DecimalPipe, NgTemplateOutlet, PostGameView, ItemTip],
   template: `
     @if (setup()) {
       <section class="card empty">
@@ -243,7 +245,7 @@ const REGIONS = [
             </div>
             <div class="items c-build">
               @for (id of m.items; track $index) {
-                <span class="slot">@if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }</span>
+                <span class="slot" [rlItemTip]="id">@if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }</span>
               }
             </div>
           </button>

@@ -51,12 +51,25 @@ pub struct ItemInfo {
     pub stats: Vec<String>,
     /// Passive/active text from the tooltip as plain text.
     pub desc: String,
+    /// The same text split into its passives and actives, for the item tooltip.
+    pub effects: Vec<ItemEffect>,
     /// Client shop categories, e.g. ["SpellDamage", "Mana"].
     pub categories: Vec<String>,
     /// Items this one builds into (the client's `to`).
     pub into: Vec<i64>,
+    /// Items this one is built from (the client's `from`).
+    pub from: Vec<i64>,
     /// What it's good against (`situational::item_tags`), e.g. ["antiHeal"].
     pub situations: Vec<String>,
+}
+
+/// One passive or active from an item's tooltip.
+#[derive(Debug, Clone, Serialize, Default, PartialEq)]
+pub struct ItemEffect {
+    /// "passive", "active", or "" for text that isn't under a heading.
+    pub kind: String,
+    pub name: String,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -437,7 +450,7 @@ fn build_statics(champs: &Value, items: &Value, perks: &Value, styles: &Value, s
         .flatten()
         .filter(|it| int(it, "id") > 0 && !text(it, "name").is_empty())
         .map(|it| {
-            let (stats, desc) = item_tooltip(text(it, "description"));
+            let (stats, desc, effects) = item_tooltip(text(it, "description"));
             let categories = strings(it, "categories");
             ItemInfo {
                 id: int(it, "id"),
@@ -447,8 +460,10 @@ fn build_statics(champs: &Value, items: &Value, perks: &Value, styles: &Value, s
                 situations: situational::item_tags(&stats, &desc, &categories),
                 stats,
                 desc,
+                effects,
                 categories,
                 into: ints(it, "to"),
+                from: ints(it, "from"),
             }
         })
         .collect();
@@ -517,14 +532,38 @@ pub fn plain_text(html: &str) -> String {
         .join("\n")
 }
 
-/// Splits an item tooltip into its stat lines and the rest (passives/actives).
-pub fn item_tooltip(html: &str) -> (Vec<String>, String) {
+/// Splits an item tooltip into its stat lines and the rest (passives/actives),
+/// both as plain text and as separate effects.
+pub fn item_tooltip(html: &str) -> (Vec<String>, String, Vec<ItemEffect>) {
     let (stats_html, rest) = match (html.find("<stats>"), html.find("</stats>")) {
         (Some(a), Some(b)) if b > a => (&html[a + 7..b], format!("{}{}", &html[..a], &html[b + 8..])),
         _ => ("", html.to_string()),
     };
     let stats = plain_text(stats_html).lines().map(str::to_string).collect();
-    (stats, plain_text(&rest))
+    (stats, plain_text(&rest), item_effects(&rest))
+}
+
+/// Cuts tooltip text at each `<passive>Name</passive>` / `<active>Name</active>`
+/// heading; the text up to the next heading belongs to it.
+fn item_effects(html: &str) -> Vec<ItemEffect> {
+    let mut out = Vec::new();
+    let mut rest = html;
+    let (mut kind, mut name) = ("", String::new());
+    loop {
+        let next = ["passive", "active"].into_iter().filter_map(|k| rest.find(&format!("<{k}>")).map(|i| (i, k))).min();
+        let text = plain_text(next.map_or(rest, |(i, _)| &rest[..i]));
+        if !text.is_empty() || !name.is_empty() {
+            out.push(ItemEffect { kind: kind.into(), name: std::mem::take(&mut name), text });
+        }
+        let Some((i, k)) = next else { break };
+        let after = &rest[i + k.len() + 2..];
+        let close = format!("</{k}>");
+        let (head, tail) = after.find(&close).map_or((after, ""), |e| (&after[..e], &after[e + close.len()..]));
+        kind = k;
+        name = plain_text(head);
+        rest = tail;
+    }
+    out
 }
 
 // ---------- overlay window ----------
@@ -1722,12 +1761,20 @@ mod tests {
 
     #[test]
     fn tooltips_become_plain_text() {
-        let (stats, desc) = item_tooltip(
+        let (stats, desc, effects) = item_tooltip(
             "<mainText><stats><attention> 100</attention> Ability Power<br><attention> 600</attention> Mana</stats><br><br>\
-             <passive>Echo</passive><br>Damaging Abilities deal <magicDamage>bonus magic damage</magicDamage>.<br></mainText>",
+             <passive>Echo</passive><br>Damaging Abilities deal <magicDamage>bonus magic damage</magicDamage>.<br>\
+             <active>Burst</active><br>Deal damage.</mainText>",
         );
         assert_eq!(stats, vec!["100 Ability Power", "600 Mana"]);
-        assert_eq!(desc, "Echo\nDamaging Abilities deal bonus magic damage.");
+        assert_eq!(desc, "Echo\nDamaging Abilities deal bonus magic damage.\nBurst\nDeal damage.");
+        let effect = |kind: &str, name: &str, text: &str| ItemEffect { kind: kind.into(), name: name.into(), text: text.into() };
+        assert_eq!(
+            effects,
+            vec![effect("passive", "Echo", "Damaging Abilities deal bonus magic damage."), effect("active", "Burst", "Deal damage.")]
+        );
+        let (_, _, plain) = item_tooltip("<mainText><stats>10 Armor</stats><br>Just some text.</mainText>");
+        assert_eq!(plain, vec![effect("", "", "Just some text.")]);
         assert_eq!(
             plain_text("Deals <font color='#48C4B7'>@TotalDamage@</font> bonus <b>adaptive</b> damage @ 3s."),
             "Deals bonus adaptive damage @ 3s."

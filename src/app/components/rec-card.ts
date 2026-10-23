@@ -1,9 +1,10 @@
-import { Component, computed, inject, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { assetUrl, championIcon } from '../core/assets';
 import { ItemSet, MIN_GAMES, RecChoice, RecState, Recommendation, RuneRec } from '../core/models';
 import { SituationalCard } from './situational-card';
+import { ItemTip } from './item-tip';
 import { buildWhy, rolesLabel } from '../core/why';
 
 /** One of OP.GG's options in a pick list: icons, a name, and its win and play rates. */
@@ -11,6 +12,8 @@ interface ChoiceRow {
   o: { games: number; winRate: number; pickRate: number };
   label: string;
   icons: string[];
+  /** For item options: the item behind each icon, for its hover card. */
+  items?: number[];
   tip: string;
   round?: boolean;
 }
@@ -18,7 +21,8 @@ interface ChoiceRow {
 /** OP.GG's recommendation for your current champion: runes, spells, skills, items. */
 @Component({
   selector: 'rl-rec-card',
-  imports: [DecimalPipe, NgTemplateOutlet, SituationalCard],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [DecimalPipe, NgTemplateOutlet, SituationalCard, ItemTip],
   template: `
     @if (rift.config()?.recSource === 'opgg' && state(); as s) {
       <section class="card rec">
@@ -210,7 +214,7 @@ interface ChoiceRow {
                       <div class="sub">Start with</div>
                       <div class="icons">
                         @for (id of st.ids; track $index) {
-                          @if (rift.itemIcon(id); as url) { <img [src]="url" [title]="itemName(id, st, $index)" alt="" (error)="rift.hideImg($event)" /> } @else { <span class="chip">{{ itemName(id, st, $index) }}</span> }
+                          @if (rift.itemIcon(id); as url) { <img [src]="url" [rlItemTip]="id" [alt]="itemName(id, st, $index)" (error)="rift.hideImg($event)" /> } @else { <span class="chip">{{ itemName(id, st, $index) }}</span> }
                         }
                       </div>
                     </div>
@@ -220,7 +224,7 @@ interface ChoiceRow {
                       <div class="sub">Build order</div>
                       <div class="icons">
                         @for (id of r.buildOrder; track id; let last = $last) {
-                          @if (rift.itemIcon(id); as url) { <img [src]="url" [title]="itemNameAny(id, r)" alt="" (error)="rift.hideImg($event)" /> } @else { <span class="chip">{{ itemNameAny(id, r) }}</span> }
+                          @if (rift.itemIcon(id); as url) { <img [src]="url" [rlItemTip]="id" [alt]="itemNameAny(id, r)" (error)="rift.hideImg($event)" /> } @else { <span class="chip">{{ itemNameAny(id, r) }}</span> }
                           @if (!last) { <span class="faint arrow">›</span> }
                         }
                       </div>
@@ -292,10 +296,10 @@ interface ChoiceRow {
         <div class="choices-head" aria-hidden="true"><span>{{ head }}</span><span>Win</span><span>Played</span></div>
         @for (p of rows; track $index) {
           <button class="choice" role="radio" [attr.aria-checked]="sel === $index" [class.on]="sel === $index"
-            [disabled]="pickBusy()" [title]="p.tip" (click)="pick(kind, $index)">
+            [disabled]="pickBusy()" [attr.title]="p.items ? null : p.tip" (click)="pick(kind, $index)">
             <span class="choice-what">
-              @for (u of p.icons; track $index) { <img [class.round]="p.round" [src]="u" alt="" (error)="rift.hideImg($event)" /> }
-              <span class="choice-name">{{ p.label }}</span>
+              @for (u of p.icons; track $index) { <img [class.round]="p.round" [src]="u" alt="" [rlItemTip]="p.items?.[$index] ?? 0" (error)="rift.hideImg($event)" /> }
+              <span class="choice-name" [attr.title]="p.items ? p.tip : null">{{ p.label }}</span>
             </span>
             <span class="num">{{ pct(p.o.winRate) }}</span>
             <span class="num faint">{{ pct(p.o.pickRate) }}</span>
@@ -600,8 +604,9 @@ export class RecCard {
     if (opts.length < 2) return null;
     return opts.map((o) => {
       const names = o.ids.map((id, i) => this.itemName(id, o, i));
+      const withIcon = o.ids.map((id) => ({ id, url: this.rift.itemIcon(id) })).filter((x) => x.url);
       return {
-        o, label: names.join(' · '), icons: o.ids.map((id) => this.rift.itemIcon(id)).filter(Boolean), tip: this.optTip(o, names.join(' + ')),
+        o, label: names.join(' · '), icons: withIcon.map((x) => x.url), items: withIcon.map((x) => x.id), tip: this.optTip(o, names.join(' + ')),
       };
     });
   }

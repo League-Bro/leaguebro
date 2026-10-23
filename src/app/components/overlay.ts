@@ -1,4 +1,4 @@
-import { Component, ElementRef, afterRenderEffect, computed, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, afterRenderEffect, computed, inject, signal, viewChild } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { clock } from '../core/assets';
@@ -33,6 +33,7 @@ const PREVIEW: OverlayState = {
 
 @Component({
   selector: 'rl-overlay',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DecimalPipe],
   template: `
     @if (state(); as o) {

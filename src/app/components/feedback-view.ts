@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { RiftService, inTauri } from '../core/rift.service';
 
@@ -17,6 +17,7 @@ const MAX_FIELD = 2000;
  */
 @Component({
   selector: 'rl-feedback',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="wrap stack">
       <section class="card stack">

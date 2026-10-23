@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { RecCard } from './rec-card';
@@ -17,6 +17,7 @@ const ROLES = [
 /** Look up any champion's OP.GG build. */
 @Component({
   selector: 'rl-champions',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RecCard, NgTemplateOutlet],
   template: `
     <div class="layout">

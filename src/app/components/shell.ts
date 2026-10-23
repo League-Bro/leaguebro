@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { UpdateService } from '../core/update.service';
 import { LiveView } from './live-view';
@@ -8,6 +8,7 @@ import { PatchView } from './patch-view';
 import { ProfileView } from './profile-view';
 import { TierListView } from './tierlist-view';
 import { FeedbackView } from './feedback-view';
+import { ItemTipPopup } from './item-tip';
 
 /** 'profile' isn't in the tab bar; the brand and your name open it. */
 type Tab = 'live' | 'champions' | 'tiers' | 'patch' | 'settings' | 'feedback' | 'profile';
@@ -28,7 +29,8 @@ const PHASE_LABELS: Record<string, string> = {
 
 @Component({
   selector: 'rl-shell',
-  imports: [LiveView, ChampionsView, TierListView, PatchView, SettingsView, FeedbackView, ProfileView],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [LiveView, ChampionsView, TierListView, PatchView, SettingsView, FeedbackView, ProfileView, ItemTipPopup],
   template: `
     <header>
       <button class="brand" [class.active]="tab() === 'profile'" title="Your profile and match history" (click)="go('profile')">
@@ -90,6 +92,7 @@ const PHASE_LABELS: Record<string, string> = {
         @case ('profile') { <rl-profile /> }
       }
     </main>
+    <rl-item-tip />
   `,
   host: {
     '(document:keydown.alt.arrowleft)': 'back()',
