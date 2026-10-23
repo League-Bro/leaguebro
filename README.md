@@ -172,11 +172,12 @@ One-time setup: in the repo's **Settings → Pages**, set **Source** to **GitHub
 
 Installers are built on GitHub's servers by `.github/workflows/build-windows.yml`, so releasing doesn't need Rust installed locally.
 
-1. Bump the version, e.g. `0.1.6` → `0.1.7`. Installed copies only update to a higher version, so it has to go up:
+1. Bump the version from the project folder. `bump` goes to the next patch version (e.g. `0.1.13` → `0.1.14`); `bump 0.2.0` sets a specific one. Installed copies only update to a higher version, so it has to go up:
    ```powershell
-   scripts\bump-version.cmd 0.1.7
+   bump          # Command Prompt; in PowerShell type .\bump
+   bump 0.2.0
    ```
-   That updates all five files that hold it (`src-tauri/tauri.conf.json`, `package.json`, `src-tauri/Cargo.toml`, `package-lock.json`, `src-tauri/Cargo.lock`), and refuses a version that isn't higher than the current one or the newest release tag.
+   `bump` is a shortcut for `scripts\bump-version.cmd`. It updates all five files that hold it (`src-tauri/tauri.conf.json`, `package.json`, `src-tauri/Cargo.toml`, `package-lock.json`, `src-tauri/Cargo.lock`), and refuses a version that isn't higher than the current one or the newest release tag.
 2. Commit and push:
    ```powershell
    git add -A

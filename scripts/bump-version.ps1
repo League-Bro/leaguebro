@@ -15,14 +15,18 @@
   version. Nothing is written unless every file can be updated.
 
 .PARAMETER Version
-  The new version, like 0.1.7.
+  The new version, like 0.1.7. Leave it out to bump the patch number
+  (0.1.13 -> 0.1.14, or one above the newest v* tag if that's higher).
 
 .EXAMPLE
   scripts\bump-version.cmd 0.1.7
+
+.EXAMPLE
+  bump
 #>
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory = $true, Position = 0)]
+  [Parameter(Position = 0)]
   [string]$Version,
   # Project folder; defaults to the one above this script. Used by tests.
   [string]$Root
@@ -39,7 +43,7 @@ function Fail([string]$message) {
   exit 1
 }
 
-if ($Version -notmatch '^\d+\.\d+\.\d+$') {
+if ($Version -and $Version -notmatch '^\d+\.\d+\.\d+$') {
   Fail "'$Version' isn't a version like 0.1.7 (three numbers, no 'v')."
 }
 
@@ -66,17 +70,25 @@ if ($current -ne $pkgVersion -or $current -ne $cargoVersion) {
   Fail "the files disagree before bumping: tauri.conf.json $current, package.json $pkgVersion, Cargo.toml $cargoVersion. Fix them by hand first."
 }
 
-$new = [version]$Version
-if ($new -le [version]$current) {
-  Fail "$Version isn't higher than the current version $current. Installed copies only update to a higher version."
-}
-
 # Release tags this copy knows about (run 'git fetch --tags' to see the latest ones).
 $tags = @()
 if (Get-Command git -ErrorAction SilentlyContinue) {
   $tags = @(git -C $Root tag -l 'v*' 2>$null | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^v\d+\.\d+\.\d+$' })
 }
 $highestTag = $tags | ForEach-Object { [version]$_.Substring(1) } | Sort-Object | Select-Object -Last 1
+
+# No version given: one patch above the current version or the newest tag, whichever is higher.
+if (-not $Version) {
+  $base = [version]$current
+  if ($highestTag -and $highestTag -gt $base) { $base = $highestTag }
+  $Version = "$($base.Major).$($base.Minor).$($base.Build + 1)"
+}
+
+$new = [version]$Version
+if ($new -le [version]$current) {
+  Fail "$Version isn't higher than the current version $current. Installed copies only update to a higher version."
+}
+
 if ($highestTag -and $new -le $highestTag) {
   Fail "$Version isn't higher than the release tag v$highestTag. Pick a version above v$highestTag."
 }

@@ -630,6 +630,8 @@ export interface Config {
   abilityKeys: AbilityKeys;
   scoutInChampSelect: boolean;
   scoutOnLoading: boolean;
+  /** The trash-talk card ("The Bro's review") in post-game summaries. */
+  showRoasts: boolean;
   overlayEnabled: boolean;
   overlayX: number | null;
   overlayY: number | null;

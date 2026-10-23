@@ -440,6 +440,7 @@ export function demoConfig(): Config {
     abilityKeys: { q: 'Q', w: 'W', e: 'E', r: 'R' },
     scoutInChampSelect: true,
     scoutOnLoading: true,
+    showRoasts: true,
     overlayEnabled: true,
     overlayX: null,
     overlayY: null,

@@ -7,6 +7,7 @@ import { AbilityKeys, CacheInfo, CacheName, Config, GlobalSets } from '../core/m
 type BoolKey =
   | 'scoutInChampSelect'
   | 'scoutOnLoading'
+  | 'showRoasts'
   | 'overlayEnabled'
   | 'autoImportRunes'
   | 'importOnHover'
@@ -181,6 +182,15 @@ type BoolKey =
             <input type="checkbox" [checked]="cfg.scoutOnLoading" (change)="setBool('scoutOnLoading', $any($event.target).checked)" />
             <span class="track"></span>
             <span class="label"><b>Look up all ten players on the loading screen</b><span>Ranks and recent games, straight from the League client. No API key needed.</span></span>
+          </label>
+        </section>
+
+        <section class="card stack">
+          <h2>Post-game</h2>
+          <label class="toggle">
+            <input type="checkbox" [checked]="cfg.showRoasts" (change)="setBool('showRoasts', $any($event.target).checked)" />
+            <span class="track"></span>
+            <span class="label"><b>Roasts</b><span>"The Bro's review" after each game: a bit of trash talk for what went badly, and some hype for what went well. Also shown for other players when you click them.</span></span>
           </label>
         </section>
 

@@ -80,6 +80,8 @@ pub struct Config {
     pub ability_keys: AbilityKeys,
     pub scout_in_champ_select: bool,
     pub scout_on_loading: bool,
+    /// Show the trash-talk card ("The Bro's review") in post-game summaries.
+    pub show_roasts: bool,
     pub overlay_enabled: bool,
     /// Overlay position in physical pixels; None = top-right corner.
     pub overlay_x: Option<i32>,
@@ -115,6 +117,7 @@ impl Default for Config {
             ability_keys: AbilityKeys::default(),
             scout_in_champ_select: true,
             scout_on_loading: true,
+            show_roasts: true,
             overlay_enabled: true,
             overlay_x: None,
             overlay_y: None,

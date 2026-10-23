@@ -1,9 +1,9 @@
 import { PostGame, PostPlayer, PostTeam } from './models';
 
-/** One bit of post-game trash talk: about something done badly, or a backhanded compliment. */
+/** One bit of post-game trash talk about something done badly, or praise for something done well. */
 export interface Roast {
   kind: 'cs' | 'fight' | 'damage' | 'deaths' | 'vision';
-  /** A highlight (still a roast), shown in green; otherwise bad, in red. */
+  /** A highlight (funny praise), shown in green; otherwise bad, in red. */
   good: boolean;
   /** Short stat for the chip, e.g. "4.1 CS/min". */
   stat: string;
@@ -17,10 +17,10 @@ type Vars = Record<string, string | number>;
 const LINES: Record<string, string[]> = {
   // ---- Bad (red) ----
   cs: [
-    'Your CS is trash. {cs} a minute, bro.',
+    'Your CS is trash. {cs} a minute, buddy.',
     '{cs} CS/min. The minions are not gonna hit themselves, genius.',
     '{cs} CS/min. Caster minions out here living rent free because of you.',
-    'Bro farmed like the gold was taxed at 90%. {cs} CS/min.',
+    'You farmed like the gold was taxed at 90%. {cs} CS/min.',
     '{cs} CS/min. Last hitting is a skill issue and you have the issue.',
     '{cs} CS/min. Intro bots farm better than this, no cap.',
     'Whole waves dying under your tower and you just vibing. {cs} CS/min.',
@@ -29,7 +29,7 @@ const LINES: Record<string, string[]> = {
     '{cs} CS/min on {champ}. Gold doesn\'t grow on trees, it grows on minions. Hit them.',
     '{cs} CS/min. That\'s not farming, that\'s community gardening.',
     '{cs} CS/min. Did your mouse have a cooldown?',
-    'POV: {min} minutes in and broke as hell. {cs} CS/min.',
+    'POV: {min} minutes in and you still can\'t afford boots. {cs} CS/min.',
     '{cs} CS/min. The minions unionized and you\'re still their favorite boss.',
     '{cs} CS/min. Every minion that walked past you lived a full, happy life.',
   ],
@@ -48,7 +48,7 @@ const LINES: Record<string, string[]> = {
     '{cs} CS/min. Were you clearing camps or just walking past them to say hi?',
     '{cs} CS/min. Your Smite was a decoration.',
     '{cs} CS/min. The enemy jungler farmed your camps and left a thank-you note.',
-    '{cs} CS/min. Bro was a tourist in their own jungle.',
+    '{cs} CS/min. You were a tourist in your own jungle.',
     '{cs} CS/min. The Krugs are still waiting for you to show up.',
     '{cs} CS/min. Full clear? You barely did a half clear.',
   ],
@@ -58,13 +58,13 @@ const LINES: Record<string, string[]> = {
     'Fights happen at objectives. You happened somewhere else. {kp}% KP.',
     '{kp}% KP. Split pushing is a strategy. Hiding in a bush is not.',
     'Your team got {teamKills} kills and you showed up for {kp}% of them. Shy little guy.',
-    '{kp}% KP. Bro was playing a single player game.',
+    '{kp}% KP. You were playing a single player game.',
     '{kp}% KP. Your team was fighting 4v5 and you were fighting the wave.',
     '{kp}% kill participation. Main character energy, background extra participation.',
-    '{kp}% KP. Bro got ghosted by every teamfight.',
+    '{kp}% KP. You got ghosted by every teamfight.',
     '{kp}% KP. Next time bring a map, the fights were over there.',
     '{kp}% KP. Your teammates filed a missing person report.',
-    '{kp}% KP. Hide and seek champion, League of Legends loser.',
+    '{kp}% KP. Hide and seek champion, League of Legends spectator.',
   ],
   fightLost: [
     '{kda} KDA. You took every fight like it owed you money and lost every single one.',
@@ -83,7 +83,7 @@ const LINES: Record<string, string[]> = {
     '{dmgK} damage in {min} minutes. That\'s a love tap a minute.',
     '{dmg}% damage share. The enemy took more damage from walking past your fountain.',
     '{dmg}% damage share. Did you forget which buttons do the damage?',
-    '{dmg}% damage. Bro was doing ASMR on the enemy team.',
+    '{dmg}% damage. You were doing ASMR on the enemy team.',
     '{dmg}% damage share. You did the damage of a stiff breeze.',
     '{dmgK} damage. That\'s not a champion, that\'s a ward with legs.',
     '{dmg}% damage share. Were your abilities on cooldown the whole game?',
@@ -93,7 +93,7 @@ const LINES: Record<string, string[]> = {
     '{dmg}% damage share. Your spells were hitting minions and vibes.',
   ],
   damageSupport: [
-    '{dmg}% damage share. Even for a support that\'s a shit poke game.',
+    '{dmg}% damage share. Even for a support, that poke game was tragic.',
     '{dmg}% of team damage. Your auto attacks were basically high fives.',
     '{dmg}% damage share. Supports are allowed to hit people too, you know.',
     '{dmg}% damage. The ward did more damage than you, and it\'s a ward.',
@@ -101,7 +101,7 @@ const LINES: Record<string, string[]> = {
     '{dmg}% damage share. Even enchanters poke sometimes, bestie.',
   ],
   deaths: [
-    'Stop dying, little bitch. {deaths} deaths.',
+    'Stop dying, little buddy. {deaths} deaths.',
     '{deaths} deaths. You die like a rat.',
     '{deaths} deaths. Running it down or just really bad at walking?',
     'You died {deaths} times. That\'s not a KDA, that\'s a donation drive.',
@@ -111,7 +111,7 @@ const LINES: Record<string, string[]> = {
     '{deaths} deaths. Touch grass, then touch your keyboard less.',
     '{deaths} deaths. Your respawn timer got more screen time than you did.',
     '{deaths} deaths. You were the enemy team\'s favorite ATM.',
-    '{deaths} deaths. Bro died like it was a side hustle.',
+    '{deaths} deaths. You died like it was a side hustle.',
     '{deaths} deaths. Every death was a little gift with a bow on it.',
     '{deaths} deaths. Were you speedrunning the death recap?',
     '{deaths} deaths. Fountain to grave pipeline.',
@@ -127,62 +127,62 @@ const LINES: Record<string, string[]> = {
   vision: [
     '{vision} vision score. You bought a support item and forgot about the wards, huh?',
     '{vision} vision. The map was dark and so is your future.',
-    '{vision} vision score. Wards are free, bro. Free.',
+    '{vision} vision score. Wards are free. Free!',
     '{vision} vision. Your team played the whole game with the lights off.',
     '{vision} vision score. Even Lee Sin had better vision than your team.',
   ],
 
-  // ---- Highlights (green, still roasts) ----
+  // ---- Highlights (green, funny praise) ----
   csGood: [
-    '{cs} CS/min. Nice farm. Too bad you can\'t farm a personality.',
-    '{cs} CS/min. You loved those minions more than you\'ve ever loved anyone.',
-    '{cs} CS/min. Stardew Valley is calling, they want their farmer back.',
-    '{cs} CS/min. Okay farmer, now do something with the gold.',
-    '{cs} CS/min. Respect, but touch grass, not just minions.',
-    '{cs} CS/min. Your last hits were cleaner than your room.',
-    '{cs} CS/min. The minions fear you. Nobody else does, but the minions do.',
+    '{cs} CS/min. Minions saw you coming and lined up to pay their taxes.',
+    '{cs} CS/min. Farming so clean the wave should be leaving you a tip.',
+    '{cs} CS/min. Certified farmer. Stardew Valley wants you on the cover.',
+    '{cs} CS/min. Every last hit, on time, like a Swiss watch.',
+    '{cs} CS/min. Your gold income has its own zip code.',
+    '{cs} CS/min. That\'s not farming, that\'s agribusiness.',
+    '{cs} CS/min. The minions respect you. Honestly, so do we.',
   ],
   fightGood: [
-    '{kp}% KP. In every fight like a nosy neighbor.',
-    '{kp}% kill participation. Can\'t let anyone have a moment without you, huh?',
-    '{kp}% KP. Bro had FOMO about every single fight.',
-    '{kp}% KP. You were everywhere. Clingy, but effective.',
-    '{kp}% KP. Main character syndrome, but it actually worked.',
+    '{kp}% KP. Every fight had your name on the guest list.',
+    '{kp}% kill participation. Teamwork makes the dream work and you were the dream.',
+    '{kp}% KP. If there was a fight, you were in it. Love that for you.',
+    '{kp}% KP. You showed up for your team like a real one.',
+    '{kp}% KP. Group chat MVP, but for teamfights.',
   ],
   kdaGood: [
-    '{kda} KDA. Okay, who did you pay to play this one for you?',
-    '{kda} KDA. Clean. Suspiciously clean. Show us your hands.',
-    '{kda} KDA. Screenshot this, it\'s not happening again.',
-    '{kda} KDA. Wow, you weren\'t a burden for once.',
-    '{kda} KDA. Even a broken clock is right twice a day.',
-    '{kda} KDA. Who are you and what did you do with the real you?',
+    '{kda} KDA. Absolutely cooking. Somebody get this player a chef\'s hat.',
+    '{kda} KDA. Clean. Like, freshly-ironed-shirt clean.',
+    '{kda} KDA. Screenshot this and frame it.',
+    '{kda} KDA. The enemy team is going to be thinking about you tonight.',
+    '{kda} KDA. Main character energy, and you earned it.',
+    '{kda} KDA. Built different, played different.',
   ],
   damageGood: [
-    '{dmg}% of the team\'s damage. You carried four backpacks this game.',
-    '{dmg}% damage share. Your teammates should be paying you rent.',
-    '{dmgK} damage. Calm down, Rambo, it\'s a video game.',
-    '{dmg}% damage. Bro said "I am the team" and meant it.',
-    '{dmg}% damage share. Now do it every game, coward.',
-    '{dmg}% damage share. Your team was just there for moral support.',
+    '{dmg}% of the team\'s damage. You carried harder than a moving truck.',
+    '{dmg}% damage share. Your teammates owe you dinner.',
+    '{dmgK} damage. The enemy healer needs a vacation after that.',
+    '{dmg}% damage. You said "I got this" and you meant it.',
+    '{dmg}% damage share. Pure, uncut menace. Beautiful.',
+    '{dmg}% damage share. Your {champ} was in full beast mode.',
   ],
   damageGoodSupport: [
-    '{dmg}% damage as a support. Your ADC is filing a complaint for kill stealing.',
-    '{dmg}% damage share. Support in name only, menace in practice.',
-    '{dmg}% damage. Bro picked support just to get away with this.',
+    '{dmg}% damage as a support. Your ADC is impressed and a little scared.',
+    '{dmg}% damage share. Support by role, carry by choice.',
+    '{dmg}% damage. Supports can carry, and you just proved it.',
   ],
   deathsGood: [
-    '{deathsText}. Coward behavior, but it worked.',
-    'Only {deathsText}. Were you hiding behind your tower the whole game?',
-    '{deathsText}. Scared money don\'t make money, but okay.',
-    '{deathsText}. You played like you had a curfew to make.',
-    '{deathsText}. Survival instinct elite, courage debatable.',
-    '{deathsText} in {min} minutes. Somebody\'s mom said no dying today.',
+    '{deathsText}. Untouchable. Were you even on the same map as their team?',
+    'Only {deathsText}. The death recap has nothing to say about you.',
+    '{deathsText}. You protected that gold like it was your last slice of pizza.',
+    '{deathsText}. Slippery like a bar of soap.',
+    '{deathsText}. The enemy team spent the whole game trying and failing.',
+    '{deathsText} in {min} minutes. Survival instincts of a cockroach, the good kind.',
   ],
   visionGood: [
-    '{vision} vision score. You saw everything except your own flaws.',
-    '{vision} vision. Lighthouse behavior. Respect.',
-    '{vision} vision score. Your wards had better map awareness than your team.',
-    '{vision} vision. Bro was running a whole surveillance state.',
+    '{vision} vision score. You saw it all. Basically a psychic.',
+    '{vision} vision. Lighting up the map like it\'s the holidays.',
+    '{vision} vision score. Your wards had better map awareness than most players.',
+    '{vision} vision. Nothing happened on this map without you knowing.',
   ],
 };
 
@@ -201,7 +201,7 @@ const MAX_GOOD = 3;
 
 /**
  * Trash talk for one player of `team`: what they did badly, then up to
- * `MAX_GOOD` backhanded highlights for what they did well. Thresholds depend
+ * `MAX_GOOD` highlights praising what they did well. Thresholds depend
  * on their position (unknown in ARAM and other modes) and the game's length.
  * `champ` is the champion's name, for lines that use it.
  */
