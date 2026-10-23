@@ -14,176 +14,315 @@ export interface Roast {
 
 type Vars = Record<string, string | number>;
 
-const LINES: Record<string, string[]> = {
+/**
+ * A line is built as `lead jab [tail]`: the lead states the stat, the jab is
+ * the joke and the optional tail is a sign-off, so a pool of a few leads and
+ * a dozen jabs makes hundreds of lines. `whole` lines are used as they are.
+ * No swear words, and never call the player "bro" (the app is the Bro).
+ */
+interface Pool {
+  leads: string[];
+  jabs: string[];
+  whole?: string[];
+}
+
+const BAD_TAILS = [
+  'No cap.',
+  'Respectfully.',
+  'Just saying.',
+  'Be better.',
+  'We\'ll pretend this never happened.',
+  'Tragic, honestly.',
+  'Do with that what you will.',
+  'Thoughts and prayers.',
+  'It\'s giving Iron IV.',
+  'The Bro has seen enough.',
+  'Rough one, chief.',
+  'Next game, maybe.',
+];
+
+const GOOD_TAILS = [
+  'No notes.',
+  'Chef\'s kiss.',
+  'Respect.',
+  'Keep cooking.',
+  'Absolute cinema.',
+  'The Bro approves.',
+  'Frame it.',
+  'Huge.',
+  'Certified.',
+  'Run it back.',
+];
+
+const POOLS: Record<string, Pool> = {
   // ---- Bad (red) ----
-  cs: [
-    'Your CS is trash. {cs} a minute, buddy.',
-    '{cs} CS/min. The minions are not gonna hit themselves, genius.',
-    '{cs} CS/min. Caster minions out here living rent free because of you.',
-    'You farmed like the gold was taxed at 90%. {cs} CS/min.',
-    '{cs} CS/min. Last hitting is a skill issue and you have the issue.',
-    '{cs} CS/min. Intro bots farm better than this, no cap.',
-    'Whole waves dying under your tower and you just vibing. {cs} CS/min.',
-    '{cs} CS/min. You treated the minion wave like a petting zoo.',
-    '{cs} CS/min. Your lane opponent sends their thanks and their extra item.',
-    '{cs} CS/min on {champ}. Gold doesn\'t grow on trees, it grows on minions. Hit them.',
-    '{cs} CS/min. That\'s not farming, that\'s community gardening.',
-    '{cs} CS/min. Did your mouse have a cooldown?',
-    'POV: {min} minutes in and you still can\'t afford boots. {cs} CS/min.',
-    '{cs} CS/min. The minions unionized and you\'re still their favorite boss.',
-    '{cs} CS/min. Every minion that walked past you lived a full, happy life.',
-  ],
-  csAwful: [
-    '{cs} CS/min. Were you playing with your monitor off?',
-    '{cs} CS/min. That\'s support numbers. Are you lost?',
-    'The cannon minion has more gold than you. {cs} CS/min.',
-    '{cs} CS/min. At this point just buy a support item and commit to the bit.',
-    '{cs} CS/min. Genuinely impressive. Like, how?',
-    '{cs} CS/min. You\'re not behind on farm, you\'re in a different game.',
-  ],
-  csJungle: [
-    '{cs} CS/min in the jungle. Your camps respawned so often they started paying rent.',
-    '{cs} CS/min. Gromp had a better game than you, fr.',
-    'Free gold sitting in the jungle and you said nah. {cs} CS/min.',
-    '{cs} CS/min. Were you clearing camps or just walking past them to say hi?',
-    '{cs} CS/min. Your Smite was a decoration.',
-    '{cs} CS/min. The enemy jungler farmed your camps and left a thank-you note.',
-    '{cs} CS/min. You were a tourist in your own jungle.',
-    '{cs} CS/min. The Krugs are still waiting for you to show up.',
-    '{cs} CS/min. Full clear? You barely did a half clear.',
-  ],
-  fightAbsent: [
-    '{kp}% kill participation. Were you even in this game or just spectating?',
-    '{kp}% KP. Your team thought you disconnected, ngl.',
-    'Fights happen at objectives. You happened somewhere else. {kp}% KP.',
-    '{kp}% KP. Split pushing is a strategy. Hiding in a bush is not.',
-    'Your team got {teamKills} kills and you showed up for {kp}% of them. Shy little guy.',
-    '{kp}% KP. You were playing a single player game.',
-    '{kp}% KP. Your team was fighting 4v5 and you were fighting the wave.',
-    '{kp}% kill participation. Main character energy, background extra participation.',
-    '{kp}% KP. You got ghosted by every teamfight.',
-    '{kp}% KP. Next time bring a map, the fights were over there.',
-    '{kp}% KP. Your teammates filed a missing person report.',
-    '{kp}% KP. Hide and seek champion, League of Legends spectator.',
-  ],
-  fightLost: [
-    '{kda} KDA. You took every fight like it owed you money and lost every single one.',
-    '{kda} KDA. You weren\'t the frontline, you were the appetizer.',
-    '{kda} KDA. You showed up to the fights, which is honestly worse.',
-    '{kda} KDA. Every fight you joined, the enemy team said thank you.',
-    '{kda} KDA. You fought like your keyboard was unplugged.',
-    '{kda} KDA. Confidence of a Challenger, results of an Iron IV.',
-    '{kda} KDA. You flashed in, they flashed you a grey screen.',
-    '{kda} KDA. Every fight was a jumpscare and you were the victim.',
-    '{kda} KDA. You\'re in the enemy team\'s highlight reel. As the highlight.',
-  ],
-  damage: [
-    '{dmg}% of your team\'s damage. Your abilities were just for decoration huh.',
-    '{dmg}% damage share. Were you hitting them with a pool noodle?',
-    '{dmgK} damage in {min} minutes. That\'s a love tap a minute.',
-    '{dmg}% damage share. The enemy took more damage from walking past your fountain.',
-    '{dmg}% damage share. Did you forget which buttons do the damage?',
-    '{dmg}% damage. You were doing ASMR on the enemy team.',
-    '{dmg}% damage share. You did the damage of a stiff breeze.',
-    '{dmgK} damage. That\'s not a champion, that\'s a ward with legs.',
-    '{dmg}% damage share. Were your abilities on cooldown the whole game?',
-    '{dmg}% damage. Your {champ} was set to gentle mode.',
-    '{dmg}% damage share on {champ}. Ask Riot for a refund.',
-    '{dmgK} damage in {min} minutes. The enemies thought you were the support.',
-    '{dmg}% damage share. Your spells were hitting minions and vibes.',
-  ],
-  damageSupport: [
-    '{dmg}% damage share. Even for a support, that poke game was tragic.',
-    '{dmg}% of team damage. Your auto attacks were basically high fives.',
-    '{dmg}% damage share. Supports are allowed to hit people too, you know.',
-    '{dmg}% damage. The ward did more damage than you, and it\'s a ward.',
-    '{dmgK} damage. You were a cheerleader, not a support.',
-    '{dmg}% damage share. Even enchanters poke sometimes, bestie.',
-  ],
-  deaths: [
-    'Stop dying, little buddy. {deaths} deaths.',
-    '{deaths} deaths. You die like a rat.',
-    '{deaths} deaths. Running it down or just really bad at walking?',
-    'You died {deaths} times. That\'s not a KDA, that\'s a donation drive.',
-    '{deaths} deaths. The enemy team should split their gold with you.',
-    '{deaths} deaths in {min} minutes. You fed them like an all-you-can-eat buffet.',
-    '{deaths} deaths. Grey screen main.',
-    '{deaths} deaths. Touch grass, then touch your keyboard less.',
-    '{deaths} deaths. Your respawn timer got more screen time than you did.',
-    '{deaths} deaths. You were the enemy team\'s favorite ATM.',
-    '{deaths} deaths. You died like it was a side hustle.',
-    '{deaths} deaths. Every death was a little gift with a bow on it.',
-    '{deaths} deaths. Were you speedrunning the death recap?',
-    '{deaths} deaths. Fountain to grave pipeline.',
-    '{deaths} deaths on {champ}. That champion deserves a restraining order against you.',
-  ],
-  deathsAwful: [
-    '{deaths} deaths. That\'s not inting, that\'s a lifestyle.',
-    '{deaths} deaths. The enemy got so much gold off you they paid off their student loans.',
-    '{deaths} deaths. Genuinely, uninstall and go outside.',
-    '{deaths} deaths. The death recap needs a scroll bar now.',
-    '{deaths} deaths. Are you okay? Blink twice if your little brother is playing.',
-  ],
-  vision: [
-    '{vision} vision score. You bought a support item and forgot about the wards, huh?',
-    '{vision} vision. The map was dark and so is your future.',
-    '{vision} vision score. Wards are free. Free!',
-    '{vision} vision. Your team played the whole game with the lights off.',
-    '{vision} vision score. Even Lee Sin had better vision than your team.',
-  ],
+  cs: {
+    leads: ['{cs} CS/min.', 'Only {cs} CS a minute.', '{cs} CS/min on {champ}.', '{csTotal} CS in {min} minutes.'],
+    jabs: [
+      'The minions are not gonna hit themselves, genius.',
+      'Caster minions out here living rent free because of you.',
+      'Last hitting is a skill issue and you have the issue.',
+      'Intro bots farm better than this, no cap.',
+      'You treated the minion wave like a petting zoo.',
+      'Your lane opponent sends their thanks and their extra item.',
+      'Gold doesn\'t grow on trees, it grows on minions. Hit them.',
+      'That\'s not farming, that\'s community gardening.',
+      'Did your mouse have a cooldown?',
+      'The minions unionized and you\'re still their favorite boss.',
+      'Every minion that walked past you lived a full, happy life.',
+      'Your gold income is a lemonade stand in winter.',
+      'The cannon minion went home and told its family about you.',
+      'You missed more last hits than a stormtrooper.',
+      'Minions were dying of old age in your lane.',
+      'Your item build was mostly hopes and dreams.',
+    ],
+    whole: [
+      'Your CS is trash. {cs} a minute, buddy.',
+      'You farmed like the gold was taxed at 90%. {cs} CS/min.',
+      'Whole waves dying under your tower and you just vibing. {cs} CS/min.',
+      'POV: {min} minutes in and you still can\'t afford boots. {cs} CS/min.',
+    ],
+  },
+  csAwful: {
+    leads: ['{cs} CS/min.', 'A whole {cs} CS a minute.', '{csTotal} CS in {min} minutes.'],
+    jabs: [
+      'Were you playing with your monitor off?',
+      'That\'s support numbers. Are you lost?',
+      'At this point just buy a support item and commit to the bit.',
+      'Genuinely impressive. Like, how?',
+      'You\'re not behind on farm, you\'re in a different game.',
+      'The minions thought you were a ward.',
+      'Somewhere a farming tutorial is crying.',
+      'Your wallet filed for bankruptcy around minute ten.',
+    ],
+    whole: ['The cannon minion has more gold than you. {cs} CS/min.'],
+  },
+  csJungle: {
+    leads: ['{cs} CS/min in the jungle.', '{cs} CS/min.', 'Only {cs} CS a minute, jungler.', '{csTotal} CS in {min} minutes of jungling.'],
+    jabs: [
+      'Your camps respawned so often they started paying rent.',
+      'Gromp had a better game than you, fr.',
+      'Were you clearing camps or just walking past them to say hi?',
+      'Your Smite was a decoration.',
+      'The enemy jungler farmed your camps and left a thank-you note.',
+      'You were a tourist in your own jungle.',
+      'The Krugs are still waiting for you to show up.',
+      'Full clear? You barely did a half clear.',
+      'The Raptors had a group chat about you. It wasn\'t nice.',
+      'Your jungle had more wildlife than a nature documentary, all of it alive.',
+      'Scuttle crab got away again, didn\'t it?',
+    ],
+    whole: ['Free gold sitting in the jungle and you said nah. {cs} CS/min.'],
+  },
+  fightAbsent: {
+    leads: ['{kp}% KP.', '{kp}% kill participation.', 'Your team got {teamKills} kills and you were in {kp}% of them.'],
+    jabs: [
+      'Were you even in this game or just spectating?',
+      'Your team thought you disconnected, ngl.',
+      'Split pushing is a strategy. Hiding in a bush is not.',
+      'You were playing a single player game.',
+      'Your team was fighting 4v5 and you were fighting the wave.',
+      'Main character energy, background extra participation.',
+      'You got ghosted by every teamfight.',
+      'Next time bring a map, the fights were over there.',
+      'Your teammates filed a missing person report.',
+      'Hide and seek champion, League of Legends spectator.',
+      'You showed up to the fights like a group project partner.',
+      'The fights had a guest list and you weren\'t on it.',
+      'You were technically in the game. Technically.',
+    ],
+    whole: [
+      'Fights happen at objectives. You happened somewhere else. {kp}% KP.',
+      'Your team got {teamKills} kills and you showed up for {kp}% of them. Shy little guy.',
+    ],
+  },
+  fightLost: {
+    leads: ['{kda} KDA.', 'A {kda} KDA.', '{kills}/{deaths}/{assists}.'],
+    jabs: [
+      'You took every fight like it owed you money and lost every single one.',
+      'You weren\'t the frontline, you were the appetizer.',
+      'You showed up to the fights, which is honestly worse.',
+      'Every fight you joined, the enemy team said thank you.',
+      'You fought like your keyboard was unplugged.',
+      'Confidence of a Challenger, results of an Iron IV.',
+      'You flashed in, they flashed you a grey screen.',
+      'Every fight was a jumpscare and you were the victim.',
+      'You\'re in the enemy team\'s highlight reel. As the highlight.',
+      'You brought a spoon to a sword fight.',
+      'Bold plays, wrong outcomes.',
+    ],
+  },
+  damage: {
+    leads: ['{dmg}% damage share.', '{dmg}% of your team\'s damage.', '{dmgK} damage on {champ}.', 'Only {dmg}% of the damage.'],
+    jabs: [
+      'Your abilities were just for decoration, huh.',
+      'Were you hitting them with a pool noodle?',
+      'The enemy took more damage from walking past your fountain.',
+      'Did you forget which buttons do the damage?',
+      'You were doing ASMR on the enemy team.',
+      'You did the damage of a stiff breeze.',
+      'That\'s not a champion, that\'s a ward with legs.',
+      'Were your abilities on cooldown the whole game?',
+      'Your {champ} was set to gentle mode.',
+      'Ask Riot for a refund.',
+      'Your spells were hitting minions and vibes.',
+      'The enemy team thought you were a cosmetic.',
+      'You tickled them. Aggressively.',
+      'Your combo was mostly emotes.',
+    ],
+    whole: [
+      '{dmgK} damage in {min} minutes. That\'s a love tap a minute.',
+      '{dmgK} damage in {min} minutes. The enemies thought you were the support.',
+    ],
+  },
+  damageSupport: {
+    leads: ['{dmg}% damage share.', '{dmg}% of team damage.', '{dmgK} damage from the support slot.'],
+    jabs: [
+      'Even for a support, that poke game was tragic.',
+      'Your auto attacks were basically high fives.',
+      'Supports are allowed to hit people too, you know.',
+      'The ward did more damage than you, and it\'s a ward.',
+      'You were a cheerleader, not a support.',
+      'Even enchanters poke sometimes, bestie.',
+      'Your support item was doing all the work.',
+      'You hit them with the power of friendship.',
+    ],
+  },
+  deaths: {
+    leads: ['{deaths} deaths.', '{deaths} deaths in {min} minutes.', 'Died {deaths} times.', '{deaths} deaths on {champ}.'],
+    jabs: [
+      'You die like a rat.',
+      'Running it down or just really bad at walking?',
+      'That\'s not a KDA, that\'s a donation drive.',
+      'The enemy team should split their gold with you.',
+      'You fed them like an all-you-can-eat buffet.',
+      'Grey screen main.',
+      'Touch grass, then touch your keyboard less.',
+      'Your respawn timer got more screen time than you did.',
+      'You were the enemy team\'s favorite ATM.',
+      'You died like it was a side hustle.',
+      'Every death was a little gift with a bow on it.',
+      'Were you speedrunning the death recap?',
+      'Fountain to grave pipeline.',
+      'That champion deserves a restraining order against you.',
+      'The enemy team should put you on their payroll.',
+      'You know the fountain heals you, right? Stay there longer.',
+      'Your death recap is a novel now.',
+    ],
+    whole: ['Stop dying, little buddy. {deaths} deaths.'],
+  },
+  deathsAwful: {
+    leads: ['{deaths} deaths.', '{deaths} deaths in {min} minutes.', 'Died {deaths} times.'],
+    jabs: [
+      'That\'s not inting, that\'s a lifestyle.',
+      'The enemy got so much gold off you they paid off their student loans.',
+      'Genuinely, uninstall and go outside.',
+      'The death recap needs a scroll bar now.',
+      'Are you okay? Blink twice if your little brother is playing.',
+      'The enemy team is naming their firstborn after you.',
+      'At some point it stops being a game and starts being a charity.',
+    ],
+  },
+  vision: {
+    leads: ['{vision} vision score.', '{vision} vision.', 'A {vision} vision score as a support.'],
+    jabs: [
+      'You bought a support item and forgot about the wards, huh?',
+      'The map was dark and so is your future.',
+      'Wards are free. Free!',
+      'Your team played the whole game with the lights off.',
+      'Even Lee Sin had better vision than your team.',
+      'Your wards are still in your inventory, aren\'t they?',
+      'The enemy jungler sends their thanks.',
+    ],
+  },
 
   // ---- Highlights (green, funny praise) ----
-  csGood: [
-    '{cs} CS/min. Minions saw you coming and lined up to pay their taxes.',
-    '{cs} CS/min. Farming so clean the wave should be leaving you a tip.',
-    '{cs} CS/min. Certified farmer. Stardew Valley wants you on the cover.',
-    '{cs} CS/min. Every last hit, on time, like a Swiss watch.',
-    '{cs} CS/min. Your gold income has its own zip code.',
-    '{cs} CS/min. That\'s not farming, that\'s agribusiness.',
-    '{cs} CS/min. The minions respect you. Honestly, so do we.',
-  ],
-  fightGood: [
-    '{kp}% KP. Every fight had your name on the guest list.',
-    '{kp}% kill participation. Teamwork makes the dream work and you were the dream.',
-    '{kp}% KP. If there was a fight, you were in it. Love that for you.',
-    '{kp}% KP. You showed up for your team like a real one.',
-    '{kp}% KP. Group chat MVP, but for teamfights.',
-  ],
-  kdaGood: [
-    '{kda} KDA. Absolutely cooking. Somebody get this player a chef\'s hat.',
-    '{kda} KDA. Clean. Like, freshly-ironed-shirt clean.',
-    '{kda} KDA. Screenshot this and frame it.',
-    '{kda} KDA. The enemy team is going to be thinking about you tonight.',
-    '{kda} KDA. Main character energy, and you earned it.',
-    '{kda} KDA. Built different, played different.',
-  ],
-  damageGood: [
-    '{dmg}% of the team\'s damage. You carried harder than a moving truck.',
-    '{dmg}% damage share. Your teammates owe you dinner.',
-    '{dmgK} damage. The enemy healer needs a vacation after that.',
-    '{dmg}% damage. You said "I got this" and you meant it.',
-    '{dmg}% damage share. Pure, uncut menace. Beautiful.',
-    '{dmg}% damage share. Your {champ} was in full beast mode.',
-  ],
-  damageGoodSupport: [
-    '{dmg}% damage as a support. Your ADC is impressed and a little scared.',
-    '{dmg}% damage share. Support by role, carry by choice.',
-    '{dmg}% damage. Supports can carry, and you just proved it.',
-  ],
-  deathsGood: [
-    '{deathsText}. Untouchable. Were you even on the same map as their team?',
-    'Only {deathsText}. The death recap has nothing to say about you.',
-    '{deathsText}. You protected that gold like it was your last slice of pizza.',
-    '{deathsText}. Slippery like a bar of soap.',
-    '{deathsText}. The enemy team spent the whole game trying and failing.',
-    '{deathsText} in {min} minutes. Survival instincts of a cockroach, the good kind.',
-  ],
-  visionGood: [
-    '{vision} vision score. You saw it all. Basically a psychic.',
-    '{vision} vision. Lighting up the map like it\'s the holidays.',
-    '{vision} vision score. Your wards had better map awareness than most players.',
-    '{vision} vision. Nothing happened on this map without you knowing.',
-  ],
+  csGood: {
+    leads: ['{cs} CS/min.', '{csTotal} CS in {min} minutes.', '{cs} CS/min on {champ}.'],
+    jabs: [
+      'Minions saw you coming and lined up to pay their taxes.',
+      'Farming so clean the wave should be leaving you a tip.',
+      'Certified farmer. Stardew Valley wants you on the cover.',
+      'Every last hit, on time, like a Swiss watch.',
+      'Your gold income has its own zip code.',
+      'That\'s not farming, that\'s agribusiness.',
+      'The minions respect you. Honestly, so do we.',
+      'Your wallet is thicker than the enemy\'s frontline.',
+      'Full build by minute 25, probably.',
+    ],
+  },
+  fightGood: {
+    leads: ['{kp}% KP.', '{kp}% kill participation.', 'In on {kp}% of your team\'s kills.'],
+    jabs: [
+      'Every fight had your name on the guest list.',
+      'Teamwork makes the dream work and you were the dream.',
+      'If there was a fight, you were in it. Love that for you.',
+      'You showed up for your team like a real one.',
+      'Group chat MVP, but for teamfights.',
+      'Everywhere at once. Are there two of you?',
+      'Your team never had to fight alone.',
+    ],
+  },
+  kdaGood: {
+    leads: ['{kda} KDA.', 'A {kda} KDA.', '{kills}/{deaths}/{assists}.'],
+    jabs: [
+      'Absolutely cooking. Somebody get this player a chef\'s hat.',
+      'Clean. Like, freshly-ironed-shirt clean.',
+      'Screenshot this and frame it.',
+      'The enemy team is going to be thinking about you tonight.',
+      'Main character energy, and you earned it.',
+      'Built different, played different.',
+      'That\'s a highlight reel, not a scoreboard.',
+      'The enemy team wants a rematch. They won\'t get one.',
+    ],
+  },
+  damageGood: {
+    leads: ['{dmg}% damage share.', '{dmg}% of the team\'s damage.', '{dmgK} damage on {champ}.'],
+    jabs: [
+      'You carried harder than a moving truck.',
+      'Your teammates owe you dinner.',
+      'The enemy healer needs a vacation after that.',
+      'You said "I got this" and you meant it.',
+      'Pure, uncut menace. Beautiful.',
+      'Your {champ} was in full beast mode.',
+      'The enemy team felt that one in their soul.',
+      'Somebody call the fire department, you were on fire.',
+    ],
+  },
+  damageGoodSupport: {
+    leads: ['{dmg}% damage as a support.', '{dmgK} damage from the support slot.', '{dmg}% damage share.'],
+    jabs: [
+      'Your ADC is impressed and a little scared.',
+      'Support by role, carry by choice.',
+      'Supports can carry, and you just proved it.',
+      'Healing is nice, but have you tried winning fights yourself? You did.',
+      'The enemy bot lane wants to know what happened.',
+    ],
+  },
+  deathsGood: {
+    leads: ['{deathsText}.', 'Only {deathsText}.', '{deathsText} in {min} minutes.'],
+    jabs: [
+      'Untouchable. Were you even on the same map as their team?',
+      'The death recap has nothing to say about you.',
+      'You protected that gold like it was your last slice of pizza.',
+      'Slippery like a bar of soap.',
+      'The enemy team spent the whole game trying and failing.',
+      'Survival instincts of a cockroach, the good kind.',
+      'Your respawn timer forgot what you look like.',
+      'Plot armor, activated.',
+    ],
+  },
+  visionGood: {
+    leads: ['{vision} vision score.', '{vision} vision.'],
+    jabs: [
+      'You saw it all. Basically a psychic.',
+      'Lighting up the map like it\'s the holidays.',
+      'Your wards had better map awareness than most players.',
+      'Nothing happened on this map without you knowing.',
+      'The enemy jungler had nowhere to hide.',
+      'Map hack energy, all legal.',
+    ],
+  },
 };
 
 const LANE_NAME: Record<string, string> = {
@@ -220,6 +359,9 @@ export function roasts(game: PostGame, team: PostTeam, me: PostPlayer, champ: st
     champ,
     min: Math.round(min),
     cs: csMin.toFixed(1),
+    csTotal: me.cs,
+    kills: me.kills,
+    assists: me.assists,
     kp,
     teamKills: team.kills,
     kda: kda.toFixed(2),
@@ -237,7 +379,7 @@ export function roasts(game: PostGame, team: PostTeam, me: PostPlayer, champ: st
       good: into === good,
       stat,
       why,
-      line: fill(pickLine(pool, `${game.gameId}:${team.teamId}:${me.championId}:${pool}`), vars),
+      line: fill(pickLine(pool, `${game.gameId}:${team.teamId}:${me.championId}:${pool}`, into === good), vars),
     });
 
   // CS only means something with a known lane, and supports don't farm.
@@ -299,33 +441,42 @@ function damageShare(me: PostPlayer, team: PostTeam): number {
 }
 
 /**
- * Which line each game got, and each pool's recent picks, so a reopened game
- * keeps its lines and new games don't repeat the last few. Lives in
+ * The line each game got, and each pool's recent jabs, so a reopened game
+ * keeps its lines and new games don't repeat a joke soon. Lives in
  * localStorage; without it lines are just random.
  */
 interface LineMemory {
-  picks: Record<string, number>;
-  recent: Record<string, number[]>;
+  /** Built line (before the stats are filled in) per game, player and pool. */
+  picks: Record<string, string>;
+  /** Recent jab ids per pool: "j3" for `jabs[3]`, "w1" for `whole[1]`. */
+  recent: Record<string, string[]>;
 }
-const MEMORY_KEY = 'leaguebro.roastLines';
+const MEMORY_KEY = 'leaguebro.roasts';
 /** Remembered picks; the oldest go first past this. */
 const MAX_PICKS = 500;
 
-function pickLine(pool: string, key: string): string {
-  const lines = LINES[pool];
+function pickLine(name: string, key: string, good: boolean): string {
+  const pool = POOLS[name];
   const mem = loadMemory();
   const known = mem.picks[key];
-  if (known !== undefined && known < lines.length) return lines[known];
-  // Skip the most recent ~three quarters of the pool, so lines come round rarely.
-  const recent = (mem.recent[pool] ?? []).slice(-Math.floor(lines.length * 0.75));
-  const fresh = lines.map((_, i) => i).filter((i) => !recent.includes(i));
-  const at = fresh[Math.floor(Math.random() * fresh.length)] ?? 0;
-  mem.picks[key] = at;
-  mem.recent[pool] = [...recent, at];
+  if (typeof known === 'string') return known;
+  // The jab is the joke people remember: skip the last ~75% used in this pool.
+  const ids = [...pool.jabs.map((_, i) => `j${i}`), ...(pool.whole ?? []).map((_, i) => `w${i}`)];
+  const recent = (mem.recent[name] ?? []).filter((id) => ids.includes(id)).slice(-Math.floor(ids.length * 0.75));
+  const id = any(ids.filter((i) => !recent.includes(i))) ?? ids[0];
+  const at = Number(id.slice(1));
+  let line = id[0] === 'w' ? pool.whole![at] : `${any(pool.leads)} ${pool.jabs[at]}`;
+  if (id[0] === 'j' && Math.random() < 0.35) line += ` ${any(good ? GOOD_TAILS : BAD_TAILS)}`;
+  mem.picks[key] = line;
+  mem.recent[name] = [...recent, id];
   const keys = Object.keys(mem.picks);
   for (const k of keys.slice(0, Math.max(0, keys.length - MAX_PICKS))) delete mem.picks[k];
   saveMemory(mem);
-  return lines[at];
+  return line;
+}
+
+function any<T>(list: T[]): T {
+  return list[Math.floor(Math.random() * list.length)];
 }
 
 function loadMemory(): LineMemory {
@@ -341,6 +492,7 @@ function loadMemory(): LineMemory {
 function saveMemory(m: LineMemory): void {
   try {
     localStorage.setItem(MEMORY_KEY, JSON.stringify(m));
+    localStorage.removeItem('leaguebro.roastLines'); // the old format, before lines were built from parts
   } catch {
     // Storage off or full: lines just won't be remembered.
   }

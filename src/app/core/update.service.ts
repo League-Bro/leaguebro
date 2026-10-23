@@ -21,6 +21,9 @@ const RECHECK_MS = 6 * 60 * 60 * 1000;
 @Injectable({ providedIn: 'root' })
 export class UpdateService {
   readonly state = signal<UpdateState>({ kind: 'idle' });
+  /** The running app's version, also in dev builds. Shown in the header. */
+  readonly version = signal('');
+  /** Same, but only for release builds, which are the ones that can update. */
   readonly currentVersion = signal('');
   readonly checking = signal(false);
   readonly lastResult = signal<string>('');
@@ -31,13 +34,15 @@ export class UpdateService {
   async start(): Promise<void> {
     if (this.started || !inTauri()) return;
     this.started = true;
+    // Read from the built app (tauri.conf.json), so a version bump shows up on its own.
+    this.version.set(await getVersion());
     // `npm run tauri dev` runs your working copy; installing a release over
     // it would be confusing, so dev builds never update themselves.
     if (isDevMode()) {
       this.lastResult.set('Updates are off while running with npm run tauri dev.');
       return;
     }
-    this.currentVersion.set(await getVersion());
+    this.currentVersion.set(this.version());
     // Wait a little so the check doesn't compete with connecting to League.
     setTimeout(() => this.check(), 5000);
     setInterval(() => this.check(), RECHECK_MS);

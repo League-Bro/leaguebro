@@ -50,6 +50,9 @@ const PHASE_LABELS: Record<string, string> = {
           <button class="who" title="Your profile and match history" (click)="go('profile')">{{ s.name }}</button>
         }
       </div>
+      @if (updates.version(); as v) {
+        <span class="version" title="League Bro version">v{{ v }}</span>
+      }
     </header>
     @if (rift.demo) {
       <div class="demo-bar">Demo data: this is the browser preview. Run it with <code>npm run tauri dev</code> to connect to League.</div>
@@ -133,6 +136,7 @@ const PHASE_LABELS: Record<string, string> = {
       border: none; border-left: 1px solid var(--line-strong); border-radius: 0; background: none;
     }
     .status .who:hover:not(:disabled) { color: var(--accent-2); background: none; border-color: var(--line-strong); }
+    .version { color: var(--text-faint); font: 500 12px var(--mono); margin-left: -12px; }
     .demo-bar { background: var(--gold-soft); color: var(--gold); font-size: 12.5px; padding: 6px 20px; }
     .demo-bar code { font-family: var(--mono); }
     .update-bar {
