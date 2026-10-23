@@ -135,6 +135,11 @@ impl Lcu {
     }
 
     async fn send(&self, method: Method, path: &str, body: Option<&Value>) -> Result<Option<Value>> {
+        self.send_within(method, path, body, None).await
+    }
+
+    /// `timeout` replaces the client's 8 s default for this one request.
+    async fn send_within(&self, method: Method, path: &str, body: Option<&Value>, timeout: Option<Duration>) -> Result<Option<Value>> {
         let mut req = self
             .http
             .request(method.clone(), format!("{}{}", self.base, path))
@@ -142,6 +147,9 @@ impl Lcu {
             .header("Accept", "application/json");
         if let Some(b) = body {
             req = req.json(b);
+        }
+        if let Some(t) = timeout {
+            req = req.timeout(t);
         }
         let resp = req.send().await.with_context(|| format!("{method} {path}"))?;
         let status = resp.status();
@@ -162,6 +170,20 @@ impl Lcu {
     /// GET that returns None on 404 (e.g. "not in champ select").
     pub async fn get(&self, path: &str) -> Result<Option<Value>> {
         self.send(Method::GET, path, None).await
+    }
+
+    /// GET for an endpoint the client may be slow to answer, like match
+    /// history right after it starts (it fetches the games from Riot first).
+    /// Waits up to 30 s and tries twice; None on 404.
+    pub async fn get_slow(&self, path: &str) -> Result<Option<Value>> {
+        let first = self.send_within(Method::GET, path, None, Some(Duration::from_secs(30))).await;
+        match first {
+            Err(e) => {
+                eprintln!("{e:#}; trying again");
+                self.send_within(Method::GET, path, None, Some(Duration::from_secs(30))).await
+            }
+            ok => ok,
+        }
     }
 
     pub async fn get_req(&self, path: &str) -> Result<Value> {

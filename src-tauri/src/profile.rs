@@ -362,7 +362,10 @@ pub fn insights<'a>(matches: impl IntoIterator<Item = &'a MatchLine>) -> Insight
 pub async fn record_against(lcu: &Lcu, opponent_id: i64) -> anyhow::Result<ChampStat> {
     let me = lcu.get_req("/lol-summoner/v1/current-summoner").await?;
     let puuid = text(&me, "puuid").to_string();
-    let history = lcu.get_req(&format!("/lol-match-history/v1/products/lol/{puuid}/matches?begIndex=0&endIndex=99")).await?;
+    let history = lcu
+        .get_slow(&history_path(&puuid))
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("the client has no match history for you"))?;
     let mut matches = parse_matches(&history);
     fill_opponents(lcu, &puuid, &mut matches).await;
     Ok(lane_record(&matches, opponent_id))
@@ -374,6 +377,15 @@ fn lane_record(matches: &[MatchLine], opponent_id: i64) -> ChampStat {
         add(&mut stats, opponent_id, m);
     }
     stats.remove(&opponent_id).unwrap_or(ChampStat { champion_id: opponent_id, ..Default::default() })
+}
+
+/// Your match history. The client keeps a few dozen recent games; this asks
+/// for more than it has. Right after the client starts, the first request can
+/// take longer than the usual 8 s timeout while the client fetches the games
+/// from Riot (the Profile page showed "match history: GET …" until Refresh),
+/// so it goes through `get_slow`.
+fn history_path(puuid: &str) -> String {
+    format!("/lol-match-history/v1/products/lol/{puuid}/matches?begIndex=0&endIndex=99")
 }
 
 pub async fn load(lcu: &Lcu) -> anyhow::Result<MyProfile> {
@@ -394,13 +406,13 @@ pub async fn load(lcu: &Lcu) -> anyhow::Result<MyProfile> {
             p.flex = scout::parse_rank(&stats, "RANKED_FLEX_SR");
         }
         Ok(None) => {}
-        Err(e) => errors.push(format!("rank: {e}")),
+        Err(e) => errors.push(format!("rank: {e:#}")),
     }
-    // The client keeps a few dozen recent games; ask for more than it has.
-    match lcu.get(&format!("/lol-match-history/v1/products/lol/{puuid}/matches?begIndex=0&endIndex=99")).await {
+    match lcu.get_slow(&history_path(&puuid)).await {
         Ok(Some(h)) => p.matches = parse_matches(&h),
         Ok(None) => {}
-        Err(e) => errors.push(format!("match history: {e}")),
+        // `:#` adds the cause ("operation timed out") to "GET /lol-match-history/…".
+        Err(e) => errors.push(format!("match history: {e:#}")),
     }
     let (failed, session) = tokio::join!(fill_opponents(lcu, &puuid, &mut p.matches), lcu.get("/lol-gameflow/v1/session"));
     if failed > 0 {
