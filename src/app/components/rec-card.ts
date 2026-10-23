@@ -5,6 +5,15 @@ import { assetUrl, championIcon } from '../core/assets';
 import { ItemSet, MIN_GAMES, RecChoice, RecState, RuneRec } from '../core/models';
 import { buildWhy, rolesLabel } from '../core/why';
 
+/** One of OP.GG's options in a pick list: icons, a name, and its win and play rates. */
+interface ChoiceRow {
+  o: { games: number; winRate: number; pickRate: number };
+  label: string;
+  icons: string[];
+  tip: string;
+  round?: boolean;
+}
+
 /** OP.GG's recommendation for your current champion: runes, spells, skills, items. */
 @Component({
   selector: 'rl-rec-card',
@@ -31,56 +40,63 @@ import { buildWhy, rolesLabel } from '../core/why';
 
         @if (s.loading) {
           <!-- Same layout as the loaded card, so nothing jumps when the data arrives. -->
-          <div class="grid skeleton" role="status" [attr.aria-label]="'Looking up ' + rift.champName(s.championId) + ' on OP.GG'">
-            <div class="block runes">
-              <div class="label">Runes</div>
-              <div class="row">
+          <div class="layout skeleton" role="status" [attr.aria-label]="'Looking up ' + rift.champName(s.championId) + ' on OP.GG'">
+            <section class="panel">
+              <header><h4>Runes</h4></header>
+              <div class="rune-main">
                 <span class="bone keystone round"></span>
                 <div class="lines">
-                  <span class="bone text" style="width: 90px"></span>
-                  <span class="bone text sm" style="width: 130px"></span>
+                  <span class="bone text" style="width: 110px"></span>
+                  <span class="bone text sm" style="width: 150px"></span>
                 </div>
               </div>
-              <div class="perks">
-                @for (i of [1, 2, 3, 4, 5]; track i) { <span class="bone perk round"></span> }
-                @for (i of [1, 2, 3]; track i) { <span class="bone shard round"></span> }
-              </div>
-              <div class="small names">
-                @for (w of nameWidths; track $index) { <span class="bone word" [style.width.ch]="w"></span> }
-              </div>
-            </div>
-
-            <div class="block">
-              <div class="label">Summoner spells</div>
-              <div class="row spells">
-                <span class="bone icon"></span><span class="bone text" style="width: 44px"></span>
-                <span class="bone icon"></span><span class="bone text" style="width: 44px"></span>
-              </div>
-              <div class="label">Skill order</div>
-              <div class="row max">
-                @for (i of [1, 2, 3]; track i) { <span class="bone key-bone"></span> }
-              </div>
-              <div class="levels">
-                @for (i of levels; track $index) { <span class="bone lvl-bone"></span> }
-              </div>
-            </div>
-
-            <div class="block items">
-              <div class="label">Start</div>
-              <div class="row">
-                <span class="bone icon"></span><span class="bone icon"></span>
-              </div>
-              <div class="label">Build</div>
-              <div class="row build">
-                @for (i of [1, 2, 3, 4, 5, 6]; track i; let last = $last) {
-                  <span class="bone icon"></span>
-                  @if (!last) { <span class="faint arrow">›</span> }
+              <div class="trees">
+                @for (t of [3, 2]; track $index) {
+                  <div class="tree">
+                    <span class="bone text sm" style="width: 70px"></span>
+                    @for (w of nameWidths.slice(0, t); track $index) {
+                      <div class="rune"><span class="bone perk round"></span><span class="bone text sm" [style.width.ch]="w"></span></div>
+                    }
+                  </div>
                 }
               </div>
-              @if (rift.config()?.useRecommendedBuilds) {
-                <div class="faint small">The overlay will remind you of this build in game.</div>
-              }
+            </section>
+            <div class="stack">
+              <section class="panel">
+                <header><h4>Summoner spells</h4></header>
+                <div class="spells">
+                  <span class="bone icon"></span><span class="bone text" style="width: 44px"></span>
+                  <span class="bone icon"></span><span class="bone text" style="width: 44px"></span>
+                </div>
+              </section>
+              <section class="panel">
+                <header><h4>Skill order</h4></header>
+                <div class="max">
+                  @for (i of [1, 2, 3]; track i) { <span class="bone key-bone"></span> }
+                </div>
+                <div class="levels">
+                  @for (i of levels; track $index) { <span class="bone lvl-bone"></span> }
+                </div>
+              </section>
             </div>
+            <section class="panel wide">
+              <header><h4>Items</h4></header>
+              <div class="item-path">
+                <div class="group">
+                  <div class="sub">Start with</div>
+                  <div class="icons"><span class="bone icon"></span><span class="bone icon"></span></div>
+                </div>
+                <div class="group">
+                  <div class="sub">Build order</div>
+                  <div class="icons">
+                    @for (i of [1, 2, 3, 4, 5, 6]; track i; let last = $last) {
+                      <span class="bone icon"></span>
+                      @if (!last) { <span class="faint arrow">›</span> }
+                    }
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
         } @else if (s.error) {
           <p class="loss small">Couldn't get OP.GG data: {{ s.error }}. Runes fall back to the League client's suggestion.</p>
@@ -89,140 +105,139 @@ import { buildWhy, rolesLabel } from '../core/why';
             <p class="warn small">Only {{ r.games }} games on OP.GG for this pick, so runes and spells use the League client's suggestion instead. The data below is shown for reference.</p>
           }
           @if (vsRec(); as vs) {
-            <div class="opts source" role="radiogroup" aria-label="Which games the build comes from">
-              <button class="opt" role="radio" [attr.aria-checked]="!s.choice.matchup" [class.on]="!s.choice.matchup"
+            <div class="source" role="radiogroup" aria-label="Which games the build comes from">
+              <button class="src" role="radio" [attr.aria-checked]="!s.choice.matchup" [class.on]="!s.choice.matchup"
                 [disabled]="pickBusy()" (click)="pickSource(false)" title="OP.GG's picks from all of this champion's games in the role">
                 All games
               </button>
-              <button class="opt" role="radio" [attr.aria-checked]="!!s.choice.matchup" [class.on]="!!s.choice.matchup"
+              <button class="src" role="radio" [attr.aria-checked]="!!s.choice.matchup" [class.on]="!!s.choice.matchup"
                 [disabled]="pickBusy()" (click)="pickSource(true)"
                 [title]="'OP.GG\\'s picks from ' + vs.games.toLocaleString() + ' games against ' + rift.champName(vs.opponentId) + ' in lane'">
                 <img class="round" [src]="champIcon(vs.opponentId)" alt="" (error)="rift.hideImg($event)" />
                 vs {{ rift.champName(vs.opponentId) }}
-                <span class="wr faint">{{ vs.games | number }} games</span>
+                <span class="faint mono">{{ vs.games | number }} games</span>
               </button>
             </div>
           }
-          <div class="grid">
+          <div class="layout">
             @if (r.runes; as ru) {
-              <div class="block runes">
-                <div class="label">Runes</div>
-                @if (runePages(); as pages) {
-                  <div class="pages" role="radiogroup" aria-label="Rune page">
-                    <div class="pages-head" aria-hidden="true"><span>Page</span><span>Win</span><span>Played</span></div>
-                    @for (p of pages; track $index) {
-                      <button class="page" role="radio" [attr.aria-checked]="s.choice.runes === $index" [class.on]="s.choice.runes === $index"
-                        [disabled]="pickBusy()" [title]="optTip(p.o, runeOptionNames(p.o))" (click)="pick('runes', $index)">
-                        <span class="page-what">
-                          @if (p.icon) { <img class="round" [src]="p.icon" alt="" (error)="rift.hideImg($event)" /> }
-                          <span class="page-name">{{ p.label }}</span>
-                        </span>
-                        <span class="num">{{ pct(p.o.winRate) }}</span>
-                        <span class="num faint">{{ pct(p.o.pickRate) }}</span>
-                      </button>
-                    }
-                  </div>
-                }
-                <div class="row">
-                  @if (perkIcon(ru.perkIds[0]); as url) { <img class="keystone" [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+              <section class="panel">
+                <header><h4>Runes</h4></header>
+                <div class="rune-main">
+                  @if (perkIcon(ru.perkIds[0]); as url) { <img class="keystone" [src]="url" [title]="perkName(ru.perkIds[0])" alt="" (error)="rift.hideImg($event)" /> }
                   <div>
-                    <div class="strong">{{ perkLabel(ru.perkIds[0], ru.keystoneName) }}</div>
-                    <div class="muted small">{{ styleName(ru.primaryStyleId, ru.primaryName) }} / {{ styleName(ru.subStyleId, ru.secondaryName) }}</div>
+                    <div class="keystone-name">{{ perkLabel(ru.perkIds[0], ru.keystoneName) }}</div>
+                    <div class="muted small">{{ styleName(ru.primaryStyleId, ru.primaryName) }} + {{ styleName(ru.subStyleId, ru.secondaryName) }}</div>
                   </div>
                 </div>
-                <div class="perks">
-                  @for (id of ru.perkIds.slice(1); track $index) {
-                    @if (perkIcon(id); as url) {
-                      <img [src]="url" [title]="perkName(id)" alt="" [class.shard]="$index >= 5" (error)="rift.hideImg($event)" />
+                <div class="trees">
+                  <div class="tree">
+                    <div class="sub">{{ styleName(ru.primaryStyleId, ru.primaryName) }}</div>
+                    @for (id of ru.perkIds.slice(1, 4); track $index) {
+                      <ng-container *ngTemplateOutlet="runeRow; context: { $implicit: id, ru, i: $index + 1 }" />
                     }
-                  }
+                  </div>
+                  <div class="tree">
+                    <div class="sub">{{ styleName(ru.subStyleId, ru.secondaryName) }}</div>
+                    @for (id of ru.perkIds.slice(4, 6); track $index) {
+                      <ng-container *ngTemplateOutlet="runeRow; context: { $implicit: id, ru, i: $index + 4 }" />
+                    }
+                    @if (ru.perkIds.length > 6) {
+                      <div class="sub">Shards</div>
+                      <div class="shards">
+                        @for (id of ru.perkIds.slice(6); track $index) {
+                          @if (perkIcon(id); as url) { <img [src]="url" [title]="perkName(id)" alt="" (error)="rift.hideImg($event)" /> }
+                        }
+                      </div>
+                    }
+                  </div>
                 </div>
-                <div class="faint small names">{{ runeNames(ru) }}</div>
-              </div>
+                @if (runePages(); as rows) {
+                  <div class="divider"></div>
+                  <ng-container *ngTemplateOutlet="choices; context: { $implicit: rows, kind: 'runes', head: 'Popular pages', sel: s.choice.runes }" />
+                }
+              </section>
             }
 
-            <div class="block">
+            <div class="stack">
               @if (r.spells.length === 2) {
-                <div class="label">Summoner spells</div>
-                @if (r.spellOptions.length > 1) {
-                  <div class="opts" role="radiogroup" aria-label="Summoner spells">
-                    @for (o of r.spellOptions; track $index) {
-                      <button class="opt" role="radio" [attr.aria-checked]="s.choice.spells === $index" [class.on]="s.choice.spells === $index"
-                        [disabled]="pickBusy()" [title]="optTip(o, spellName(o.ids[0]) + ' + ' + spellName(o.ids[1]))" (click)="pick('spells', $index)">
-                        @for (id of o.ids; track $index) { @if (spellIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> } }
-                        <span class="wr">{{ pct(o.winRate) }}</span>
-                      </button>
-                    }
-                  </div>
-                }
-                <div class="row spells">
-                  @for (id of r.spells; track $index) {
-                    @if (spellIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
-                    <span>{{ spellName(id) }}</span>
+                <section class="panel">
+                  <header><h4>Summoner spells</h4></header>
+                  @if (spellRows(); as rows) {
+                    <ng-container *ngTemplateOutlet="choices; context: { $implicit: rows, kind: 'spells', head: 'Popular picks', sel: s.choice.spells }" />
+                  } @else {
+                    <div class="spells">
+                      @for (id of r.spells; track $index) {
+                        @if (spellIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+                        <span>{{ spellName(id) }}</span>
+                      }
+                    </div>
                   }
-                </div>
+                </section>
               }
               @if (r.skillMax.length) {
-                <div class="label">Skill order</div>
-                <div class="row max">
-                  @for (k of r.skillMax; track $index; let last = $last) {
-                    <span class="key">{{ rift.abilityKey(k) }}</span>@if (!last) { <span class="faint">›</span> }
-                  }
-                </div>
-                @if (r.skillOrder.length) {
-                  <div class="levels">
-                    @for (k of r.skillOrder; track $index) {
-                      <span [class]="'lvl k' + k" [title]="'Level ' + ($index + 1)">{{ rift.abilityKey(k) }}</span>
+                <section class="panel">
+                  <header><h4>Skill order</h4><span class="hint">Max in this order</span></header>
+                  <div class="max">
+                    @for (k of r.skillMax; track $index; let last = $last) {
+                      <span class="key">{{ rift.abilityKey(k) }}</span>@if (!last) { <span class="faint">›</span> }
                     }
                   </div>
-                }
+                  @if (r.skillOrder.length) {
+                    <div class="levels">
+                      @for (k of r.skillOrder; track $index) {
+                        <span class="lvl-col" [title]="'Level ' + ($index + 1)">
+                          <span class="lvl-n">{{ $index + 1 }}</span>
+                          <span [class]="'lvl k' + k">{{ rift.abilityKey(k) }}</span>
+                        </span>
+                      }
+                    </div>
+                  }
+                </section>
               }
             </div>
 
-            <div class="block items">
-              @if (r.starter; as st) {
-                <div class="label">Start</div>
-                <div class="row">
-                  @for (id of st.ids; track $index) {
-                    @if (rift.itemIcon(id); as url) { <img [src]="url" [title]="itemName(id, st, $index)" alt="" (error)="rift.hideImg($event)" /> } @else { <span class="chip">{{ itemName(id, st, $index) }}</span> }
+            @if (r.starter || r.buildOrder.length) {
+              <section class="panel wide">
+                <header>
+                  <h4>Items</h4>
+                  @if (rift.config()?.useRecommendedBuilds && r.buildOrder.length) { <span class="hint">The overlay will remind you of this build in game</span> }
+                </header>
+                <div class="item-path">
+                  @if (r.starter; as st) {
+                    <div class="group">
+                      <div class="sub">Start with</div>
+                      <div class="icons">
+                        @for (id of st.ids; track $index) {
+                          @if (rift.itemIcon(id); as url) { <img [src]="url" [title]="itemName(id, st, $index)" alt="" (error)="rift.hideImg($event)" /> } @else { <span class="chip">{{ itemName(id, st, $index) }}</span> }
+                        }
+                      </div>
+                    </div>
+                  }
+                  @if (r.buildOrder.length) {
+                    <div class="group">
+                      <div class="sub">Build order</div>
+                      <div class="icons">
+                        @for (id of r.buildOrder; track id; let last = $last) {
+                          @if (rift.itemIcon(id); as url) { <img [src]="url" [title]="itemNameAny(id, r)" alt="" (error)="rift.hideImg($event)" /> } @else { <span class="chip">{{ itemNameAny(id, r) }}</span> }
+                          @if (!last) { <span class="faint arrow">›</span> }
+                        }
+                      </div>
+                    </div>
                   }
                 </div>
-              }
-              @if (r.buildOrder.length) {
-                <div class="label">Build</div>
-                @if (r.coreOptions.length > 1) {
-                  <div class="opts" role="radiogroup" aria-label="Core items">
-                    @for (o of r.coreOptions; track $index) {
-                      <button class="opt" role="radio" [attr.aria-checked]="s.choice.core === $index" [class.on]="s.choice.core === $index"
-                        [disabled]="pickBusy()" [title]="optTip(o, setNames(o))" (click)="pick('core', $index)">
-                        @for (id of o.ids; track $index) { @if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> } }
-                        <span class="wr">{{ pct(o.winRate) }}</span>
-                      </button>
+                @if (bootsRows() || coreRows()) {
+                  <div class="item-choices">
+                    @if (coreRows(); as rows) {
+                      <ng-container *ngTemplateOutlet="choices; context: { $implicit: rows, kind: 'core', head: 'Core items', sel: s.choice.core }" />
+                    }
+                    @if (bootsRows(); as rows) {
+                      <ng-container *ngTemplateOutlet="choices; context: { $implicit: rows, kind: 'boots', head: 'Boots', sel: s.choice.boots }" />
                     }
                   </div>
                 }
-                @if (r.bootsOptions.length > 1) {
-                  <div class="opts" role="radiogroup" aria-label="Boots">
-                    @for (o of r.bootsOptions; track $index) {
-                      <button class="opt" role="radio" [attr.aria-checked]="s.choice.boots === $index" [class.on]="s.choice.boots === $index"
-                        [disabled]="pickBusy()" [title]="optTip(o, setNames(o))" (click)="pick('boots', $index)">
-                        @for (id of o.ids; track $index) { @if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> } }
-                        <span class="wr">{{ pct(o.winRate) }}</span>
-                      </button>
-                    }
-                  </div>
-                }
-                <div class="row build">
-                  @for (id of r.buildOrder; track id; let last = $last) {
-                    @if (rift.itemIcon(id); as url) { <img [src]="url" [title]="itemNameAny(id, r)" alt="" (error)="rift.hideImg($event)" /> } @else { <span class="chip">{{ itemNameAny(id, r) }}</span> }
-                    @if (!last) { <span class="faint arrow">›</span> }
-                  }
-                </div>
-                @if (rift.config()?.useRecommendedBuilds) {
-                  <div class="faint small">The overlay will remind you of this build in game.</div>
-                }
-              }
-            </div>
+              </section>
+            }
           </div>
           @if (pickBusy()) {
             <p class="muted small">Applying your pick…</p>
@@ -262,6 +277,31 @@ import { buildWhy, rolesLabel } from '../core/why';
       </section>
     }
 
+    <ng-template #runeRow let-id let-ru="ru" let-i="i">
+      <div class="rune" [title]="perkName(id)">
+        @if (perkIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+        <span>{{ perkLabel(id, ru.perkNames[i] ?? '') }}</span>
+      </div>
+    </ng-template>
+
+    <!-- OP.GG's options for one pick (rune page, spells, core items, boots), with win and play rates. -->
+    <ng-template #choices let-rows let-kind="kind" let-head="head" let-sel="sel">
+      <div class="choices" role="radiogroup" [attr.aria-label]="head">
+        <div class="choices-head" aria-hidden="true"><span>{{ head }}</span><span>Win</span><span>Played</span></div>
+        @for (p of rows; track $index) {
+          <button class="choice" role="radio" [attr.aria-checked]="sel === $index" [class.on]="sel === $index"
+            [disabled]="pickBusy()" [title]="p.tip" (click)="pick(kind, $index)">
+            <span class="choice-what">
+              @for (u of p.icons; track $index) { <img [class.round]="p.round" [src]="u" alt="" (error)="rift.hideImg($event)" /> }
+              <span class="choice-name">{{ p.label }}</span>
+            </span>
+            <span class="num">{{ pct(p.o.winRate) }}</span>
+            <span class="num faint">{{ pct(p.o.pickRate) }}</span>
+          </button>
+        }
+      </div>
+    </ng-template>
+
     <ng-template #whyRow let-x let-rune="rune">
       <div class="why-row">
         @if (iconFor(x.iconPath); as url) { <img [src]="url" alt="" [class.round]="rune" /> } @else { <span class="icon-gap"></span> }
@@ -283,68 +323,99 @@ import { buildWhy, rolesLabel } from '../core/why';
     </ng-template>
   `,
   styles: `
-    .rec { margin: 14px 0 4px; display: flex; flex-direction: column; gap: 10px; }
+    .rec { margin: 14px 0 4px; display: flex; flex-direction: column; gap: 14px; }
     .head { display: flex; align-items: baseline; gap: 10px; }
     .small { font-size: 12.5px; margin: 0; }
     .warn { color: var(--gold); }
-    .grid { display: grid; grid-template-columns: 1.1fr 1fr 1.3fr; gap: 18px; }
-    .block { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .rec { container-type: inline-size; }
     .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); margin-top: 2px; }
-    /* Option chips: pick another rune page / spells / build. */
-    .opts { display: flex; flex-wrap: wrap; gap: 4px; }
-    .opts.source { margin-bottom: 12px; }
-    .opts.source .opt { font-size: 12.5px; padding: 4px 10px 4px 6px; }
-    .opt {
-      display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px 3px 5px; border-radius: 999px;
-      background: var(--bg-sunken); border: 1px solid var(--line); color: var(--text-dim); font-size: 11.5px; cursor: pointer;
-    }
-    .opt:hover:not(:disabled) { border-color: var(--line-strong); color: var(--text); }
-    .opt.on { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
-    .opt:disabled { cursor: progress; }
-    .opts .opt img { width: 18px; height: 18px; border-radius: 4px; border: 0; }
-    .opts .opt img.round { border-radius: 50%; }
-    /* Rune pages: one row each, named by how it differs from the most played page. */
-    .pages { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
-    .pages-head, .page { display: grid; grid-template-columns: 1fr 38px 46px; align-items: center; gap: 6px; }
-    .pages-head { padding: 0 8px; font-size: 10.5px; color: var(--text-faint); }
-    .pages-head span:not(:first-child) { text-align: right; }
-    .page {
-      padding: 4px 8px; border-radius: 8px; border: 1px solid transparent; background: none;
-      color: var(--text-dim); font-size: 12.5px; text-align: left; cursor: pointer;
-    }
-    .page:hover:not(:disabled) { background: var(--bg-sunken); color: var(--text); }
-    .page.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
-    .page:disabled { cursor: progress; }
-    .page-what { display: flex; align-items: center; gap: 7px; min-width: 0; }
-    .page-what img { width: 20px; height: 20px; flex: none; }
-    .page-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .page .num { text-align: right; font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
-    .opt .wr { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     .picked { color: var(--win); }
     .strong { font-weight: 600; }
-    .keystone { width: 44px; height: 44px; }
-    .perks { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
-    .perks img { width: 26px; height: 26px; }
-    .perks img.shard { width: 18px; height: 18px; opacity: 0.85; }
-    .names { line-height: 1.35; }
-    .spells img, .items img { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--line-strong); }
-    .spells span { margin-right: 8px; }
+    .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+    /* Layout: runes | spells + skills, then items across the card. Titled panels with room between them. */
+    .layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+    .stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+    .panel {
+      display: flex; flex-direction: column; gap: 14px; min-width: 0;
+      padding: 14px 16px 16px; border-radius: var(--radius-sm); background: var(--bg-hover); border: 1px solid var(--line);
+    }
+    .panel.wide { grid-column: 1 / -1; }
+    .panel header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .panel h4 { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
+    .hint { font-size: 12px; color: var(--text-faint); }
+    .sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
+    @container (max-width: 720px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+    /* Which games the build comes from (all games / vs your lane opponent). */
+    .source { display: flex; gap: 6px; flex-wrap: wrap; }
+    .src {
+      display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px;
+      background: var(--bg-sunken); border: 1px solid var(--line); color: var(--text-dim); font-size: 12.5px; cursor: pointer;
+    }
+    .src img { width: 18px; height: 18px; }
+    .src:hover:not(:disabled) { border-color: var(--line-strong); color: var(--text); }
+    .src.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+    .src:disabled { cursor: progress; }
+
+    /* Runes: keystone, then each tree's runes by name, then the shards. */
+    .rune-main { display: flex; align-items: center; gap: 12px; }
+    .keystone { width: 48px; height: 48px; flex: none; }
+    .keystone-name { font-size: 16px; font-weight: 600; }
+    .trees { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .tree { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+    .tree .sub + .rune { margin-top: -2px; }
+    .rune { display: flex; align-items: center; gap: 8px; font-size: 13px; min-width: 0; }
+    .rune img { width: 26px; height: 26px; flex: none; }
+    .rune span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .shards { display: flex; gap: 6px; }
+    .shards img { width: 20px; height: 20px; opacity: 0.9; }
+
+    /* Options from OP.GG (rune page, spells, core items, boots): one row each, the picked one outlined. */
+    .choices { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .choices-head, .choice { display: grid; grid-template-columns: minmax(0, 1fr) 40px 52px; align-items: center; gap: 8px; }
+    .choices-head { padding: 0 10px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
+    .divider { border-top: 1px solid var(--line); margin: 0 -2px; }
+    .choices-head span:not(:first-child), .choice .num { text-align: right; }
+    .choice {
+      padding: 6px 10px; border-radius: 8px; border: 1px solid transparent; background: none;
+      color: var(--text-dim); font-size: 13px; text-align: left; cursor: pointer;
+    }
+    .choice:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+    .choice.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+    .choice:disabled { cursor: progress; }
+    .choice-what { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .choice-what img { width: 22px; height: 22px; flex: none; border-radius: 5px; }
+    .choice-what img.round { border-radius: 50%; }
+    .choice-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 2px; }
+    .num { font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+    /* Spells without options, skills, items. */
+    .spells { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .spells span { margin-right: 10px; }
+    .spells img, .icons img { width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--line-strong); }
+    .max { display: flex; align-items: center; gap: 8px; }
     .key {
       display: inline-flex; align-items: center; justify-content: center;
-      width: 28px; height: 28px; border-radius: 9px; box-shadow: inset 0 0 0 1px var(--accent-soft);
+      width: 30px; height: 30px; border-radius: 9px; box-shadow: inset 0 0 0 1px var(--accent-soft);
       background: var(--accent-soft); color: var(--accent); font-weight: 700;
     }
-    .levels { display: flex; gap: 1px; flex-wrap: nowrap; }
+    .levels { display: grid; grid-template-columns: repeat(18, minmax(0, 1fr)); gap: 2px; max-width: 420px; }
+    .lvl-col { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .lvl-n { font: 10px var(--mono); color: var(--text-faint); }
     .lvl {
-      width: 16px; height: 18px; border-radius: 4px; font-size: 10.5px; font-weight: 700;
+      width: 100%; height: 20px; border-radius: 4px; font-size: 11px; font-weight: 700;
       display: inline-flex; align-items: center; justify-content: center;
       background: var(--bg-sunken); color: var(--text-dim);
     }
     .lvl.kQ { color: #7cc4f5; } .lvl.kW { color: #8de28d; } .lvl.kE { color: #f0b46a; } .lvl.kR { color: var(--accent); background: var(--accent-soft); }
-    .build { flex-wrap: wrap; gap: 4px; }
+    .item-path { display: flex; gap: 28px; flex-wrap: wrap; }
+    .group { display: flex; flex-direction: column; gap: 8px; }
+    .icons { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .arrow { margin: 0 1px; }
-    .chip { font-size: 11.5px; background: var(--bg-sunken); border-radius: 999px; padding: 2px 6px; }
-    @media (max-width: 960px) { .grid { grid-template-columns: 1fr 1fr; } .items { grid-column: 1 / -1; } }
+    .chip { font-size: 12px; background: var(--bg-sunken); border-radius: 999px; padding: 3px 8px; }
+    .item-choices { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 24px; padding-top: 14px; border-top: 1px solid var(--line); }
+    @container (max-width: 720px) { .item-choices { grid-template-columns: minmax(0, 1fr); } }
     .why-toggle { margin-left: 4px; font-size: 12.5px; color: var(--accent); }
     .why-toggle.on { border-color: var(--line-strong); }
     .why { border-top: 1px solid var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
@@ -368,8 +439,6 @@ import { buildWhy, rolesLabel } from '../core/why';
     .note { line-height: 1.45; }
     @media (max-width: 960px) { .why-grid { grid-template-columns: 1fr; } }
     .lines { display: flex; flex-direction: column; gap: 6px; }
-    /* Inline "words" in the rune-names text block, so they wrap like the real names. */
-    .bone.word { height: 10px; border-radius: 999px; vertical-align: middle; margin-right: 1.6ch; }
     .bone {
       display: inline-block; flex: none; border-radius: 6px;
       background: linear-gradient(90deg, var(--bg-sunken) 30%, var(--line-strong) 50%, var(--bg-sunken) 70%);
@@ -380,12 +449,12 @@ import { buildWhy, rolesLabel } from '../core/why';
     .bone.round { border-radius: 50%; }
     .bone.text { height: 12px; border-radius: 999px; }
     .bone.text.sm { height: 10px; }
-    .bone.keystone { width: 44px; height: 44px; }
+    .bone.keystone { width: 48px; height: 48px; }
     .bone.perk { width: 26px; height: 26px; }
     .bone.shard { width: 18px; height: 18px; }
-    .bone.icon { width: 30px; height: 30px; }
-    .bone.key-bone { width: 28px; height: 28px; border-radius: 9px; }
-    .bone.lvl-bone { width: 16px; height: 18px; border-radius: 4px; }
+    .bone.icon { width: 32px; height: 32px; }
+    .bone.key-bone { width: 30px; height: 30px; border-radius: 9px; }
+    .bone.lvl-bone { height: 20px; border-radius: 4px; }
     @keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
     @media (prefers-reduced-motion: reduce) { .bone { animation: none; } }
   `,
@@ -497,9 +566,31 @@ export class RecCard {
         }
       }
       const icon = id === o.subStyleId ? assetUrl(this.rift.styleById().get(id)?.iconPath) : this.perkIcon(id);
-      return { o, label, icon };
+      return { o, label, icons: icon ? [icon] : [], round: true, tip: this.optTip(o, this.runeOptionNames(o)) } satisfies ChoiceRow;
     });
   });
+
+  protected readonly spellRows = computed(() => {
+    const opts = this.state()?.rec?.spellOptions ?? [];
+    if (opts.length < 2) return null;
+    return opts.map((o) => {
+      const label = o.ids.map((id) => this.spellName(id)).join(' + ');
+      return { o, label, icons: o.ids.map((id) => this.spellIcon(id)).filter(Boolean), tip: this.optTip(o, label) } satisfies ChoiceRow;
+    });
+  });
+
+  protected readonly coreRows = computed(() => this.itemRows(this.state()?.rec?.coreOptions ?? []));
+  protected readonly bootsRows = computed(() => this.itemRows(this.state()?.rec?.bootsOptions ?? []));
+
+  private itemRows(opts: ItemSet[]): ChoiceRow[] | null {
+    if (opts.length < 2) return null;
+    return opts.map((o) => {
+      const names = o.ids.map((id, i) => this.itemName(id, o, i));
+      return {
+        o, label: names.join(' · '), icons: o.ids.map((id) => this.rift.itemIcon(id)).filter(Boolean), tip: this.optTip(o, names.join(' + ')),
+      };
+    });
+  }
 
   pct(winRate: number): string {
     return `${Math.round(winRate * 100)}%`;
@@ -510,9 +601,6 @@ export class RecCard {
   }
   runeOptionNames(o: RuneRec): string {
     return o.perkIds.slice(0, 6).map((id, i) => this.perkLabel(id, o.perkNames[i] ?? '')).filter(Boolean).join(' · ');
-  }
-  setNames(o: ItemSet): string {
-    return o.ids.map((id, i) => this.itemName(id, o, i)).join(' + ');
   }
 
   /** Only show the recommendation for the champion currently picked. */
@@ -540,14 +628,6 @@ export class RecCard {
   }
   styleName(id: number, fallback: string): string {
     return this.rift.styleById().get(id)?.name ?? fallback;
-  }
-  /** The runes after the keystone: 3 primary + 2 secondary (no shards). */
-  runeNames(ru: RuneRec): string {
-    return ru.perkIds
-      .slice(1, 6)
-      .map((id, i) => this.perkLabel(id, ru.perkNames[i + 1] ?? ''))
-      .filter(Boolean)
-      .join(' · ');
   }
   spellIcon(id: number): string {
     return assetUrl(this.rift.spellById().get(id)?.iconPath);
