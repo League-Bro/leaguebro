@@ -1378,7 +1378,11 @@ pub async fn import_slots(app: &AppHandle, lcu: &Lcu, wanted: Vec<(usize, i64, S
             None => None,
         };
         match runes::choose_page(lcu, champ, &pos, 11, rec.as_ref().and_then(|r| r.runes.as_ref())).await {
-            Ok((page, source)) => picks.push((slot, champ, pos, page, source, rec)),
+            Ok((mut page, source)) => {
+                let name = state.shared.lock().await.champion(champ).map(|c| c.name.clone()).unwrap_or_default();
+                page.name = runes::page_name(&name, runes::position_label(&pos));
+                picks.push((slot, champ, pos, page, source, rec))
+            }
             Err(e) => events.push(publish_import(app, champ, Err(format!("{e:#}"))).await),
         }
     }
@@ -1388,7 +1392,9 @@ pub async fn import_slots(app: &AppHandle, lcu: &Lcu, wanted: Vec<(usize, i64, S
     // Read again: the slots may have changed during the OP.GG lookups, and the
     // PUT replaces all of them.
     let Ok(Some(mut slots)) = lcu.get(PLAYER_SLOTS).await else { return events };
+    let before = slots.clone();
     let mut done = Vec::new();
+    let mut pages = HashMap::new();
     for (slot, champ, pos, page, source, rec) in picks {
         let Some(s) = slots.get_mut(slot) else { continue };
         if (int(s, "championId"), text(s, "positionPreference").to_ascii_lowercase()) != (champ, pos.clone()) {
@@ -1404,38 +1410,54 @@ pub async fn import_slots(app: &AppHandle, lcu: &Lcu, wanted: Vec<(usize, i64, S
             s["spell2"] = s2.into();
             msg.push_str(&format!(" · {}", state.shared.lock().await.spell_names(s1, s2)));
         }
+        pages.insert(slot, page);
         done.push((slot, champ, pos, perks, msg, rec));
     }
     if done.is_empty() {
         return events;
     }
-    // The PUT sets the spells. It doesn't keep the runes: the perks plugin
-    // keeps its own Swiftplay runes per champion and position and puts them
-    // back, so the runes go through the per-slot endpoint below.
-    if let Err(e) = lcu.put(PLAYER_SLOTS, &slots).await {
-        for (_, champ, ..) in done {
-            let err = format!("couldn't update the Swiftplay slots: {e:#}");
-            events.push(publish_import(app, champ, Err(err)).await);
+    // The PUT sets the spells (and the slot's copy of the runes). The client
+    // refuses a PUT that changes nothing ("Put slots request matches current
+    // slots"), e.g. on a second "Import runes" click, so skip it then.
+    if slots != before {
+        if let Err(e) = lcu.put(PLAYER_SLOTS, &slots).await.map_err(|e| format!("{e:#}")) {
+            if !e.contains("matches current slots") {
+                for (_, champ, ..) in done {
+                    let err = format!("couldn't update the Swiftplay slots: {e}");
+                    events.push(publish_import(app, champ, Err(err)).await);
+                }
+                return events;
+            }
         }
-        return events;
     }
+    // The runes themselves live on the slot's temporary rune page, which the
+    // perks plugin puts back over the slot's `perks`; so replace that page.
     let mut failed: HashMap<usize, String> = HashMap::new();
-    for (slot, _, _, perks, ..) in &done {
-        let path = format!("{PLAYER_SLOTS}/{slot}/{}", path_encode(perks));
-        if let Err(e) = lcu.post(&path, &Value::Null).await {
+    for (slot, champ, ..) in &done {
+        if let Err(e) = runes::set_quick_play_page(lcu, *champ, &pages[slot]).await {
             failed.insert(*slot, format!("{e:#}"));
         }
     }
     let items = if cfg.set_item_sets { slot_item_sets(app, lcu, &done).await } else { String::new() };
     // Check that the client kept them.
     tokio::time::sleep(Duration::from_millis(500)).await;
-    let after = lcu.get(PLAYER_SLOTS).await.ok().flatten().unwrap_or(Value::Null);
-    for (slot, champ, _, perks, msg, _) in done {
-        let kept = after.get(slot).is_some_and(|s| same_perks(text(s, "perks"), &perks));
-        let r = match failed.remove(&slot) {
-            _ if kept => Ok(format!("{msg}{items}")),
-            Some(e) => Err(format!("couldn't set Swiftplay runes: {e}")),
-            None => Err("the League client kept its own runes for this slot".to_string()),
+    let mut wrote_page = false;
+    for (slot, champ, pos, perks, msg, _) in done {
+        let path = format!("/lol-perks/v1/quick-play-selections/champion/{champ}/position/{pos}");
+        let kept = lcu.get(&path).await.ok().flatten().is_some_and(|v| same_perks(v.as_str().unwrap_or(""), &perks));
+        let r = if kept {
+            Ok(format!("{msg}{items}"))
+        } else if !wrote_page {
+            // Fall back to the League Bro page, which the lobby's rune menu lists.
+            wrote_page = true;
+            let page = &pages[&slot];
+            match runes::write_page(lcu, &cfg, page).await {
+                Ok(()) => Ok(format!("{msg} · saved as \"{}\", pick it in the slot's rune menu{items}", page.name)),
+                Err(e) => Err(format!("couldn't set Swiftplay runes: {e:#}")),
+            }
+        } else {
+            let e = failed.remove(&slot).unwrap_or_else(|| "the League client kept its own runes".to_string());
+            Err(format!("couldn't set Swiftplay runes: {e}"))
         };
         events.push(publish_import(app, champ, r).await);
     }
@@ -1469,17 +1491,6 @@ async fn slot_item_sets(
         Ok(_) => String::new(),
         Err(e) => format!(" · couldn't add the build to the shop: {e:#}"),
     }
-}
-
-/// Percent-encodes a value for a URL path segment (the slot runes endpoint
-/// takes the runes JSON in the path).
-fn path_encode(s: &str) -> String {
-    s.bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
 }
 
 /// Whether two slot `perks` strings are the same runes (key order and spacing aside).
@@ -1675,7 +1686,6 @@ mod tests {
 
     #[test]
     fn swiftplay_perks_helpers() {
-        assert_eq!(path_encode(r#"{"perkIds":[1, 2]}"#), "%7B%22perkIds%22%3A%5B1%2C%202%5D%7D");
         let a = r#"{"perkIds":[8214,8226],"perkStyle":8200,"perkSubStyle":8400}"#;
         assert!(same_perks(a, r#"{"perkSubStyle":8400, "perkStyle":8200, "perkIds":[8214,8226]}"#));
         assert!(!same_perks(a, r#"{"perkIds":[8112,8226],"perkStyle":8200,"perkSubStyle":8400}"#));

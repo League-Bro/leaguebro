@@ -163,6 +163,41 @@ pub fn slot_perks(page: &RunePage) -> String {
     .to_string()
 }
 
+/// Swiftplay's temporary page for a lobby slot's champion. The perks plugin
+/// keeps one per slot (`isTemporary`, `quickPlayChampionIds: [id]`, named like
+/// "Nautilus - Aftershock"); the lobby's rune picker shows it and the game
+/// starts on it. Its id changes whenever the client remakes it.
+pub fn quick_play_page(pages: &Value, champion_id: i64) -> Option<&Value> {
+    pages.as_array()?.iter().find(|p| {
+        flag(p, "isTemporary")
+            && p.get("quickPlayChampionIds")
+                .and_then(Value::as_array)
+                .is_some_and(|ids| ids.iter().any(|id| id.as_i64() == Some(champion_id)))
+    })
+}
+
+/// The temporary page with `page`'s runes, everything else kept as the client has it.
+pub fn quick_play_body(existing: &Value, page: &RunePage) -> Value {
+    let mut body = existing.clone();
+    body["name"] = json!(page.name);
+    body["primaryStyleId"] = json!(page.primary_style_id);
+    body["subStyleId"] = json!(page.sub_style_id);
+    body["selectedPerkIds"] = json!(page.selected_perk_ids);
+    body
+}
+
+/// Puts `page`'s runes on the Swiftplay temporary page for this champion.
+/// (The per-slot `POST player-slots/{index}/{perks}` returns 400
+/// INVALID_REQUEST, checked October 2026.)
+pub async fn set_quick_play_page(lcu: &Lcu, champion_id: i64, page: &RunePage) -> Result<()> {
+    let pages = lcu.get_req("/lol-perks/v1/pages").await?;
+    let existing = quick_play_page(&pages, champion_id)
+        .ok_or_else(|| anyhow!("the client has no Swiftplay rune page for this champion"))?;
+    let id = existing.get("id").and_then(Value::as_i64).unwrap_or_default();
+    lcu.put(&format!("/lol-perks/v1/pages/{id}"), &quick_play_body(existing, page)).await?;
+    Ok(())
+}
+
 /// Creates (or replaces) the League Bro rune page and makes it current.
 pub async fn import(
     lcu: &Lcu,
@@ -174,8 +209,14 @@ pub async fn import(
     rec: Option<&RuneRec>,
 ) -> Result<ImportResult> {
     let (mut page, source) = choose_page(lcu, champion_id, position, map_id, rec).await?;
-    let label = position_label(position);
-    page.name = page_name(champion_name, label);
+    page.name = page_name(champion_name, position_label(position));
+    write_page(lcu, config, &page).await?;
+    Ok(ImportResult { page_name: page.name, source })
+}
+
+/// Writes `page` as the League Bro rune page (replacing the last one) and
+/// makes it current.
+pub async fn write_page(lcu: &Lcu, config: &Config, page: &RunePage) -> Result<()> {
     let body = json!({
         "name": page.name,
         "primaryStyleId": page.primary_style_id,
@@ -225,7 +266,7 @@ pub async fn import(
             ))
         }
     }
-    Ok(ImportResult { page_name: page.name, source })
+    Ok(())
 }
 
 #[cfg(test)]
@@ -280,6 +321,34 @@ mod tests {
             v,
             json!({"perkIds": [9923, 8126, 8140, 8106, 8224, 8234, 5008, 5010, 5001], "perkStyle": 8100, "perkSubStyle": 8200})
         );
+    }
+
+    #[test]
+    fn swiftplay_quick_play_page() {
+        // Shapes from a real Swiftplay lobby (October 2026).
+        let pages = json!([
+            {"id": 2061975328, "name": "Nautilus - Aftershock", "isTemporary": true, "isDeletable": false,
+             "quickPlayChampionIds": [111], "primaryStyleId": 8400, "subStyleId": 8000, "order": 7,
+             "selectedPerkIds": [8439, 8401, 8429, 8453, 9105, 9111, 5005, 5001, 5001]},
+            {"id": 865385380, "name": "League Bro: Nami Support", "isTemporary": false,
+             "quickPlayChampionIds": [], "primaryStyleId": 8200, "subStyleId": 8400}
+        ]);
+        let found = quick_play_page(&pages, 111).unwrap();
+        assert_eq!(found["id"], 2061975328);
+        assert!(quick_play_page(&pages, 31).is_none());
+        let page = RunePage {
+            name: "League Bro: Nautilus".into(),
+            primary_style_id: 8400,
+            sub_style_id: 8300,
+            selected_perk_ids: vec![8439, 8401, 8473, 8242, 8345, 8347, 5007, 5001, 5001],
+        };
+        let body = quick_play_body(found, &page);
+        assert_eq!(body["id"], 2061975328);
+        assert_eq!(body["isTemporary"], true);
+        assert_eq!(body["quickPlayChampionIds"], json!([111]));
+        assert_eq!(body["name"], "League Bro: Nautilus");
+        assert_eq!(body["subStyleId"], 8300);
+        assert_eq!(body["selectedPerkIds"], json!([8439, 8401, 8473, 8242, 8345, 8347, 5007, 5001, 5001]));
     }
 
     #[test]
