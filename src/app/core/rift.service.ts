@@ -1,7 +1,7 @@
 import { Injectable, computed, signal } from '@angular/core';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { LogicalSize, getCurrentWindow } from '@tauri-apps/api/window';
 import {
   AbilityKeys,
   CacheInfo,
@@ -358,5 +358,17 @@ export class RiftService {
     if (key === this.lastButtonRects) return;
     this.lastButtonRects = key;
     invoke('set_overlay_buttons', { rects }).catch(() => (this.lastButtonRects = ''));
+  }
+
+  private lastOverlayHeight = 0;
+  /** Sizes the overlay window to its contents (CSS px), so nothing is cut off at the bottom. */
+  fitOverlayHeight(height: number): void {
+    if (this.demo || this.windowLabel() !== 'overlay') return;
+    const h = Math.ceil(height);
+    if (h <= 0 || h === this.lastOverlayHeight) return;
+    this.lastOverlayHeight = h;
+    getCurrentWindow()
+      .setSize(new LogicalSize(window.innerWidth, h))
+      .catch(() => (this.lastOverlayHeight = 0));
   }
 }

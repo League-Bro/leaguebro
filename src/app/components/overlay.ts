@@ -197,11 +197,8 @@ const PREVIEW: OverlayState = {
     .step.next { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
     .step.next .n { color: var(--accent); border-color: var(--accent); }
     .sit .tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); }
-    /* One line each, so the expanded list fits the window; the full reason is the row's tooltip. */
-    .sit .why {
-      margin: -2px 0 2px 32px; font-size: 11.5px; color: var(--text-dim); line-height: 1.3;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
+    /* Wraps instead of cutting off: the locked overlay can't show a tooltip. */
+    .sit .why { margin: -2px 0 2px 32px; font-size: 11.5px; color: var(--text-dim); line-height: 1.3; }
     .more {
       all: unset; position: relative; z-index: 11; align-self: flex-start; margin-left: 32px;
       font-size: 11px; color: var(--accent); cursor: pointer; padding: 1px 6px; border-radius: 5px;
@@ -223,6 +220,7 @@ export class Overlay {
   protected time = clock;
   private readonly lockBtn = viewChild<ElementRef<HTMLElement>>('lockBtn');
   private readonly moreBtn = viewChild<ElementRef<HTMLElement>>('moreBtn');
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   constructor() {
     afterRenderEffect(() => {
@@ -230,11 +228,16 @@ export class Overlay {
       // Re-measured on every update: rows above "more" (timers, items) move it.
       this.state();
       this.expanded();
+      this.showTimers();
+      this.showLane();
+      this.showSit();
       const rects = [this.lockBtn(), this.moreBtn()]
         .map((b) => b?.nativeElement.getBoundingClientRect())
         .filter((r): r is DOMRect => !!r)
         .map((r): [number, number, number, number] => [r.x, r.y, r.width, r.height]);
       this.rift.setOverlayButtons(rects);
+      // The window follows the panel's height (wrapped reasons, the expanded list).
+      if (this.state()) this.rift.fitOverlayHeight(this.host.nativeElement.getBoundingClientRect().height);
     });
   }
 
