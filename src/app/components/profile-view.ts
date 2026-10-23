@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
-import { championIcon, formatTier, kdaRatio, profileIcon, queueLabel, tierClass, winPct } from '../core/assets';
+import { championIcon, formatTier, kdaRatio, profileIcon, queueLabel, rankCrest, tierClass, winPct } from '../core/assets';
 import { MatchLine, MyProfile, PostGame, RankLine } from '../core/models';
 import { PostGameView } from './post-game';
 import { ItemTip } from './item-tip';
@@ -62,13 +62,16 @@ const REGIONS = [
         <div class="ranks">
           @for (r of ranks(p); track r.label) {
             <div class="rank">
-              <div class="faint cap">{{ r.label }}</div>
-              @if (r.line; as l) {
-                <div [class]="tierCls(l.tier)">{{ tier(l.tier, l.division) }} <span class="muted mono">{{ l.lp }} LP</span></div>
-                <div class="faint small mono">{{ l.wins }}W {{ l.losses }}L · {{ pct(l.wins, l.wins + l.losses) }}%</div>
-              } @else {
-                <div class="tier-none">Unranked</div>
-              }
+              <img class="crest" [class.unranked]="!r.line" [src]="crest(r.line?.tier)" [alt]="r.line ? tier(r.line.tier, r.line.division) : 'Unranked'" />
+              <div class="rank-text">
+                <div class="faint cap">{{ r.label }}</div>
+                @if (r.line; as l) {
+                  <div [class]="tierCls(l.tier)">{{ tier(l.tier, l.division) }} <span class="muted mono">{{ l.lp }} LP</span></div>
+                  <div class="faint small mono">{{ l.wins }}W {{ l.losses }}L · {{ pct(l.wins, l.wins + l.losses) }}%</div>
+                } @else {
+                  <div class="tier-none">Unranked</div>
+                }
+              </div>
             </div>
           }
         </div>
@@ -273,7 +276,10 @@ const REGIONS = [
     .who { flex: 1; min-width: 160px; }
     .who h2 { font-size: 24px; }
     .ranks { display: flex; gap: 26px; }
-    .rank { display: flex; flex-direction: column; gap: 2px; }
+    .rank { display: flex; align-items: center; gap: 10px; }
+    .rank-text { display: flex; flex-direction: column; gap: 2px; }
+    .crest { width: 44px; height: 44px; object-fit: contain; flex: none; }
+    .crest.unranked { opacity: 0.45; }
     .cap { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; }
     .small { font-size: 12.5px; margin: 0; }
     .note { margin-top: 8px; }
@@ -420,6 +426,7 @@ export class ProfileView {
   protected icon = profileIcon;
   protected tier = formatTier;
   protected tierCls = tierClass;
+  protected crest = rankCrest;
   protected abs = Math.abs;
 
   constructor() {
