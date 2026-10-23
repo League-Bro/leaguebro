@@ -1108,10 +1108,15 @@ impl Engine {
         let state = {
             let state = self.state();
             let mut sh = state.shared.lock().await;
-            let items: HashMap<i64, (String, i64)> = sh
+            let items: HashMap<i64, live::ShopItem> = sh
                 .statics
                 .as_ref()
-                .map(|s| s.items.iter().map(|it| (it.id, (it.name.clone(), it.price_total))).collect())
+                .map(|s| {
+                    s.items
+                        .iter()
+                        .map(|it| (it.id, live::ShopItem { name: it.name.clone(), price: it.price_total, from: it.from.clone() }))
+                        .collect()
+                })
                 .unwrap_or_default();
             // Fall back to matching the live champion name if champ select was missed.
             if sh.my_champion_id == 0 {

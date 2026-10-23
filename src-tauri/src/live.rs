@@ -30,8 +30,17 @@ pub struct Timer {
 pub struct NextItem {
     pub id: i64,
     pub name: String,
+    /// What's left to pay: the full cost minus components you already own.
     pub price: i64,
     pub affordable: bool,
+}
+
+/// What the live view needs from the client's item list.
+pub struct ShopItem {
+    pub name: String,
+    pub price: i64,
+    /// Components it's built from.
+    pub from: Vec<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Default)]
@@ -67,18 +76,18 @@ pub struct LaneDiff {
     pub theirs: i64,
 }
 
-fn item_value(player: &Value, items: &HashMap<i64, (String, i64)>) -> i64 {
+fn item_value(player: &Value, items: &HashMap<i64, ShopItem>) -> i64 {
     list(player, "items")
         .iter()
         .map(|it| {
-            let price = items.get(&int(it, "itemID")).map_or_else(|| int(it, "price"), |(_, p)| *p);
+            let price = items.get(&int(it, "itemID")).map_or_else(|| int(it, "price"), |i| i.price);
             price * int(it, "count").max(1)
         })
         .sum()
 }
 
 /// The enemy in your position, compared by item value.
-pub fn lane_diff(data: &Value, items: &HashMap<i64, (String, i64)>) -> Option<LaneDiff> {
+pub fn lane_diff(data: &Value, items: &HashMap<i64, ShopItem>) -> Option<LaneDiff> {
     let me = find_me(data)?;
     let pos = text(me, "position");
     if pos.is_empty() || pos.eq_ignore_ascii_case("NONE") {
@@ -257,11 +266,30 @@ pub fn compute_timers(data: &Value, cfg: &TimerConfig) -> Vec<Timer> {
     timers
 }
 
-/// Your next items from the recommended build.
+/// Gold your owned items take off `id`'s cost, like the shop's discount: an
+/// owned component counts its full price (and is used up, so it only counts
+/// once), otherwise look inside its own components.
+fn owned_discount(id: i64, items: &HashMap<i64, ShopItem>, owned: &mut Vec<i64>, depth: u8) -> i64 {
+    let Some(item) = items.get(&id) else { return 0 };
+    if depth > 0 {
+        if let Some(pos) = owned.iter().position(|o| *o == id) {
+            owned.remove(pos);
+            return item.price;
+        }
+    }
+    // The client's recipes are shallow; the limit only guards against bad data.
+    if depth >= 4 {
+        return 0;
+    }
+    item.from.iter().map(|c| owned_discount(*c, items, owned, depth + 1)).sum()
+}
+
+/// Your next items from the recommended build, priced after the components
+/// you already own.
 pub fn next_items(
     data: &Value,
     build: &[i64],
-    items: &HashMap<i64, (String, i64)>,
+    items: &HashMap<i64, ShopItem>,
     limit: usize,
 ) -> Vec<NextItem> {
     let gold = float(data, "/activePlayer/currentGold");
@@ -274,7 +302,10 @@ pub fn next_items(
             owned_left.remove(pos);
             continue;
         }
-        let (name, price) = items.get(id).cloned().unwrap_or_else(|| (format!("Item {id}"), 0));
+        let (name, price) = match items.get(id) {
+            Some(it) => (it.name.clone(), (it.price - owned_discount(*id, items, &mut owned_left, 0)).max(0)),
+            None => (format!("Item {id}"), 0),
+        };
         out.push(NextItem { id: *id, name, price, affordable: price > 0 && gold >= price as f64 });
         if out.len() >= limit {
             break;
@@ -287,7 +318,7 @@ pub fn overlay_state(
     data: &Value,
     cfg: &TimerConfig,
     guide: &Guidance,
-    items: &HashMap<i64, (String, i64)>,
+    items: &HashMap<i64, ShopItem>,
 ) -> OverlayState {
     let build = guide.build;
     let me = find_me(data);
@@ -314,6 +345,10 @@ pub fn overlay_state(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn shop(list: &[(i64, &str, i64, &[i64])]) -> HashMap<i64, ShopItem> {
+        list.iter().map(|(id, name, price, from)| (*id, ShopItem { name: name.to_string(), price: *price, from: from.to_vec() })).collect()
+    }
 
     fn sample(now: f64, events: Value) -> Value {
         json!({
@@ -365,10 +400,7 @@ mod tests {
 
     #[test]
     fn build_reminder() {
-        let mut items = HashMap::new();
-        items.insert(3020, ("Sorcerer's Shoes".to_string(), 1100));
-        items.insert(6655, ("Luden's Companion".to_string(), 2850));
-        items.insert(1058, ("Needlessly Large Rod".to_string(), 1200));
+        let items = shop(&[(3020, "Sorcerer's Shoes", 1100, &[]), (6655, "Luden's Companion", 2850, &[]), (1058, "Needlessly Large Rod", 1200, &[])]);
         let next = next_items(&sample(600.0, json!([])), &[3020, 6655, 1058], &items, 2);
         assert_eq!(next.len(), 2);
         assert_eq!(next[0].id, 6655);
@@ -380,11 +412,35 @@ mod tests {
     }
 
     #[test]
+    fn owned_components_lower_the_price() {
+        let items = shop(&[
+            (6655, "Luden's Companion", 2850, &[3802, 1026]),
+            (3802, "Lost Chapter", 1200, &[1052, 1027]),
+            (1026, "Blasting Wand", 850, &[]),
+            (1052, "Amplifying Tome", 400, &[]),
+            (1027, "Sapphire Crystal", 300, &[]),
+            (3089, "Rabadon's Deathcap", 3500, &[1058, 1026]),
+            (1058, "Needlessly Large Rod", 1200, &[]),
+        ]);
+        let mut d = sample(600.0, json!([]));
+        // A Blasting Wand plus a Tome from inside the Lost Chapter.
+        d["allPlayers"][0]["items"] = json!([{"itemID": 1026}, {"itemID": 1052}]);
+        let next = next_items(&d, &[6655, 3089], &items, 2);
+        assert_eq!(next[0].price, 2850 - 850 - 400);
+        // The Wand already went to Luden's, so Deathcap is full price.
+        assert_eq!(next[1].price, 3500);
+        // A finished component counts whole, not its parts.
+        d["allPlayers"][0]["items"] = json!([{"itemID": 3802}]);
+        // Short of the full 2850 but enough for what's left.
+        d["activePlayer"]["currentGold"] = json!(1700.0);
+        let next = next_items(&d, &[6655], &items, 1);
+        assert_eq!(next[0].price, 2850 - 1200);
+        assert!(next[0].affordable);
+    }
+
+    #[test]
     fn lane_item_value() {
-        let mut items = HashMap::new();
-        items.insert(1056, ("Doran's Ring".to_string(), 400));
-        items.insert(3020, ("Sorcerer's Shoes".to_string(), 1100));
-        items.insert(2003, ("Health Potion".to_string(), 50));
+        let items = shop(&[(1056, "Doran's Ring", 400, &[]), (3020, "Sorcerer's Shoes", 1100, &[]), (2003, "Health Potion", 50, &[])]);
         let mut d = sample(600.0, json!([]));
         // Zed: two potions in one slot, plus an item the client list doesn't know.
         d["allPlayers"][2]["items"] = json!([{"itemID": 2003, "count": 2}, {"itemID": 9999, "count": 1, "price": 875}]);

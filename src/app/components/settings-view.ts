@@ -77,7 +77,7 @@ type BoolKey =
           <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
             <input type="checkbox" [checked]="cfg.useRecommendedBuilds" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('useRecommendedBuilds', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Next items to buy</b><span>The next two items from OP.GG's build, priced green when you can afford them.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
+            <span class="label"><b>Next items to buy</b><span>The next two items from OP.GG's build, priced after the components you own and green when you can afford them.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
           </label>
           <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
             <input type="checkbox" [checked]="cfg.showSituational" [disabled]="cfg.recSource !== 'opgg'" (change)="setBool('showSituational', $any($event.target).checked)" />
