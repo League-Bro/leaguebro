@@ -7,6 +7,7 @@ import {
   CacheInfo,
   CacheName,
   GlobalSets,
+  Guide,
   ChampSelectView,
   Config,
   ImportEvent,
@@ -39,6 +40,7 @@ import {
   demoProfile,
   demoOpggProfile,
   demoMatchup,
+  demoGuide,
   demoRec,
   demoWithChoice,
   demoScene,
@@ -73,6 +75,8 @@ export class RiftService {
   /** Champions tab selection, kept across tab switches. */
   readonly championsPick = signal<{ championId: number; position: string; mode: 'ranked' | 'aram' } | null>(null);
   readonly championsGame = signal<'league' | 'classic'>('league');
+  /** The Champions tab's view of the picked champion. */
+  readonly championsView = signal<'build' | 'guide'>('build');
   /** Tier List tab selection, kept across tab switches. */
   readonly tierPick = signal<{ source: TierSource; position: string; rank: string }>({
     source: 'lolalytics',
@@ -255,6 +259,17 @@ export class RiftService {
 
   lookupRec(championId: number, position: string, gameMode: 'ranked' | 'aram'): Promise<Recommendation> {
     return this.call('lookup_rec', { championId, position, gameMode }, () => ({ ...demoRec().rec!, championId, position, gameMode }), 300);
+  }
+
+  /** A beginner's guide: abilities with Riot's clips, difficulty, tips. */
+  championGuide(championId: number): Promise<Guide> {
+    return this.call('champion_guide', { championId }, () => demoGuide(championId, this.champName(championId)), 300);
+  }
+
+  /** Opens a YouTube search for the champion's beginner guides in the default browser. */
+  async openGuideVideos(champion: string): Promise<void> {
+    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(`${champion} beginner guide league of legends`)}`;
+    await this.call('open_guide_videos', { champion }, () => void window.open(url, '_blank', 'noopener'));
   }
 
   async previewOverlay(show: boolean): Promise<void> {

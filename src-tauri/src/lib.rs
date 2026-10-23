@@ -2,6 +2,7 @@ mod config;
 mod util;
 mod cache;
 mod engine;
+mod guide;
 mod itemsets;
 mod lcu;
 mod opgg;
@@ -343,10 +344,36 @@ fn open_issue_page(url: String) -> Result<(), String> {
     if !(rest.is_empty() || rest.starts_with('/') || rest.starts_with('?')) {
         return Err("Not a League Bro issue link".into());
     }
-    // Hands the URL to Windows' default browser. Passed as one argument (no
-    // cmd.exe), so `&` in the query string is safe.
+    open_in_browser(&url)
+}
+
+/// A beginner's guide to any champion (the Champions tab's Guide view).
+#[tauri::command]
+async fn champion_guide(state: State<'_, AppState>, champion_id: i64) -> Result<guide::Guide, String> {
+    let (alias, lcu) = {
+        let sh = state.shared.lock().await;
+        let statics = sh.statics.as_ref().ok_or("Open the League client to load champions")?;
+        let champ = statics.champions.iter().find(|c| c.id == champion_id).ok_or("Unknown champion")?;
+        (champ.alias.clone(), sh.lcu.clone())
+    };
+    state.guides.get(champion_id, &alias, lcu.as_ref()).await.map_err(msg)
+}
+
+/// Opens a YouTube search for the champion's beginner guides in the default
+/// browser. The URL is built here, so the UI can't open anything else.
+#[tauri::command]
+fn open_guide_videos(champion: String) -> Result<(), String> {
+    let query = format!("{} beginner guide league of legends", champion.trim());
+    let url = reqwest::Url::parse_with_params("https://www.youtube.com/results", [("search_query", query)])
+        .map_err(|e| e.to_string())?;
+    open_in_browser(url.as_str())
+}
+
+/// Hands a URL to Windows' default browser. Passed as one argument (no
+/// cmd.exe), so `&` in the query string is safe. Callers check the URL first.
+fn open_in_browser(url: &str) -> Result<(), String> {
     std::process::Command::new("rundll32")
-        .args(["url.dll,FileProtocolHandler", &url])
+        .args(["url.dll,FileProtocolHandler", url])
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("Couldn't open the browser: {e}"))
@@ -371,6 +398,7 @@ pub fn run() {
                     app.path().app_cache_dir().ok().map(|d| d.join("patch-notes")),
                 ),
                 tiers: tierlist::TierLists::new(),
+                guides: guide::Guides::new(),
                 overlay_input: std::sync::Mutex::new(engine::OverlayInput { passthrough: true, ..Default::default() }),
             });
             if let Some(overlay) = app.get_webview_window("overlay") {
@@ -416,7 +444,9 @@ pub fn run() {
             cache_info,
             clear_cache,
             set_overlay_buttons,
-            open_issue_page
+            open_issue_page,
+            champion_guide,
+            open_guide_videos
         ])
         .run(tauri::generate_context!())
         .expect("error while running League Bro");

@@ -1,0 +1,187 @@
+{
+  "id": 103,
+  "contentId": "9bb28454-55ae-4cbe-9adb-c0fcd878680d",
+  "name": "Ahri",
+  "alias": "Ahri",
+  "title": "the Nine-Tailed Fox",
+  "shortBio": "Innately connected to the magic of the spirit realm, Ahri is a fox-like vastaya who can manipulate her prey's emotions and consume their essence—receiving flashes of their memory and insight from each soul she consumes. Once a powerful yet wayward predator, Ahri is now traveling the world in search of remnants of her ancestors while also trying to replace her stolen memories with ones of her own making.",
+  "isVisibleInClient": true,
+  "tacticalInfo": {
+    "style": 10,
+    "difficulty": 2,
+    "damageType": "kMagic",
+    "attackType": "ranged"
+  },
+  "playstyleInfo": {
+    "damage": 3,
+    "durability": 1,
+    "crowdControl": 2,
+    "mobility": 3,
+    "utility": 1
+  },
+  "championTagInfo": {
+    "championTagPrimary": "Mobile",
+    "championTagSecondary": "Burst"
+  },
+  "squarePortraitPath": "/lol-game-data/assets/v1/champion-icons/103.png",
+  "stingerSfxPath": "/lol-game-data/assets/v1/champion-sfx-audios/103.ogg",
+  "chooseVoPath": "/lol-game-data/assets/v1/champion-choose-vo/103.ogg",
+  "banVoPath": "/lol-game-data/assets/v1/champion-ban-vo/103.ogg",
+  "roles": [
+    "mage",
+    "assassin"
+  ],
+  "passive": {
+    "name": "Essence Theft",
+    "abilityIconPath": "/lol-game-data/assets/ASSETS/Characters/Ahri/HUD/Icons2D/Icons_Ahri_Passive.png",
+    "abilityVideoPath": "champion-abilities/0103/ability_0103_P1.webm",
+    "abilityVideoImagePath": "champion-abilities/0103/ability_0103_P1.jpg",
+    "description": "After killing 9 minions or monsters, Ahri heals.<br>After taking down an enemy champion, Ahri heals for a greater amount."
+  },
+  "spells": [
+    {
+      "spellKey": "q",
+      "name": "Orb of Deception",
+      "abilityIconPath": "/lol-game-data/assets/ASSETS/Characters/Ahri/HUD/Icons2D/Icons_Ahri_Q.png",
+      "abilityVideoPath": "champion-abilities/0103/ability_0103_Q1.webm",
+      "abilityVideoImagePath": "champion-abilities/0103/ability_0103_Q1.jpg",
+      "cost": "@Cost@ @AbilityResourceName@",
+      "cooldown": "@Cooldown@s %i:cooldown%",
+      "description": "Ahri sends out and pulls back her orb, dealing magic damage on the way out and true damage on the way back. ",
+      "dynamicDescription": "Ahri throws then pulls back her orb, dealing <magicDamage>@TotalDamage@ magic damage</magicDamage> on the way out and <trueDamage>@TotalDamage@ true damage</trueDamage> on the way back.@SpellModifierDescriptionAppend@",
+      "range": [
+        970,
+        970,
+        970,
+        970,
+        970,
+        970
+      ],
+      "costCoefficients": [
+        55,
+        65,
+        75,
+        85,
+        95,
+        95
+      ],
+      "cooldownCoefficients": [
+        7,
+        7,
+        7,
+        7,
+        7,
+        7
+      ],
+      "maxLevel": 0
+    },
+    {
+      "spellKey": "w",
+      "name": "Fox-Fire",
+      "abilityIconPath": "/lol-game-data/assets/ASSETS/Characters/Ahri/HUD/Icons2D/Icons_Ahri_W.png",
+      "abilityVideoPath": "champion-abilities/0103/ability_0103_W1.webm",
+      "abilityVideoImagePath": "champion-abilities/0103/ability_0103_W1.jpg",
+      "cost": "@Cost@ @AbilityResourceName@",
+      "cooldown": "@Cooldown@s %i:cooldown%",
+      "description": "Ahri gains a brief burst of Move Speed and releases three fox-fires, that lock onto and attack nearby enemies.",
+      "dynamicDescription": "Ahri releases 3 fox-fires that seek nearby enemies and deal <magicDamage>@SingleFireDamage@ magic damage</magicDamage>, reduced to <magicDamage>@MultiFireDamage@ damage</magicDamage> beyond the first. She also gains <speed>@MovementSpeed*100@% Move Speed</speed> decaying over @MovementSpeedDuration@ seconds.@SpellModifierDescriptionAppend@",
+      "range": [
+        700,
+        700,
+        700,
+        700,
+        700,
+        700
+      ],
+      "costCoefficients": [
+        30,
+        30,
+        30,
+        30,
+        30,
+        30
+      ],
+      "cooldownCoefficients": [
+        9,
+        8,
+        7,
+        6,
+        5,
+        4
+      ],
+      "maxLevel": 0
+    },
+    {
+      "spellKey": "e",
+      "name": "Charm",
+      "abilityIconPath": "/lol-game-data/assets/ASSETS/Characters/Ahri/HUD/Icons2D/Icons_Ahri_E.png",
+      "abilityVideoPath": "champion-abilities/0103/ability_0103_E1.webm",
+      "abilityVideoImagePath": "champion-abilities/0103/ability_0103_E1.jpg",
+      "cost": "@Cost@ @AbilityResourceName@",
+      "cooldown": "@Cooldown@s %i:cooldown%",
+      "description": "Ahri blows a kiss that damages and charms an enemy it encounters, instantly stopping movement abilities and causing them to walk harmlessly towards her.",
+      "dynamicDescription": "Ahri blows a kiss that <status>Charms</status> the first enemy hit for @CharmDuration@ seconds and deals <magicDamage>@TotalDamage@ magic damage</magicDamage>.@SpellModifierDescriptionAppend@",
+      "range": [
+        975,
+        975,
+        975,
+        975,
+        975,
+        975
+      ],
+      "costCoefficients": [
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ],
+      "cooldownCoefficients": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ],
+      "maxLevel": 0
+    },
+    {
+      "spellKey": "r",
+      "name": "Spirit Rush",
+      "abilityIconPath": "/lol-game-data/assets/ASSETS/Characters/Ahri/HUD/Icons2D/Icons_Ahri_R.png",
+      "abilityVideoPath": "champion-abilities/0103/ability_0103_R1.webm",
+      "abilityVideoImagePath": "champion-abilities/0103/ability_0103_R1.jpg",
+      "cost": "@Cost@ @AbilityResourceName@",
+      "cooldown": "@Cooldown@s %i:cooldown%",
+      "description": "Ahri dashes forward and fires essence bolts, damaging nearby enemies. Spirit Rush can be cast up to three times before going on cooldown, and gains additional recasts when taking down enemy champions.",
+      "dynamicDescription": "Ahri nimbly dashes, firing @RMaxTargetsPerCast@ essence bolts at nearby enemies, prioritizing champions. These bolts deal <magicDamage>@RCalculatedDamage@ magic damage</magicDamage> each. <spellName>Spirit Rush</spellName> can be <recast>Recast</recast> up to 2 more times within @RRecastWindow@ seconds.<br><br>Consuming a champion's Essence with <spellName>Essence Theft</spellName> during this period extends the recast window by up to @PDurationExtension@ seconds and grants an additional recast of <spellName>Spirit Rush</spellName> (up to @RMaxCasts@ stored).@SpellModifierDescriptionAppend@",
+      "range": [
+        450,
+        450,
+        450,
+        450,
+        450,
+        450
+      ],
+      "costCoefficients": [
+        100,
+        100,
+        100,
+        100,
+        100,
+        100
+      ],
+      "cooldownCoefficients": [
+        140,
+        120,
+        100,
+        100,
+        100,
+        100
+      ],
+      "maxLevel": 0
+    }
+  ]
+}

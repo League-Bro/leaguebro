@@ -37,7 +37,7 @@
     ],
     "security": {
       "dangerousDisableAssetCspModification": ["style-src"],
-      "csp": "default-src 'self'; img-src 'self' data: https://raw.communitydragon.org; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; img-src 'self' data: https://raw.communitydragon.org https://d28xe8vt774jo5.cloudfront.net; media-src https://d28xe8vt774jo5.cloudfront.net; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost"
     }
   },
   "bundle": {

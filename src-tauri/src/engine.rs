@@ -281,6 +281,7 @@ pub struct AppState {
     pub opgg: OpGg,
     pub patches: crate::patch::PatchNotesClient,
     pub tiers: crate::tierlist::TierLists,
+    pub guides: crate::guide::Guides,
     pub overlay_input: std::sync::Mutex<OverlayInput>,
 }
 

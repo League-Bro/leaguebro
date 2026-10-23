@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, u
 import { NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { RecCard } from './rec-card';
+import { GuideCard } from './guide-card';
 import { championIcon } from '../core/assets';
 import { RecChoice, RecState } from '../core/models';
 import { rolesLabel } from '../core/why';
@@ -14,11 +15,11 @@ const ROLES = [
   { id: 'utility', label: 'Support' },
 ];
 
-/** Look up any champion's OP.GG build. */
+/** Look up any champion's OP.GG build, or a beginner's guide to it. */
 @Component({
   selector: 'rl-champions',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RecCard, NgTemplateOutlet],
+  imports: [RecCard, GuideCard, NgTemplateOutlet],
   template: `
     <div class="layout">
       <aside class="card">
@@ -73,25 +74,31 @@ const ROLES = [
                 </h2>
                 @if (roles()) { <div class="muted small">{{ roles() }}</div> }
               </div>
-              @if (!isClassic()) {
               <div class="row controls">
-                <div class="seg">
-                  <button [class.on]="p.mode === 'ranked'" (click)="setMode('ranked')">Ranked</button>
-                  <button [class.on]="p.mode === 'aram'" (click)="setMode('aram')">ARAM</button>
+                <div class="seg view" role="tablist" aria-label="Champion page">
+                  <button role="tab" [class.on]="view() === 'build'" [attr.aria-selected]="view() === 'build'" (click)="view.set('build')">Build</button>
+                  <button role="tab" [class.on]="view() === 'guide'" [attr.aria-selected]="view() === 'guide'" (click)="view.set('guide')">Guide</button>
                 </div>
-                @if (p.mode === 'ranked') {
+                @if (view() === 'build' && !isClassic()) {
                   <div class="seg">
-                    @for (r of roles_; track r.id) {
-                      <button [class.on]="p.position === r.id" (click)="setRole(r.id)">{{ r.label }}</button>
-                    }
+                    <button [class.on]="p.mode === 'ranked'" (click)="setMode('ranked')">Ranked</button>
+                    <button [class.on]="p.mode === 'aram'" (click)="setMode('aram')">ARAM</button>
                   </div>
+                  @if (p.mode === 'ranked') {
+                    <div class="seg">
+                      @for (r of roles_; track r.id) {
+                        <button [class.on]="p.position === r.id" (click)="setRole(r.id)">{{ r.label }}</button>
+                      }
+                    </div>
+                  }
                 }
               </div>
-              }
             </div>
           </section>
 
-          @if (isClassic()) {
+          @if (view() === 'guide') {
+            <rl-guide [championId]="p.championId" />
+          } @else if (isClassic()) {
             <section class="card classic-note">
               <p class="muted">OP.GG has no League Classic stats, so there's no recommended build for League Classic champions.</p>
             </section>
@@ -104,7 +111,7 @@ const ROLES = [
         } @else {
           <section class="card empty">
             <h2>Pick a champion</h2>
-            <p class="muted">See OP.GG's runes, spells, skill order and build for any champion and role, without being in champ select.</p>
+            <p class="muted">See OP.GG's runes, spells, skill order and build for any champion and role, without being in champ select. New to a champion? The Guide tab shows its abilities in action and tips for playing as and against it.</p>
           </section>
         }
       </div>
@@ -167,6 +174,7 @@ export class ChampionsView {
   private lookupSeq = 0;
 
   protected readonly game = this.rift.championsGame;
+  protected readonly view = this.rift.championsView;
   protected readonly list = computed(() => {
     const q = this.query().trim().toLowerCase();
     const classic = this.game() === 'classic';

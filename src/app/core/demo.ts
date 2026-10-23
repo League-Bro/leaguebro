@@ -5,6 +5,8 @@ import {
   CacheInfo,
   ChampSelectView,
   ChampStat,
+  Guide,
+  GuideAbility,
   Config,
   Insights,
   ItemEffect,
@@ -693,5 +695,40 @@ export function demoTierList(source: TierSource, position: string, rank: string)
     fetchedAt: Math.floor(Date.now() / 1000) - 600,
     // Lolalytics rates no one in Challenger.
     entries: !opgg && rank === 'challenger' ? [] : entries,
+  };
+}
+
+export function demoGuide(championId: number, name: string): Guide {
+  const clip = (k: string) => `https://d28xe8vt774jo5.cloudfront.net/champion-abilities/0103/ability_0103_${k}1`;
+  const icon = (k: string) => `/lol-game-data/assets/ASSETS/Characters/Ahri/HUD/Icons2D/Icons_Ahri_${k === 'P' ? 'Passive' : k}.png`;
+  const ability = (key: string, abilityName: string, description: string): GuideAbility => ({
+    key, name: abilityName, description, icon: icon(key), video: `${clip(key)}.webm`, poster: `${clip(key)}.jpg`,
+  });
+  return {
+    championId,
+    name,
+    title: 'the Nine-Tailed Fox',
+    bio: 'Innately connected to the magic of the spirit realm, Ahri is a fox-like vastaya who can manipulate her prey\'s emotions and consume their essence.',
+    difficulty: 2,
+    damageType: 'AP',
+    attackType: 'ranged',
+    roles: ['mage', 'assassin'],
+    playstyle: { damage: 3, durability: 1, crowdControl: 2, mobility: 3, utility: 1 },
+    abilities: [
+      ability('P', 'Essence Theft', 'After killing 9 minions or monsters, Ahri heals.\nAfter taking down an enemy champion, Ahri heals for a greater amount.'),
+      ability('Q', 'Orb of Deception', 'Ahri sends out and pulls back her orb, dealing magic damage on the way out and true damage on the way back.'),
+      ability('W', 'Fox-Fire', 'Ahri gains a brief burst of Move Speed and releases three fox-fires that lock onto and attack nearby enemies.'),
+      ability('E', 'Charm', 'Ahri blows a kiss that damages and charms an enemy it encounters, causing them to walk harmlessly towards her.'),
+      ability('R', 'Spirit Rush', 'Ahri dashes forward and fires essence bolts, damaging nearby enemies. Spirit Rush can be cast up to three times before going on cooldown.'),
+    ],
+    tips: [
+      'Use Charm to set up your combos, it will make landing Orb of Deception and Fox-Fire dramatically easier.',
+      'Initiate team fights using Charm, and chase down stragglers with Spirit Rush.',
+      'Spirit Rush enables Ahri\'s abilities, it opens up paths for Charm, helps double hitting with Orb of Deception, and closes to make use of Fox-Fire.',
+    ],
+    counterTips: [
+      'Ahri\'s survivability is dramatically reduced when her Ultimate, Spirit Rush, is down.',
+      'Stay behind minions to make Charm difficult to land, this will reduce Ahri\'s damage potential significantly.',
+    ],
   };
 }

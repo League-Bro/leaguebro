@@ -667,3 +667,36 @@ export interface TierList {
   fetchedAt: number;
   entries: TierEntry[];
 }
+
+/** A beginner's guide to a champion (`champion_guide`, the Champions tab's Guide view). */
+export interface Guide {
+  championId: number;
+  name: string;
+  title: string;
+  bio: string;
+  /** Riot's 1 (easy) to 3 (hard); 0 when unknown. */
+  difficulty: number;
+  /** "AD", "AP", "BOTH" or "". */
+  damageType: string;
+  /** "melee" or "ranged". */
+  attackType: string;
+  roles: string[];
+  /** The client's 0–3 ratings. */
+  playstyle: { damage: number; durability: number; crowdControl: number; mobility: number; utility: number };
+  /** Passive first, then Q, W, E, R. */
+  abilities: GuideAbility[];
+  tips: string[];
+  counterTips: string[];
+}
+
+export interface GuideAbility {
+  /** "P", "Q", "W", "E" or "R". */
+  key: string;
+  name: string;
+  description: string;
+  /** Client asset path. */
+  icon: string;
+  /** Riot's preview clip and its poster image (full URLs). */
+  video: string | null;
+  poster: string | null;
+}

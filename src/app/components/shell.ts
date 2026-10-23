@@ -195,6 +195,7 @@ export class Shell implements OnInit {
   /** From the Tier List: show that champion's ranked build for the lane. */
   protected openChampion(e: { championId: number; position: string }): void {
     this.rift.championsGame.set('league');
+    this.rift.championsView.set('build');
     this.rift.championsPick.set({ championId: e.championId, position: e.position, mode: 'ranked' });
     this.backTo.set(this.tab());
     this.tab.set('champions');
