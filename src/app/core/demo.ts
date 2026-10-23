@@ -115,7 +115,13 @@ export function demoSnapshot(): Snapshot {
         { key: 'inhib', label: 'Enemy Mid inhib', spawnAt: 1012, side: 'enemy' },
       ],
       nextItems: [
-        { id: 4645, name: 'Shadowflame', price: 3200, affordable: false },
+        {
+          id: 4645, name: 'Shadowflame', price: 3200, affordable: false,
+          components: [
+            { id: 3145, name: 'Hextech Alternator', price: 1100, affordable: true },
+            { id: 1058, name: 'Needlessly Large Rod', price: 1200, affordable: true },
+          ],
+        },
         { id: 3157, name: "Zhonya's Hourglass", price: 3250, affordable: false },
         { id: 3089, name: "Rabadon's Deathcap", price: 3600, affordable: false },
         { id: 3135, name: 'Void Staff', price: 3000, affordable: false },
@@ -123,7 +129,8 @@ export function demoSnapshot(): Snapshot {
       hasBuild: true,
       skillMax: ['Q', 'W', 'E'],
       nextSkill: 'Q',
-      lane: { opponent: 'Zed', mine: 5350, theirs: 3967 },
+      lane: { opponent: 'Zed', championId: 238, mine: 5350, theirs: 3967 },
+      team: { ours: 21400, theirs: 22650 },
       // Priced like the engine does; Void Staff's Blasting Wand is owned.
       situational: demoSituational(true).items.map((it) => {
         const price = { 3102: 3000, 3135: 2150, 3165: 2950 }[it.id] ?? 0;
@@ -445,6 +452,8 @@ export function demoConfig(): Config {
     overlayX: null,
     overlayY: null,
     overlayOpacity: 0.9,
+    overlayWidth: 340,
+    overlayScale: 1,
     timers: { firstDragon: 300, firstBaron: 1200, dragonRespawn: 300, elderRespawn: 360, baronRespawn: 360, inhibRespawn: 300 },
     favoriteChampions: [103, 222],
     installDir: null,

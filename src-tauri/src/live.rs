@@ -33,6 +33,51 @@ pub struct NextItem {
     /// What's left to pay: the full cost minus components you already own.
     pub price: i64,
     pub affordable: bool,
+    /// What's left to buy toward it, in recipe order (owned components drop
+    /// off). Only filled for the first item, the one the overlay shows.
+    pub components: Vec<NextItem>,
+}
+
+/// A starting item and how many to buy.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct StarterItem {
+    pub id: i64,
+    pub name: String,
+    pub count: i64,
+    pub price: i64,
+}
+
+/// Starting items stop mattering once minions meet (~1:05); a little later to
+/// be safe.
+const STARTER_UNTIL: f64 = 150.0;
+
+/// The starting items to show: the recommended ones, until you own the ones
+/// you keep (consumables like potions get used up, so they don't count) or
+/// the early game is over.
+pub fn starter_items(data: &Value, starter: &[i64], items: &HashMap<i64, ShopItem>) -> Vec<StarterItem> {
+    let owned = my_items(data, items);
+    let price = |id: &i64| items.get(id).map_or(0, |it| it.price);
+    // Potions (50) and Control Wards (75) are consumed; Doran's, Dark Seal,
+    // the support item and jungle pets are kept.
+    let kept: Vec<&i64> = starter.iter().filter(|id| price(id) >= 100).collect();
+    let done = if kept.is_empty() { !owned.is_empty() } else { kept.iter().all(|id| owned.contains(id)) };
+    if done || float(data, "/gameData/gameTime") >= STARTER_UNTIL {
+        return Vec::new();
+    }
+    let mut out: Vec<StarterItem> = Vec::new();
+    for id in starter {
+        match out.iter_mut().find(|s| s.id == *id) {
+            Some(s) => s.count += 1,
+            None => out.push(StarterItem {
+                id: *id,
+                name: items.get(id).map_or_else(|| format!("Item {id}"), |it| it.name.clone()),
+                count: 1,
+                price: price(id),
+            }),
+        }
+    }
+    out
 }
 
 /// A situational item on the overlay, with what's left to pay for it.
@@ -64,6 +109,8 @@ pub struct OverlayState {
     pub deaths: i64,
     pub assists: i64,
     pub timers: Vec<Timer>,
+    /// The recommended starting items, until you've bought them (see `starter_items`).
+    pub starter: Vec<StarterItem>,
     /// Everything left of the recommended build, in purchase order (owned items drop off).
     pub next_items: Vec<NextItem>,
     pub has_build: bool,
@@ -73,6 +120,8 @@ pub struct OverlayState {
     pub next_skill: Option<String>,
     /// Your item value against your lane opponent's; None without roles (ARAM etc.).
     pub lane: Option<LaneDiff>,
+    /// Your team's item value against the enemy team's (every mode).
+    pub team: Option<TeamDiff>,
     /// Situational items for this game, best first (empty when off in Settings).
     pub situational: Vec<SituationalPick>,
 }
@@ -83,7 +132,27 @@ pub struct OverlayState {
 #[serde(rename_all = "camelCase")]
 pub struct LaneDiff {
     pub opponent: String,
+    /// Filled in by the engine from `opponent_key` (0 if unknown), for the icon.
+    pub champion_id: i64,
+    /// The opponent's `rawChampionName` suffix, which is the champion's alias
+    /// whatever the client's language (see `raw_champion_key`).
+    #[serde(skip)]
+    pub opponent_key: String,
     pub mine: i64,
+    pub theirs: i64,
+}
+
+/// "game_character_displayname_MonkeyKing" -> "MonkeyKing".
+pub fn raw_champion_key(player: &Value) -> String {
+    let raw = text(player, "rawChampionName");
+    raw.strip_prefix("game_character_displayname_").unwrap_or(raw).to_string()
+}
+
+/// Item value summed over each team.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamDiff {
+    pub ours: i64,
     pub theirs: i64,
 }
 
@@ -108,7 +177,23 @@ pub fn lane_diff(data: &Value, items: &HashMap<i64, ShopItem>) -> Option<LaneDif
     let opp = list(data, "allPlayers")
         .iter()
         .find(|p| text(p, "team") != team && text(p, "position").eq_ignore_ascii_case(pos))?;
-    Some(LaneDiff { opponent: text(opp, "championName").to_string(), mine: item_value(me, items), theirs: item_value(opp, items) })
+    Some(LaneDiff {
+        opponent: text(opp, "championName").to_string(),
+        champion_id: 0,
+        opponent_key: raw_champion_key(opp),
+        mine: item_value(me, items),
+        theirs: item_value(opp, items),
+    })
+}
+
+/// Both teams compared by item value.
+pub fn team_diff(data: &Value, items: &HashMap<i64, ShopItem>) -> Option<TeamDiff> {
+    let team = text(find_me(data)?, "team");
+    let (mut ours, mut theirs) = (0, 0);
+    for p in list(data, "allPlayers") {
+        if text(p, "team") == team { ours += item_value(p, items) } else { theirs += item_value(p, items) }
+    }
+    Some(TeamDiff { ours, theirs })
 }
 
 /// What the overlay should suggest beyond timers.
@@ -116,6 +201,8 @@ pub fn lane_diff(data: &Value, items: &HashMap<i64, ShopItem>) -> Option<LaneDif
 pub struct Guidance<'a> {
     /// OP.GG's build order.
     pub build: Option<&'a [i64]>,
+    /// OP.GG's starting items (a potion twice means two potions).
+    pub starter: &'a [i64],
     pub skill_max: &'a [String],
     pub skill_order: &'a [String],
     /// Upgraded boots you were seen holding earlier this game. Finishing the
@@ -144,6 +231,8 @@ pub fn next_skill(data: &Value, order: &[String]) -> Option<String> {
 /// An enemy as the scoreboard shows them.
 pub struct ScoreboardEnemy {
     pub champion_name: String,
+    /// See `raw_champion_key`.
+    pub champion_key: String,
     pub items: Vec<i64>,
     pub kills: i64,
     pub deaths: i64,
@@ -158,6 +247,7 @@ pub fn enemies(data: &Value) -> Vec<ScoreboardEnemy> {
         .filter(|p| text(p, "team") != team)
         .map(|p| ScoreboardEnemy {
             champion_name: text(p, "championName").to_string(),
+            champion_key: raw_champion_key(p),
             items: list(p, "items").iter().map(|i| int(i, "itemID")).collect(),
             kills: int(p, "/scores/kills"),
             deaths: int(p, "/scores/deaths"),
@@ -357,15 +447,38 @@ pub fn next_items(
                 continue;
             }
         }
+        let components = if out.is_empty() { components_left(*id, items, &owned_left, gold) } else { Vec::new() };
         let (name, price) = match items.get(id) {
             Some(it) => (it.name.clone(), (it.price - owned_discount(*id, items, &mut owned_left, 0)).max(0)),
             None => (format!("Item {id}"), 0),
         };
-        out.push(NextItem { id: *id, name, price, affordable: price > 0 && gold >= price as f64 });
+        out.push(NextItem { id: *id, name, price, affordable: price > 0 && gold >= price as f64, components });
         if out.len() >= limit {
             break;
         }
     }
+    out
+}
+
+/// The direct components of `id` you still need, each priced after what you
+/// own inside it. Owned ones are used up so a recipe with two of the same
+/// component still asks for the second. Ordered for buying: what you can
+/// afford now first, biggest first (the most stats for this back), then the
+/// rest cheapest first (what you'll reach next).
+fn components_left(id: i64, items: &HashMap<i64, ShopItem>, owned: &[i64], gold: f64) -> Vec<NextItem> {
+    let Some(item) = items.get(&id) else { return Vec::new() };
+    let mut owned = owned.to_vec();
+    let mut out = Vec::new();
+    for c in &item.from {
+        if let Some(pos) = owned.iter().position(|o| o == c) {
+            owned.remove(pos);
+            continue;
+        }
+        let Some(comp) = items.get(c) else { continue };
+        let price = (comp.price - owned_discount(*c, items, &mut owned, 0)).max(0);
+        out.push(NextItem { id: *c, name: comp.name.clone(), price, affordable: price > 0 && gold >= price as f64, components: Vec::new() });
+    }
+    out.sort_by_key(|c| (!c.affordable, if c.affordable { -c.price } else { c.price }));
     out
 }
 
@@ -406,11 +519,13 @@ pub fn overlay_state(
         deaths: score("deaths"),
         assists: score("assists"),
         timers: compute_timers(data, cfg),
+        starter: starter_items(data, guide.starter, items),
         next_items: build.map(|b| next_items(data, b, items, usize::MAX, guide.seen_boots)).unwrap_or_default(),
         has_build: build.map(|b| !b.is_empty()).unwrap_or(false),
         skill_max: guide.skill_max.to_vec(),
         next_skill: next_skill(data, guide.skill_order),
         lane: lane_diff(data, items),
+        team: team_diff(data, items),
         situational: Vec::new(),
     }
 }
@@ -432,7 +547,7 @@ mod tests {
                  "scores": {"kills": 3, "deaths": 1, "assists": 4, "creepScore": 120},
                  "items": [{"itemID": 1056}, {"itemID": 3020}]},
                 {"riotId": "Ally#NA1", "championName": "Lee Sin", "team": "ORDER", "position": "JUNGLE", "items": []},
-                {"riotId": "Foe#NA1", "championName": "Zed", "team": "CHAOS", "position": "MIDDLE", "items": []}
+                {"riotId": "Foe#NA1", "championName": "Zed", "rawChampionName": "game_character_displayname_Zed", "team": "CHAOS", "position": "MIDDLE", "items": []}
             ],
             "events": {"Events": events},
             "gameData": {"gameTime": now, "gameMode": "CLASSIC"}
@@ -501,6 +616,10 @@ mod tests {
         d["allPlayers"][0]["items"] = json!([{"itemID": 1026}, {"itemID": 1052}]);
         let next = next_items(&d, &[6655, 3089], &items, 2, None);
         assert_eq!(next[0].price, 2850 - 850 - 400);
+        // The Wand drops off; the Lost Chapter is left, minus the Tome inside it.
+        let comps: Vec<_> = next[0].components.iter().map(|c| (c.id, c.price)).collect();
+        assert_eq!(comps, [(3802, 1200 - 400)]);
+        assert!(next[1].components.is_empty());
         // The Wand already went to Luden's, so Deathcap is full price.
         assert_eq!(next[1].price, 3500);
         // A finished component counts whole, not its parts.
@@ -510,6 +629,41 @@ mod tests {
         let next = next_items(&d, &[6655], &items, 1, None);
         assert_eq!(next[0].price, 2850 - 1200);
         assert!(next[0].affordable);
+    }
+
+    #[test]
+    fn starting_items_until_bought() {
+        let items = shop(&[(1056, "Doran's Ring", 400, &[]), (2003, "Health Potion", 50, &[])]);
+        let mut d = sample(30.0, json!([]));
+        d["allPlayers"][0]["items"] = json!([]);
+        let st = starter_items(&d, &[1056, 2003, 2003], &items);
+        assert_eq!(st.iter().map(|s| (s.id, s.count)).collect::<Vec<_>>(), [(1056, 1), (2003, 2)]);
+        // Bought the ring and drank a potion: done.
+        d["allPlayers"][0]["items"] = json!([{"itemID": 1056}, {"itemID": 2003}]);
+        assert!(starter_items(&d, &[1056, 2003, 2003], &items).is_empty());
+        // Nothing bought, but the early game is over.
+        let mut late = sample(STARTER_UNTIL, json!([]));
+        late["allPlayers"][0]["items"] = json!([]);
+        assert!(starter_items(&late, &[1056, 2003, 2003], &items).is_empty());
+    }
+
+    #[test]
+    fn components_in_buying_order() {
+        let items = shop(&[
+            (3031, "Infinity Edge", 3450, &[1038, 1037, 1018]),
+            (1038, "B. F. Sword", 1300, &[]),
+            (1037, "Pickaxe", 875, &[]),
+            (1018, "Cloak of Agility", 600, &[]),
+        ]);
+        let order = |gold: f64| {
+            let mut d = sample(600.0, json!([]));
+            d["activePlayer"]["currentGold"] = json!(gold);
+            next_items(&d, &[3031], &items, 1, None)[0].components.iter().map(|c| c.id).collect::<Vec<_>>()
+        };
+        // Can afford Pickaxe and Cloak: the bigger one first, then the B. F. Sword.
+        assert_eq!(order(1000.0), [1037, 1018, 1038]);
+        // Can't afford anything: cheapest first.
+        assert_eq!(order(100.0), [1018, 1037, 1038]);
     }
 
     #[test]
@@ -584,8 +738,10 @@ mod tests {
         // Zed: two potions in one slot, plus an item the client list doesn't know.
         d["allPlayers"][2]["items"] = json!([{"itemID": 2003, "count": 2}, {"itemID": 9999, "count": 1, "price": 875}]);
         let lane = lane_diff(&d, &items).unwrap();
-        assert_eq!(lane, LaneDiff { opponent: "Zed".into(), mine: 1500, theirs: 975 });
+        assert_eq!(lane, LaneDiff { opponent: "Zed".into(), champion_id: 0, opponent_key: "Zed".into(), mine: 1500, theirs: 975 });
         assert_eq!(overlay_state(&d, &TimerConfig::default(), &Guidance::default(), &items).lane, Some(lane));
+        // Lee Sin has nothing, so the teams are just the two of you.
+        assert_eq!(team_diff(&d, &items), Some(TeamDiff { ours: 1500, theirs: 975 }));
 
         // ARAM and other modes have no positions.
         for p in d["allPlayers"].as_array_mut().unwrap() {

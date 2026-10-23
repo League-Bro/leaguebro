@@ -259,6 +259,18 @@ impl Shared {
         self.statics.as_ref()?.champions.iter().find(|c| c.id == id)
     }
 
+    /// A champion in the live game: by its alias (`live::raw_champion_key`,
+    /// the same in every language), else by its shown name. Never a League
+    /// Classic copy, which shares both.
+    pub fn live_champion(&self, key: &str, name: &str) -> Option<&ChampInfo> {
+        let champs = &self.statics.as_ref()?.champions;
+        let normal = || champs.iter().filter(|c| !c.classic);
+        (!key.is_empty())
+            .then(|| normal().find(|c| c.alias.eq_ignore_ascii_case(key)))
+            .flatten()
+            .or_else(|| normal().find(|c| c.name == name))
+    }
+
     /// The champion's alias for OP.GG, which has no League Classic stats.
     pub fn opgg_alias(&self, id: i64) -> Option<String> {
         self.champion(id).filter(|c| !c.classic).map(|c| c.alias.clone())
@@ -578,7 +590,7 @@ pub fn set_overlay_visible(app: &AppHandle, visible: bool) {
             (Some(x), Some(y)) => Some(PhysicalPosition::new(x, y)),
             _ => w.primary_monitor().ok().flatten().map(|m| {
                 let scale = m.scale_factor();
-                let width = w.outer_size().map(|s| s.width as i32).unwrap_or((270.0 * scale) as i32);
+                let width = w.outer_size().map(|s| s.width as i32).unwrap_or((340.0 * scale) as i32);
                 PhysicalPosition::new(m.position().x + m.size().width as i32 - width - (24.0 * scale) as i32, m.position().y + (140.0 * scale) as i32)
             }),
         };
@@ -1176,13 +1188,21 @@ impl Engine {
             };
             let boots_now = live::my_boots(&data, &items);
             let seen_boots = boots_now.or(self.seen_boots);
-            let guide = live::Guidance { build, skill_max, skill_order, seen_boots };
-            let st = live::overlay_state(&data, &cfg.timers, &guide, &items);
+            let starter = rec
+                .as_ref()
+                .filter(|r| cfg.use_recommended_builds && r.games >= opgg::MIN_GAMES)
+                .and_then(|r| r.starter.as_ref())
+                .map_or(&[][..], |s| s.ids.as_slice());
+            let guide = live::Guidance { build, starter, skill_max, skill_order, seen_boots };
+            let mut st = live::overlay_state(&data, &cfg.timers, &guide, &items);
+            if let Some(lane) = st.lane.as_mut() {
+                lane.champion_id = sh.live_champion(&lane.opponent_key, &lane.opponent).map_or(0, |c| c.id);
+            }
             sh.overlay = Some(st.clone());
             let enemies: Vec<EnemySeen> = live::enemies(&data)
                 .into_iter()
                 .filter_map(|e| {
-                    let c = sh.statics.as_ref()?.champions.iter().find(|c| c.name == e.champion_name && !c.classic)?;
+                    let c = sh.live_champion(&e.champion_key, &e.champion_name)?;
                     Some(EnemySeen { champion_id: c.id, items: e.items, kills: e.kills, deaths: e.deaths, assists: e.assists })
                 })
                 .collect();
@@ -1711,6 +1731,23 @@ pub async fn run(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_champion_by_alias_then_name() {
+        let champ = |id, name: &str, alias: &str| ChampInfo { id, name: name.into(), alias: alias.into(), classic: is_league_classic(id, alias), ..Default::default() };
+        let sh = Shared {
+            statics: Some(StaticData {
+                champions: vec![champ(62, "悟空", "MonkeyKing"), champ(60062, "悟空", "Jade_MonkeyKing"), champ(238, "Zed", "Zed")],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        // The alias works whatever language the names are in, and skips League Classic.
+        assert_eq!(sh.live_champion("MonkeyKing", "Wukong").map(|c| c.id), Some(62));
+        assert_eq!(sh.live_champion("", "悟空").map(|c| c.id), Some(62));
+        assert_eq!(sh.live_champion("Nobody", "Zed").map(|c| c.id), Some(238));
+        assert!(sh.live_champion("Nobody", "Nobody").is_none());
+    }
     use serde_json::json;
 
     #[test]

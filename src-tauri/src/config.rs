@@ -89,6 +89,10 @@ pub struct Config {
     pub overlay_x: Option<i32>,
     pub overlay_y: Option<i32>,
     pub overlay_opacity: f64,
+    /// Overlay width in CSS pixels; its height follows the content.
+    pub overlay_width: f64,
+    /// Overlay zoom (1.0 = normal): bigger text and icons, so a taller overlay.
+    pub overlay_scale: f64,
     pub timers: TimerConfig,
     /// Champion ids starred in the Champions tab, pinned to the top of its list.
     pub favorite_champions: Vec<i64>,
@@ -124,6 +128,8 @@ impl Default for Config {
             overlay_x: None,
             overlay_y: None,
             overlay_opacity: 0.9,
+            overlay_width: 340.0,
+            overlay_scale: 1.0,
             timers: TimerConfig::default(),
             favorite_champions: Vec::new(),
             install_dir: None,

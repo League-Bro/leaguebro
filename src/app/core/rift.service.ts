@@ -360,15 +360,15 @@ export class RiftService {
     invoke('set_overlay_buttons', { rects }).catch(() => (this.lastButtonRects = ''));
   }
 
-  private lastOverlayHeight = 0;
+  private lastOverlaySize = [0, 0];
   /** Sizes the overlay window to its contents (CSS px), so nothing is cut off at the bottom. */
-  fitOverlayHeight(height: number): void {
+  fitOverlay(width: number, height: number): void {
     if (this.demo || this.windowLabel() !== 'overlay') return;
-    const h = Math.ceil(height);
-    if (h <= 0 || h === this.lastOverlayHeight) return;
-    this.lastOverlayHeight = h;
+    const [w, h] = [Math.ceil(width), Math.ceil(height)];
+    if (w <= 0 || h <= 0 || (w === this.lastOverlaySize[0] && h === this.lastOverlaySize[1])) return;
+    this.lastOverlaySize = [w, h];
     getCurrentWindow()
-      .setSize(new LogicalSize(window.innerWidth, h))
-      .catch(() => (this.lastOverlayHeight = 0));
+      .setSize(new LogicalSize(w, h))
+      .catch(() => (this.lastOverlaySize = [0, 0]));
   }
 }

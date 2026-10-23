@@ -38,6 +38,20 @@ type BoolKey =
             <span class="mono faint">{{ (cfg.overlayOpacity * 100).toFixed(0) }}%</span>
           </div>
           <div class="field">
+            <span>Width</span>
+            <input type="range" min="260" max="480" step="10" [value]="cfg.overlayWidth"
+              (change)="setNum('overlayWidth', +$any($event.target).value)" />
+            <span class="mono faint">{{ cfg.overlayWidth }} px</span>
+          </div>
+          <div class="field">
+            <span>Size</span>
+            <input type="range" min="0.8" max="1.5" step="0.05" [value]="cfg.overlayScale"
+              (change)="setNum('overlayScale', +$any($event.target).value)" />
+            <span class="mono faint">{{ (cfg.overlayScale * 100).toFixed(0) }}%</span>
+            <button class="ghost" [disabled]="cfg.overlayWidth === 340 && cfg.overlayScale === 1" (click)="resetSize()">Reset</button>
+          </div>
+          <p class="faint small">The height follows what's on the overlay. Size makes text and icons bigger, so it gets taller.</p>
+          <div class="field">
             <span>Position</span>
             <input type="number" placeholder="auto" [value]="cfg.overlayX ?? ''" (change)="setPos('overlayX', $any($event.target).value)" />
             <input type="number" placeholder="auto" [value]="cfg.overlayY ?? ''" (change)="setPos('overlayY', $any($event.target).value)" />
@@ -63,7 +77,7 @@ type BoolKey =
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.showLaneDiff" (change)="setBool('showLaneDiff', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Items vs your lane opponent</b><span>The total cost of your items against theirs. Not shown in modes without roles, like ARAM.</span></span>
+            <span class="label"><b>Item gold vs your lane opponent and their team</b><span>The total cost of your items against theirs, and your team's against the enemy team's. The lane one isn't shown in modes without roles, like ARAM.</span></span>
           </label>
           <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
             <input type="checkbox" [checked]="cfg.showSkillHint" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('showSkillHint', $any($event.target).checked)" />
@@ -357,12 +371,16 @@ export class SettingsView {
   setRec(key: 'setSummonerSpells' | 'setItemSets' | 'useRecommendedBuilds' | 'showSkillHint', v: boolean): void {
     this.save((c) => ({ ...c, [key]: v }));
   }
-  setNum(key: 'overlayOpacity', v: number): void {
+  setNum(key: 'overlayOpacity' | 'overlayWidth' | 'overlayScale', v: number): void {
     this.save((c) => ({ ...c, [key]: v }));
   }
   setPos(key: 'overlayX' | 'overlayY', raw: string): void {
     const v = raw.trim() === '' ? null : Math.round(Number(raw));
     this.save((c) => ({ ...c, [key]: Number.isFinite(v as number) ? v : null }));
+  }
+  /** Width and Size back to the defaults (config.rs). */
+  resetSize(): void {
+    this.save((c) => ({ ...c, overlayWidth: 340, overlayScale: 1 }));
   }
   resetPos(): void {
     this.save((c) => ({ ...c, overlayX: null, overlayY: null }));

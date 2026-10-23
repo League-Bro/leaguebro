@@ -23,7 +23,7 @@
       {
         "label": "overlay",
         "title": "League Bro Overlay",
-        "width": 270,
+        "width": 340,
         "height": 460,
         "visible": false,
         "transparent": true,
@@ -32,6 +32,7 @@
         "skipTaskbar": true,
         "resizable": false,
         "focus": false,
+        "focusable": false,
         "shadow": false
       }
     ],

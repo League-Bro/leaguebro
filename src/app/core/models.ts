@@ -204,11 +204,20 @@ export interface Timer {
   side: 'ally' | 'enemy' | 'neutral';
 }
 
+export interface StarterItem {
+  id: number;
+  name: string;
+  count: number;
+  price: number;
+}
+
 export interface NextItem {
   id: number;
   name: string;
   price: number;
   affordable: boolean;
+  /** What's left to buy toward it, in recipe order; only on the first item. */
+  components?: NextItem[];
 }
 
 export interface RuneRec {
@@ -335,7 +344,14 @@ export interface RecState {
 /** Total cost of the items each of you holds (the game doesn't share enemy gold). */
 export interface LaneDiff {
   opponent: string;
+  /** For the icon; 0 if it couldn't be matched. */
+  championId?: number;
   mine: number;
+  theirs: number;
+}
+
+export interface TeamDiff {
+  ours: number;
   theirs: number;
 }
 
@@ -349,12 +365,16 @@ export interface OverlayState {
   assists: number;
   timers: Timer[];
   /** Everything left of the recommended build, in purchase order (owned items drop off). */
+  /** Recommended starting items, until bought or ~2:30 in. */
+  starter?: StarterItem[];
   nextItems: NextItem[];
   hasBuild: boolean;
   skillMax: string[];
   nextSkill: string | null;
   /** Your item value vs your lane opponent's; null without roles (ARAM etc.). */
   lane: LaneDiff | null;
+  /** Your team's item value against the enemy team's. */
+  team?: TeamDiff | null;
   /** Situational items for this game, best first (empty when off in Settings). */
   situational: SituationalPick[];
 }
@@ -636,6 +656,10 @@ export interface Config {
   overlayX: number | null;
   overlayY: number | null;
   overlayOpacity: number;
+  /** Overlay width in CSS pixels; the height follows the content. */
+  overlayWidth: number;
+  /** Overlay zoom, 1 = normal. */
+  overlayScale: number;
   timers: TimerConfig;
   /** Champion ids starred in the Champions tab, pinned to the top of its list. */
   favoriteChampions: number[];
