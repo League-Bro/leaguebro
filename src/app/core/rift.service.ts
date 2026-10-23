@@ -84,7 +84,7 @@ export class RiftService {
     rank: 'emerald_plus',
   });
   readonly overlayPreview = signal(false);
-  readonly overlayLocked = signal(true);
+  readonly overlayLocked = signal(false);
   readonly config = signal<Config | null>(null);
   readonly statics = signal<StaticData | null>(null);
   /** Window label: "main" or "overlay". */

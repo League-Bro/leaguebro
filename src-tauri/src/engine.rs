@@ -285,8 +285,9 @@ pub struct AppState {
     pub overlay_input: std::sync::Mutex<OverlayInput>,
 }
 
-/// Mouse handling for the overlay window. While locked the window is
-/// click-through except over its buttons (the padlock, "show more").
+/// Mouse handling for the overlay window. It starts unlocked (takes input,
+/// draggable); while locked it's click-through except over its buttons
+/// (the padlock, "show more").
 #[derive(Debug, Default)]
 pub struct OverlayInput {
     pub unlocked: bool,
@@ -586,13 +587,35 @@ pub fn set_overlay_visible(app: &AppHandle, visible: bool) {
             if let Some(p) = pos {
                 let _ = w.set_position(p);
             }
-            set_overlay_locked(app, true);
+            // Starts unlocked so it can be dragged; the padlock locks it in place.
+            set_overlay_locked(app, false);
         }
         let _ = w.set_always_on_top(true);
         let _ = w.show();
     } else {
+        // A dragged overlay that was never locked still keeps its spot.
+        if w.is_visible().unwrap_or(false) && app.state::<AppState>().overlay_input.lock().unwrap().unlocked {
+            save_overlay_position(app);
+        }
         let _ = w.hide();
     }
+}
+
+/// Saves where the overlay is, so the next game shows it there.
+pub fn save_overlay_position(app: &AppHandle) {
+    let Some(pos) = app.get_webview_window("overlay").and_then(|w| w.outer_position().ok()) else { return };
+    let state = app.state::<AppState>();
+    let mut cfg = state.config();
+    if cfg.overlay_x == Some(pos.x) && cfg.overlay_y == Some(pos.y) {
+        return;
+    }
+    cfg.overlay_x = Some(pos.x);
+    cfg.overlay_y = Some(pos.y);
+    if let Err(e) = cfg.save(&state.config_path) {
+        return eprintln!("couldn't save the overlay position: {e:#}");
+    }
+    *state.config.write().unwrap() = cfg.clone();
+    let _ = app.emit("config", cfg);
 }
 
 pub fn set_overlay_locked(app: &AppHandle, locked: bool) {

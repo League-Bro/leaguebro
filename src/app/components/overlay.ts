@@ -41,7 +41,8 @@ const PREVIEW: OverlayState = {
     @if (state(); as o) {
       <div class="panel" [style.opacity]="opacity()">
         @if (!locked()) {
-          <div class="drag-layer" data-tauri-drag-region>Drag to move, then lock</div>
+          <!-- Invisible: unlocked looks the same as locked, it just takes the drag. -->
+          <div class="drag-layer" data-tauri-drag-region></div>
         }
         <div class="top">
           @if (showLane() && o.lane; as l) {
@@ -51,7 +52,7 @@ const PREVIEW: OverlayState = {
               <span class="vals">{{ l.mine | number }} · {{ l.theirs | number }}</span>
             </div>
           }
-          <button #lockBtn class="lock" [class.open]="!locked()" [title]="locked() ? 'Unlock to move' : 'Lock in place'"
+          <button #lockBtn class="lock" [title]="locked() ? 'Unlock to move' : 'Lock in place'"
             (click)="rift.setOverlayLocked(!locked())">
             <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
               <rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor" />
@@ -141,14 +142,7 @@ const PREVIEW: OverlayState = {
       font-size: 13px;
       text-shadow: 0 1px 2px #000;
     }
-    .drag-layer {
-      position: absolute; inset: 0; z-index: 10;
-      display: flex; align-items: center; justify-content: center;
-      border: 1px dashed var(--accent); border-radius: 14px;
-      background: rgba(15, 13, 20, 0.55);
-      font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
-      color: var(--accent); cursor: move;
-    }
+    .drag-layer { position: absolute; inset: 0; z-index: 10; border-radius: 14px; cursor: move; }
     .top { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-bottom: 6px; }
     .lock {
       all: unset; position: relative; z-index: 11;
@@ -156,7 +150,6 @@ const PREVIEW: OverlayState = {
       color: var(--text-faint); cursor: pointer;
     }
     .lock:hover { color: var(--accent); background: rgba(255, 79, 163, 0.16); }
-    .lock.open { color: var(--accent); background: rgba(255, 79, 163, 0.22); }
     .lane { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
     .lane .diff { font: 600 13px var(--mono); color: var(--text-dim); }
     .lane .diff.ahead { color: var(--win); }
