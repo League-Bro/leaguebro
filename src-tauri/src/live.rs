@@ -309,8 +309,22 @@ fn owned_discount(id: i64, items: &HashMap<i64, ShopItem>, owned: &mut Vec<i64>,
     item.from.iter().map(|c| owned_discount(*c, items, owned, depth + 1)).sum()
 }
 
+/// The basic Boots every pair of boots is built from.
+const BOOTS: i64 = 1001;
+
+/// Upgraded boots: built from Boots, directly or through other boots (the
+/// tier-3 upgrades build from tier-2 boots). Not the basic Boots themselves.
+fn is_upgraded_boots(id: i64, items: &HashMap<i64, ShopItem>) -> bool {
+    fn from_boots(id: i64, items: &HashMap<i64, ShopItem>, depth: u8) -> bool {
+        let from = items.get(&id).map_or(&[][..], |it| it.from.as_slice());
+        from.contains(&BOOTS) || (depth < 3 && from.iter().any(|c| from_boots(*c, items, depth + 1)))
+    }
+    id != BOOTS && from_boots(id, items, 0)
+}
+
 /// Your next items from the recommended build, priced after the components
-/// you already own.
+/// you already own. Any upgraded boots you own count as the build's boots,
+/// since you only carry one pair.
 pub fn next_items(
     data: &Value,
     build: &[i64],
@@ -326,6 +340,12 @@ pub fn next_items(
         if let Some(pos) = owned_left.iter().position(|o| o == id) {
             owned_left.remove(pos);
             continue;
+        }
+        if is_upgraded_boots(*id, items) {
+            if let Some(pos) = owned_left.iter().position(|o| is_upgraded_boots(*o, items)) {
+                owned_left.remove(pos);
+                continue;
+            }
         }
         let (name, price) = match items.get(id) {
             Some(it) => (it.name.clone(), (it.price - owned_discount(*id, items, &mut owned_left, 0)).max(0)),
@@ -475,6 +495,28 @@ mod tests {
         let next = next_items(&d, &[6655], &items, 1);
         assert_eq!(next[0].price, 2850 - 1200);
         assert!(next[0].affordable);
+    }
+
+    #[test]
+    fn other_boots_count_as_the_builds_boots() {
+        let items = shop(&[
+            (1001, "Boots", 300, &[]),
+            (3020, "Sorcerer's Shoes", 1100, &[1001]),
+            (3158, "Ionian Boots of Lucidity", 900, &[1001]),
+            (3171, "Crimson Lucidity", 1400, &[3158]),
+            (6655, "Luden's Companion", 2850, &[]),
+        ]);
+        let mut d = sample(600.0, json!([]));
+        let ids = |d: &Value| next_items(d, &[3020, 6655], &items, 5).iter().map(|n| n.id).collect::<Vec<_>>();
+        d["allPlayers"][0]["items"] = json!([{"itemID": 3158}]);
+        assert_eq!(ids(&d), vec![6655]);
+        // A tier-3 upgrade of other boots counts too.
+        d["allPlayers"][0]["items"] = json!([{"itemID": 3171}]);
+        assert_eq!(ids(&d), vec![6655]);
+        // Basic Boots don't: they only take their price off.
+        d["allPlayers"][0]["items"] = json!([{"itemID": 1001}]);
+        let next = next_items(&d, &[3020, 6655], &items, 5);
+        assert_eq!((next[0].id, next[0].price), (3020, 800));
     }
 
     #[test]
