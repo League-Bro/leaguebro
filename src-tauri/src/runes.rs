@@ -3,7 +3,7 @@
 //! The page comes from OP.GG's most popular page (when there's enough data),
 //! or else the League client's built-in recommended pages (the ones in the
 //! client's rune editor). League Bro keeps a single page named
-//! "League Bro: ..." and replaces it each time.
+//! "League Bro: ..." and overwrites it each time.
 
 use crate::util::{flag, text};
 use crate::config::Config;
@@ -129,6 +129,8 @@ async fn recommended_page(lcu: &Lcu, champion_id: i64, position: &str, map_id: i
 pub struct ImportResult {
     pub page_name: String,
     pub source: &'static str,
+    /// The name of the page taken over because every slot was used.
+    pub replaced: Option<String>,
 }
 
 /// OP.GG's page (with enough games), else the client's recommended page.
@@ -211,28 +213,68 @@ pub async fn import(
 ) -> Result<ImportResult> {
     let (mut page, source) = choose_page(lcu, champion_id, position, map_id, rec).await?;
     page.name = page_name(champion_name, position_label(position));
-    write_page(lcu, config, &page).await?;
-    Ok(ImportResult { page_name: page.name, source })
+    let replaced = write_page(lcu, config, &page).await?;
+    Ok(ImportResult { page_name: page.name, source, replaced })
 }
 
-/// Ids of earlier League Bro pages to delete. Skips Swiftplay's temporary
-/// pages: `set_quick_play_page` renames them to "League Bro: ...", but the
-/// client refuses to delete them (403 "Page is not deletable").
-fn old_pages(pages: &[Value]) -> Vec<i64> {
-    pages
+/// Swiftplay's temporary pages: `set_quick_play_page` renames them to
+/// "League Bro: ...", but the client refuses to delete them (403 "Page is not
+/// deletable") and remakes them, so they don't count as League Bro's page.
+fn is_temporary(p: &Value) -> bool {
+    flag(p, "isTemporary")
+}
+
+/// A missing field counts as allowed: custom pages always have both.
+fn allows(p: &Value, key: &str) -> bool {
+    p.get(key).and_then(Value::as_bool).unwrap_or(true)
+}
+
+fn page_id(p: &Value) -> Option<i64> {
+    p.get("id").and_then(Value::as_i64)
+}
+
+/// League Bro's own pages: the first one to overwrite in place, and any
+/// others (older versions made one per champion) to delete.
+fn own_pages(pages: &[Value]) -> (Option<i64>, Vec<i64>) {
+    let mut ids = pages
         .iter()
-        .filter(|p| {
-            is_ours(text(p, "name"))
-                && !flag(p, "isTemporary")
-                && p.get("isDeletable").and_then(Value::as_bool).unwrap_or(true)
-        })
-        .filter_map(|p| p.get("id").and_then(Value::as_i64))
-        .collect()
+        .filter(|p| is_ours(text(p, "name")) && !is_temporary(p) && allows(p, "isEditable"))
+        .filter_map(page_id);
+    let keep = ids.next();
+    let extra = ids
+        .filter(|id| pages.iter().any(|p| page_id(p) == Some(*id) && allows(p, "isDeletable")))
+        .collect();
+    (keep, extra)
 }
 
-/// Writes `page` as the League Bro rune page (replacing the last one) and
-/// makes it current.
-pub async fn write_page(lcu: &Lcu, config: &Config, page: &RunePage) -> Result<()> {
+/// The page to take over when every slot is used and League Bro has none:
+/// the selected page if it's editable, else the one edited longest ago.
+fn page_to_take_over(pages: &[Value]) -> Option<(i64, String)> {
+    let editable = || pages.iter().filter(|p| flag(p, "isEditable") && !is_temporary(p));
+    editable()
+        .find(|p| flag(p, "current"))
+        .or_else(|| editable().min_by_key(|p| p.get("lastModified").and_then(Value::as_i64).unwrap_or(0)))
+        .and_then(|p| Some((page_id(p)?, text(p, "name").to_string())))
+}
+
+fn is_full_error(e: &anyhow::Error) -> bool {
+    format!("{e:#}").to_ascii_lowercase().contains("max pages")
+}
+
+async fn overwrite(lcu: &Lcu, id: i64, body: &Value) -> Result<()> {
+    let mut body = body.clone();
+    body["id"] = json!(id);
+    lcu.put(&format!("/lol-perks/v1/pages/{id}"), &body).await?;
+    let _ = lcu.put("/lol-perks/v1/currentpage", &json!(id)).await;
+    Ok(())
+}
+
+/// Writes `page` as the League Bro rune page and makes it current. League
+/// Bro's existing page is overwritten in place, so it needs no free slot.
+/// Without one, a new page is created; if every slot is used, the selected
+/// page is taken over (unless `keep_my_pages_when_full`) and its old name is
+/// returned. From then on it's League Bro's page and gets reused.
+pub async fn write_page(lcu: &Lcu, config: &Config, page: &RunePage) -> Result<Option<String>> {
     let body = json!({
         "name": page.name,
         "primaryStyleId": page.primary_style_id,
@@ -243,43 +285,42 @@ pub async fn write_page(lcu: &Lcu, config: &Config, page: &RunePage) -> Result<(
 
     let pages = lcu.get_req("/lol-perks/v1/pages").await?;
     let pages = pages.as_array().cloned().unwrap_or_default();
+    let (own, extra) = own_pages(&pages);
 
-    // Remove the page League Bro made last time. A failed delete isn't fatal:
-    // the new page is still written.
-    for id in old_pages(&pages) {
+    // Extra League Bro pages from older versions. A failed delete isn't fatal.
+    for id in extra {
         if let Err(e) = lcu.delete(&format!("/lol-perks/v1/pages/{id}")).await {
             eprintln!("couldn't delete old rune page {id}: {e:#}");
         }
     }
 
-    match lcu.post("/lol-perks/v1/pages", &body).await {
-        Ok(created) => {
-            if let Some(id) = created.get("id").and_then(Value::as_i64) {
-                let _ = lcu.put("/lol-perks/v1/currentpage", &json!(id)).await;
-            }
-        }
-        Err(e) if config.reuse_current_page_when_full => {
-            // Probably out of page slots: overwrite the selected editable page.
-            let current = pages.iter().find(|p| {
-                flag(p, "current")
-                    && flag(p, "isEditable")
-            });
-            let Some(id) = current.and_then(|p| p.get("id")).and_then(Value::as_i64) else {
-                return Err(e.context("no free rune page slot and the selected page isn't editable"));
-            };
-            let mut body = body;
-            body["id"] = json!(id);
-            lcu.put(&format!("/lol-perks/v1/pages/{id}"), &body).await?;
-            let _ = lcu.put("/lol-perks/v1/currentpage", &json!(id)).await;
-        }
-        Err(e) => {
-            return Err(e.context(
-                "couldn't create a rune page; if all your page slots are full, delete one \
-                 (League Bro reuses a single slot) or turn on \"Reuse current page when full\"",
-            ))
+    if let Some(id) = own {
+        match overwrite(lcu, id, &body).await {
+            Ok(()) => return Ok(None),
+            // E.g. the page was deleted in the client meanwhile: make a new one.
+            Err(e) => eprintln!("couldn't update rune page {id}, creating a new one: {e:#}"),
         }
     }
-    Ok(())
+
+    match lcu.post("/lol-perks/v1/pages", &body).await {
+        Ok(created) => {
+            if let Some(id) = page_id(&created) {
+                let _ = lcu.put("/lol-perks/v1/currentpage", &json!(id)).await;
+            }
+            Ok(None)
+        }
+        Err(e) if is_full_error(&e) && !config.keep_my_pages_when_full => {
+            let Some((id, old_name)) = page_to_take_over(&pages) else {
+                return Err(e.context("all your rune page slots are full and none of them is editable"));
+            };
+            overwrite(lcu, id, &body).await?;
+            Ok(Some(old_name))
+        }
+        Err(e) if is_full_error(&e) => Err(e.context(
+            "all your rune page slots are full; delete one, or turn off \"Keep my pages when slots are full\"",
+        )),
+        Err(e) => Err(e.context("couldn't create a rune page")),
+    }
 }
 
 #[cfg(test)]
@@ -365,14 +406,39 @@ mod tests {
     }
 
     #[test]
-    fn old_pages_skip_temporary() {
+    fn own_page_is_reused() {
         let pages = json!([
             {"id": 1, "name": "League Bro: Nautilus", "isTemporary": true},
-            {"id": 2, "name": "League Bro: Nami Support", "isTemporary": false, "isDeletable": true},
-            {"id": 3, "name": "LB: Jinx Bot", "isDeletable": false},
-            {"id": 4, "name": "My Ahri page"},
+            {"id": 2, "name": "League Bro: Nami Support", "isTemporary": false, "isEditable": true, "isDeletable": true},
+            {"id": 3, "name": "LB: Jinx Bot", "isEditable": true, "isDeletable": false},
+            {"id": 5, "name": "Riftlight: Ahri Mid", "isEditable": true, "isDeletable": true},
+            {"id": 4, "name": "My Ahri page", "isEditable": true, "current": true},
         ]);
-        assert_eq!(old_pages(pages.as_array().unwrap()), vec![2]);
+        assert_eq!(own_pages(pages.as_array().unwrap()), (Some(2), vec![5]));
+        let none = json!([{"id": 4, "name": "My Ahri page"}, {"id": 1, "name": "League Bro: Nautilus", "isTemporary": true}]);
+        assert_eq!(own_pages(none.as_array().unwrap()), (None, vec![]));
+    }
+
+    #[test]
+    fn takes_over_selected_then_oldest_page() {
+        let pages = json!([
+            {"id": 1, "name": "Preset", "isEditable": false, "current": true, "lastModified": 1},
+            {"id": 2, "name": "Swiftplay", "isEditable": true, "isTemporary": true, "lastModified": 2},
+            {"id": 3, "name": "Newer", "isEditable": true, "lastModified": 300},
+            {"id": 4, "name": "Older", "isEditable": true, "lastModified": 200},
+        ]);
+        assert_eq!(page_to_take_over(pages.as_array().unwrap()), Some((4, "Older".into())));
+        let mut pages = pages;
+        pages[2]["current"] = json!(true);
+        assert_eq!(page_to_take_over(pages.as_array().unwrap()), Some((3, "Newer".into())));
+        assert_eq!(page_to_take_over(&[json!({"id": 1, "isEditable": false})]), None);
+    }
+
+    #[test]
+    fn full_error() {
+        let e = anyhow::Error::msg("POST /lol-perks/v1/pages returned 400 Bad Request: {\"errorCode\":\"RPC_ERROR\",\"httpStatus\":400,\"implementationDetails\":{},\"message\":\"Max pages reached\"}");
+        assert!(is_full_error(&e));
+        assert!(!is_full_error(&anyhow!("POST /lol-perks/v1/pages returned 500")));
     }
 
     #[test]

@@ -38,12 +38,12 @@ To look up any champion outside champ select, use the **Champions** tab: pick a 
 
 ### Rune, summoner spell and shop build auto-import
 
-When you lock in, League Bro creates a rune page called `League Bro: <Champion> <Role>` and selects it. It reuses that one page every game, so your other pages are never touched. It also sets your summoner spells, keeping Flash on whichever key you already use.
+When you lock in, League Bro creates a rune page called `League Bro: <Champion> <Role>` and selects it. It reuses that one page every game, so your other pages are left alone (unless every slot is full, see below). It also sets your summoner spells, keeping Flash on whichever key you already use.
 
 It also adds OP.GG's build to the in-game shop as an item set with the same name: starter items, boots, core build and options for items 4 to 6, with win rates. It's listed first under **Item Sets** in the shop, so the shop opens on it. Like the rune page, it's one set that gets replaced each game, and your own item sets aren't touched. League Bro removes it when it closes, so it never shows up in a game League Bro isn't running for.
 
 - **Where the page comes from:** OP.GG's most popular page. For rare picks with too few games on OP.GG, it uses the League client's own suggestion.
-- **Options:** under **Settings → Recommendations** you can switch to League client suggestions only, or turn off summoner spells or the shop build. Turn on "Import while hovering" for blind pick. If all your page slots are full, delete one page, or turn on "Reuse the selected page when slots are full".
+- **Options:** under **Settings → Recommendations** you can switch to League client suggestions only, or turn off summoner spells or the shop build. Turn on "Import while hovering" for blind pick. If all your page slots are full and there's no League Bro page yet, League Bro takes over the selected page once (it tells you which) and reuses it from then on. Turn on "Keep my pages when slots are full" to get an error instead.
 
 ### Scouting
 
@@ -81,7 +81,7 @@ League Bro doesn't read game memory, use a Riot API key, or track enemy ability 
 | --- | --- |
 | "League client not found" while League is open | Under **Settings**, enter your install folder, usually `C:\Riot Games\League of Legends`. If League runs as administrator, run League Bro as administrator too. |
 | Overlay doesn't show in game | Set League to **Borderless** (League Bro shows a reminder when League is on Fullscreen), and make sure "Show the in-game overlay" is on in **Settings**. |
-| Rune import fails | Your rune page slots are full. Delete one page, or turn on "Reuse the selected page when slots are full". |
+| Rune import fails with "slots are full" | "Keep my pages when slots are full" is on. Delete one page or turn that setting off. |
 | League Bro's build is missing or cut off in the shop | Another app (like Blitz) left item sets that show for every champion, ahead of League Bro's. **Settings → Recommendations** lists them; click **Move them aside** (you can put them back). |
 | Objective timer is off | Riot changes spawn times between seasons. Report it on the **Feedback** tab so the next release can fix it. |
 | Champion or item icons missing | Icons load from CommunityDragon and need an internet connection. |

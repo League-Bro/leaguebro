@@ -56,10 +56,12 @@ pub struct Config {
     pub auto_import_runes: bool,
     /// Also import while hovering (before lock-in).
     pub import_on_hover: bool,
-    /// If every rune page slot is used, overwrite the currently selected
-    /// editable page instead of failing. Off by default because it
-    /// replaces one of your own pages.
-    pub reuse_current_page_when_full: bool,
+    /// If every rune page slot is used and League Bro has no page yet, fail
+    /// instead of taking over the selected page. Off by default, so the import
+    /// works; it takes over one page once, then keeps reusing it. (Replaces
+    /// `reuseCurrentPageWhenFull`, which was off by default and made imports
+    /// fail with full slots.)
+    pub keep_my_pages_when_full: bool,
     /// Where rune/spell/item/skill recommendations come from:
     /// "opgg" (OP.GG meta stats) or "client" (League's own rune suggestions only).
     pub rec_source: String,
@@ -105,7 +107,7 @@ impl Default for Config {
         Self {
             auto_import_runes: true,
             import_on_hover: false,
-            reuse_current_page_when_full: false,
+            keep_my_pages_when_full: false,
             rec_source: "opgg".into(),
             set_summoner_spells: true,
             set_item_sets: true,

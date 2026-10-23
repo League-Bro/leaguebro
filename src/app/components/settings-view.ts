@@ -11,7 +11,7 @@ type BoolKey =
   | 'overlayEnabled'
   | 'autoImportRunes'
   | 'importOnHover'
-  | 'reuseCurrentPageWhenFull'
+  | 'keepMyPagesWhenFull'
   | 'showTimers'
   | 'showLaneDiff'
   | 'showSituational';
@@ -157,7 +157,7 @@ type BoolKey =
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.autoImportRunes" (change)="setBool('autoImportRunes', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Import runes</b><span>In champ select, creates one page called "League Bro: …" and replaces it each game. In a Swiftplay lobby, sets the runes of each champion you pick there.</span></span>
+            <span class="label"><b>Import runes</b><span>In champ select, creates one page called "League Bro: …" and overwrites it each game. In a Swiftplay lobby, sets the runes of each champion you pick there.</span></span>
           </label>
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.importOnHover" (change)="setBool('importOnHover', $any($event.target).checked)" />
@@ -165,9 +165,9 @@ type BoolKey =
             <span class="label"><b>Import while hovering</b><span>Don't wait for lock-in. Handy for blind pick.</span></span>
           </label>
           <label class="toggle">
-            <input type="checkbox" [checked]="cfg.reuseCurrentPageWhenFull" (change)="setBool('reuseCurrentPageWhenFull', $any($event.target).checked)" />
+            <input type="checkbox" [checked]="cfg.keepMyPagesWhenFull" (change)="setBool('keepMyPagesWhenFull', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Reuse the selected page when slots are full</b><span>Overwrites whichever editable page is selected. Leave off if you'd rather keep one slot free for League Bro.</span></span>
+            <span class="label"><b>Keep my pages when slots are full</b><span>If every slot is used and there's no League Bro page yet, League Bro takes over the selected page once and reuses it after that. Turn on to get an error instead.</span></span>
           </label>
         </section>
 

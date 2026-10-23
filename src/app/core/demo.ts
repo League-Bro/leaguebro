@@ -428,7 +428,7 @@ export function demoConfig(): Config {
   return {
     autoImportRunes: true,
     importOnHover: false,
-    reuseCurrentPageWhenFull: false,
+    keepMyPagesWhenFull: false,
     recSource: 'opgg',
     setSummonerSpells: true,
     setItemSets: true,

@@ -614,7 +614,7 @@ export interface AbilityKeys {
 export interface Config {
   autoImportRunes: boolean;
   importOnHover: boolean;
-  reuseCurrentPageWhenFull: boolean;
+  keepMyPagesWhenFull: boolean;
   recSource: 'opgg' | 'client';
   setSummonerSpells: boolean;
   setItemSets: boolean;

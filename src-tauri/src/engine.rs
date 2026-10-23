@@ -1351,7 +1351,10 @@ pub async fn import_for(app: &AppHandle, champion_id: i64, position: &str) -> Re
     let rune_rec = rec.as_ref().and_then(|r| r.runes.as_ref());
     let result = runes::import(&lcu, &cfg, champion_id, &name, position, map_id, rune_rec)
         .await
-        .map(|r| format!("Set \"{}\" ({})", r.page_name, r.source))
+        .map(|r| match r.replaced {
+            Some(old) => format!("Set \"{}\" ({}) · all page slots were full, so it replaced \"{old}\"", r.page_name, r.source),
+            None => format!("Set \"{}\" ({})", r.page_name, r.source),
+        })
         .map_err(msg)?;
     let spells = match rec.as_ref().filter(|r| cfg.set_summoner_spells && r.games >= opgg::MIN_GAMES) {
         Some(r) if r.spells.len() == 2 => match set_spells(app, &lcu, &r.spells).await {
@@ -1490,7 +1493,10 @@ pub async fn import_slots(app: &AppHandle, lcu: &Lcu, wanted: Vec<(usize, i64, S
             wrote_page = true;
             let page = &pages[&slot];
             match runes::write_page(lcu, &cfg, page).await {
-                Ok(()) => Ok(format!("{msg} · saved as \"{}\", pick it in the slot's rune menu{items}", page.name)),
+                Ok(replaced) => {
+                    let replaced = replaced.map(|old| format!(" (replaced \"{old}\", slots were full)")).unwrap_or_default();
+                    Ok(format!("{msg} · saved as \"{}\"{replaced}, pick it in the slot's rune menu{items}", page.name))
+                }
                 Err(e) => Err(format!("couldn't set Swiftplay runes: {e:#}")),
             }
         } else {
