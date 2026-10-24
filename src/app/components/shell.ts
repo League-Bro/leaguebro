@@ -169,7 +169,8 @@ const PHASE_LABELS: Record<string, string> = {
 export class Shell implements OnInit {
   protected readonly rift = inject(RiftService);
   protected readonly updates = inject(UpdateService);
-  protected readonly tab = signal<Tab>('live');
+  /** The app opens on your profile; champ select and games still pull you to Live (see the constructor). */
+  protected readonly tab = signal<Tab>('profile');
   protected readonly tabs: { id: Tab; label: string }[] = [
     { id: 'live', label: 'Live' },
     { id: 'champions', label: 'Champions' },

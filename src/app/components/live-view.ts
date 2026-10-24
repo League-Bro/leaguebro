@@ -140,7 +140,7 @@ import { ImportEvent } from '../core/models';
         <h2>Game over</h2>
         <p class="muted">Getting your game summary from the League client…</p>
       </div>
-    } @else if (rift.swiftplay().length) {
+    } @else if (swiftHasChamp()) {
       <section class="card swift">
         <div class="row">
           <div class="grow stack">
@@ -173,11 +173,22 @@ import { ImportEvent } from '../core/models';
       </section>
     } @else {
       <div class="empty card">
-        <h2>{{ rift.status().summoner?.name || 'Connected' }}</h2>
-        <p class="muted">Queue up. Champ select and the loading screen will show here, and the overlay appears once you're in game.</p>
+        @if (rift.swiftplay().length) {
+          <h2>Swiftplay</h2>
+          <p class="muted">Pick your champions in the lobby and their runes show up here.</p>
+        } @else {
+          <h2>Nothing going on yet</h2>
+          <p class="muted">Queue up. Champ select and the loading screen will show here, and the overlay appears once you're in game.</p>
+        }
         @if (rift.lastImport(); as li) {
           <p class="faint">Last rune import: {{ rift.champName(li.championId) }}: {{ li.message }}</p>
         }
+        <p class="faint">In the meantime:</p>
+        <div class="row links">
+          <button (click)="open.emit('champions')">Champion builds</button>
+          <button (click)="open.emit('tiers')">Tier list</button>
+          <button (click)="open.emit('profile')">Your profile</button>
+        </div>
       </div>
     }
   `,
@@ -214,7 +225,7 @@ import { ImportEvent } from '../core/models';
 })
 export class LiveView {
   protected readonly rift = inject(RiftService);
-  /** Asks the shell to switch tabs (the client-free pages, from the "Waiting for League" card). */
+  /** Asks the shell to switch tabs (the shortcut buttons on the "Waiting for League" and idle cards). */
   readonly open = output<'champions' | 'tiers' | 'profile'>();
   protected readonly busy = signal(false);
   protected readonly manualMsg = signal<string | null>(null);
