@@ -294,6 +294,7 @@ pub struct AppState {
     pub patches: crate::patch::PatchNotesClient,
     pub tiers: crate::tierlist::TierLists,
     pub guides: crate::guide::Guides,
+    pub lp: crate::lp_history::LpStore,
     pub overlay_input: std::sync::Mutex<OverlayInput>,
 }
 
@@ -940,6 +941,11 @@ impl Engine {
         self.pending_post_game = None;
         self.state().shared.lock().await.post_game = Some(summary.clone());
         let _ = self.app.emit("post-game", Some(summary));
+        // The client has the new LP by the time the game is in match history.
+        if let Ok(Some(stats)) = lcu.get(&format!("/lol-ranked/v1/ranked-stats/{}", self.my_puuid)).await {
+            let (solo, flex) = (scout::parse_rank(&stats, "RANKED_SOLO_5x5"), scout::parse_rank(&stats, "RANKED_FLEX_SR"));
+            self.state().lp.record_ranks(&self.my_puuid, solo.as_ref(), flex.as_ref());
+        }
     }
 
     async fn on_phase_change(&mut self, lcu: &Lcu, phase: &str) {

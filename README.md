@@ -71,9 +71,13 @@ When a game ends, the **Live** tab shows the result, your KDA, CS per minute, da
 
 Click **League Bro** (or your name) at the top of the window to open your profile: your rank, insights from your recent games (win rate, KDA, CS, damage and gold per minute, vision, streak, best champions and queues), and your match history. Click a match to see its full scoreboard. It covers the games the League client keeps, usually your last few dozen. Custom and practice games aren't included, and neither are Brawl or League Classic, which Riot doesn't allow apps to show.
 
+### Anonymous usage stats
+
+To count how many people use it, League Bro sends one anonymous "app open" event a day to [Aptabase](https://aptabase.com): a random install ID made up on your PC, the app version and the Windows version. No Riot ID, games or settings. Turn it off in **Settings → Privacy → Share anonymous usage stats**; then nothing is sent.
+
 ### What it doesn't do
 
-League Bro doesn't read game memory, use a Riot API key, or track enemy ability or summoner spell cooldowns. It uses only the League client's local API, Riot's official in-game data API (port 2999), and OP.GG's public stats, and stays within [Riot's third-party app rules](https://developer.riotgames.com/policies/general).
+League Bro doesn't read game memory, use a Riot API key, or track enemy ability or summoner spell cooldowns. It uses only the League client's local API, Riot's official in-game data API (port 2999), and OP.GG's public stats (plus the anonymous daily ping above, which you can turn off), and stays within [Riot's third-party app rules](https://developer.riotgames.com/policies/general).
 
 ## Troubleshooting
 
@@ -200,6 +204,10 @@ The release workflow needs two repository secrets (**Settings → Secrets and va
 Keep a backup of the key and password somewhere safe, like a password manager. If you lose them, installed copies can't verify new updates, and everyone has to reinstall manually once you set up a new key.
 
 Dev builds (`npm run tauri dev`) never update themselves.
+
+### Usage stats key
+
+The daily anonymous ping (`src-tauri/src/usage.rs`) goes to [Aptabase](https://aptabase.com). Its app key (`A-EU-…` or `A-US-…`, from the Aptabase dashboard under **Instructions**) is read at build time from the `APTABASE_APP_KEY` environment variable. The release workflow passes it from a repository secret of the same name. Without it the app builds and runs normally and sends nothing, so local and dev builds stay silent unless you set the variable yourself.
 
 ### Project layout
 

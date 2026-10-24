@@ -84,6 +84,9 @@ pub struct Config {
     pub scout_on_loading: bool,
     /// Show the trash-talk card ("The Bro's review") in post-game summaries.
     pub show_roasts: bool,
+    /// Send one anonymous "app open" ping a day (random install ID and app
+    /// version only) so we can count users. See usage.rs.
+    pub share_usage_stats: bool,
     pub overlay_enabled: bool,
     /// Overlay position in physical pixels; None = top-right corner.
     pub overlay_x: Option<i32>,
@@ -124,6 +127,7 @@ impl Default for Config {
             scout_in_champ_select: true,
             scout_on_loading: true,
             show_roasts: true,
+            share_usage_stats: true,
             overlay_enabled: true,
             overlay_x: None,
             overlay_y: None,
@@ -177,6 +181,7 @@ mod tests {
         assert!(c.favorite_champions.is_empty());
         // Overlay parts added later default to shown.
         assert!(c.show_timers && c.show_lane_diff);
+        assert!(c.share_usage_stats);
     }
 
     #[test]

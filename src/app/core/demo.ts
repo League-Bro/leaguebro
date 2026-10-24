@@ -13,6 +13,7 @@ import {
   ItemInfo,
   MatchLine,
   MatchupState,
+  LpPoint,
   MyProfile,
   QueueStat,
   PatchInfo,
@@ -237,7 +238,18 @@ export function demoProfile(): MyProfile {
     solo: { tier: 'GOLD', division: 'II', lp: 47, wins: 38, losses: 31 }, flex: null,
     matches, insights: demoInsights(matches), modes, currentQueueId: 420, error: null,
     source: 'client', updatedAt: null, renewableAt: null,
+    lpHistory: { solo: demoLpHistory(), flex: [] },
   };
+}
+
+/** Silver I up to Gold I, then back down to where the demo profile is (Gold II 47 LP). */
+function demoLpHistory(): LpPoint[] {
+  const steps: [string, string, number][] = [
+    ['SILVER', 'I', 62], ['SILVER', 'I', 81], ['SILVER', 'I', 64], ['GOLD', 'IV', 0], ['GOLD', 'IV', 21], ['GOLD', 'IV', 43],
+    ['GOLD', 'IV', 66], ['GOLD', 'III', 4], ['GOLD', 'III', 27], ['GOLD', 'III', 49], ['GOLD', 'III', 72], ['GOLD', 'II', 12],
+    ['GOLD', 'II', 35], ['GOLD', 'II', 58], ['GOLD', 'II', 79], ['GOLD', 'I', 3], ['GOLD', 'II', 84], ['GOLD', 'II', 65], ['GOLD', 'II', 47],
+  ];
+  return steps.map(([tier, division, lp], i) => ({ at: Date.now() - (steps.length - i) * 20 * 3_600_000, tier, division, lp, games: 50 + i }));
 }
 
 /** The profile as OP.GG has it (?profile=opgg): last updated two days ago, no enemy data or vision. */
@@ -254,6 +266,8 @@ export function demoOpggProfile(): MyProfile {
   return {
     ...p, matches, insights: demoInsights(matches), modes, currentQueueId: null,
     solo: { tier: 'GOLD', division: 'II', lp: 21, wins: 36, losses: 31 },
+    // One point so far: shows the graph's "fills in as you play" state.
+    lpHistory: { solo: [{ at: Date.now() - 2 * 86_400_000, tier: 'GOLD', division: 'II', lp: 21, games: null }], flex: [] },
     source: 'opgg', updatedAt: Date.now() - 2 * 86_400_000, renewableAt: Date.now() - 60_000,
   };
 }
@@ -448,6 +462,7 @@ export function demoConfig(): Config {
     scoutInChampSelect: true,
     scoutOnLoading: true,
     showRoasts: true,
+    shareUsageStats: true,
     overlayEnabled: true,
     overlayX: null,
     overlayY: null,

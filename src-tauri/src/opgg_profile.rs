@@ -8,6 +8,7 @@
 //! it fetched from Riot at its last update (`updated_at`), which can be days
 //! old; `renew` gets it to fetch again, like the button on op.gg.
 
+use crate::lp_history::{LpHistory, LpPoint};
 use crate::opgg::{parse_compact, OpGg};
 use crate::postgame::PlayerLine;
 use crate::profile::{self, MatchLine, MyProfile};
@@ -27,6 +28,8 @@ const PROFILE_FIELDS: &[&str] = &[
     "data.summoner.{puuid,game_name,tagline,profile_image_url,level,updated_at,renewable_at}",
     "data.summoner.league_stats[].tier_info.{division,lp,tier}",
     "data.summoner.league_stats[].{game_type,lose,win}",
+    "data.summoner.lp_histories[].{created_at}",
+    "data.summoner.lp_histories[].tier_info.{division,lp,tier}",
 ];
 
 const MATCH_FIELDS: &[&str] = &[
@@ -103,21 +106,36 @@ pub fn iso_ms(s: &str) -> Option<i64> {
 
 const ROMAN: [&str; 5] = ["", "I", "II", "III", "IV"];
 
-fn rank(stats: &Value, game_type: &str) -> Option<RankLine> {
-    let s = list(stats, "/data/summoner/league_stats").iter().find(|s| text(s, "game_type") == game_type)?;
+/// Tier, division and LP from a `tier_info`.
+fn tier_info(s: &Value) -> Option<(String, String, i64)> {
     let tier = text(s, "/tier_info/tier");
     if tier.is_empty() {
         return None;
     }
     let division = usize::try_from(int(s, "/tier_info/division")).ok().and_then(|d| ROMAN.get(d)).copied().unwrap_or("");
-    Some(RankLine {
-        tier: tier.to_string(),
-        // Master and up have no division; OP.GG still sends 1.
-        division: if matches!(tier, "MASTER" | "GRANDMASTER" | "CHALLENGER") { String::new() } else { division.to_string() },
-        lp: int(s, "/tier_info/lp"),
-        wins: int(s, "win"),
-        losses: int(s, "lose"),
-    })
+    // Master and up have no division; OP.GG still sends 1.
+    let division = if matches!(tier, "MASTER" | "GRANDMASTER" | "CHALLENGER") { "" } else { division };
+    Some((tier.to_string(), division.to_string(), int(s, "/tier_info/lp")))
+}
+
+fn rank(stats: &Value, game_type: &str) -> Option<RankLine> {
+    let s = list(stats, "/data/summoner/league_stats").iter().find(|s| text(s, "game_type") == game_type)?;
+    let (tier, division, lp) = tier_info(s)?;
+    Some(RankLine { tier, division, lp, wins: int(s, "win"), losses: int(s, "lose") })
+}
+
+/// OP.GG's Solo/Duo LP history (`lp_histories`, newest first, one point for
+/// each day it updated the player), oldest first.
+fn lp_points(v: &Value) -> Vec<LpPoint> {
+    let mut out: Vec<LpPoint> = list(v, "/data/summoner/lp_histories")
+        .iter()
+        .filter_map(|h| {
+            let (tier, division, lp) = tier_info(h)?;
+            Some(LpPoint { at: iso_ms(text(h, "created_at"))?, tier, division, lp, games: None })
+        })
+        .collect();
+    out.sort_by_key(|p| p.at);
+    out
 }
 
 /// The profile icon id from OP.GG's image URL (".../profileIcon7126.jpg").
@@ -139,6 +157,8 @@ pub fn parse_profile(v: &Value) -> MyProfile {
         source: "opgg".into(),
         updated_at: iso_ms(text(&s, "updated_at")),
         renewable_at: iso_ms(text(&s, "renewable_at")),
+        // Merged into the saved history by `LpStore::record`.
+        lp_history: LpHistory { solo: lp_points(v), flex: Vec::new() },
         ..Default::default()
     }
 }
@@ -297,6 +317,9 @@ mod tests {
         assert_eq!(p.flex, None);
         assert_eq!(p.updated_at, iso_ms("2026-10-20T17:17:46+09:00"));
         assert_eq!(p.source, "opgg");
+        let lp: Vec<_> = p.lp_history.solo.iter().map(|h| (h.tier.as_str(), h.division.as_str(), h.lp)).collect();
+        assert_eq!(lp, [("SILVER", "II", 90), ("GOLD", "III", 30)]);
+        assert_eq!(p.lp_history.solo[1].at, iso_ms("2026-10-20T17:17:46+09:00").unwrap());
     }
 
     #[test]

@@ -145,8 +145,10 @@ input[type='number'] { width: 90px; }
 }
 
 /* Toggle switch */
-.toggle { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; padding: 6px 0; }
-/* Hidden but still focusable, so Tab and Space work on switches. */
+.toggle { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; padding: 6px 0; position: relative; }
+/* Hidden but still focusable, so Tab and Space work on switches. Positioned inside
+   its .toggle, or it lands outside main's scroll box and makes the whole window
+   scroll (and jump when a switch gets focus). */
 .toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
 .toggle input:focus-visible + .track { outline: 2px solid var(--accent-2); outline-offset: 2px; }
 .toggle .track {

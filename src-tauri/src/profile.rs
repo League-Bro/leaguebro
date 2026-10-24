@@ -115,6 +115,8 @@ pub struct MyProfile {
     pub updated_at: Option<i64>,
     /// When OP.GG next allows an update (unix ms; OP.GG only).
     pub renewable_at: Option<i64>,
+    /// Your LP over time (see `lp_history`).
+    pub lp_history: crate::lp_history::LpHistory,
 }
 
 /// Games League Bro may show match data for. Brawl's markers (mode `BRAWL`,

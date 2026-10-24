@@ -2,9 +2,10 @@ import { ChangeDetectionStrategy, Component, DestroyRef, Injector, afterNextRend
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { championIcon, formatTier, kdaRatio, profileIcon, queueLabel, rankCrest, tierClass, winPct } from '../core/assets';
-import { MatchLine, MyProfile, PostGame, RankLine } from '../core/models';
+import { LpPoint, MatchLine, MyProfile, PostGame, RankLine } from '../core/models';
 import { PostGameView } from './post-game';
 import { ItemTip } from './item-tip';
+import { LpGraph } from './lp-graph';
 
 const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as const;
 
@@ -19,7 +20,7 @@ const REGIONS = [
 @Component({
   selector: 'rl-profile',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe, NgTemplateOutlet, PostGameView, ItemTip],
+  imports: [DecimalPipe, NgTemplateOutlet, PostGameView, ItemTip, LpGraph],
   template: `
     @if (setup()) {
       <section class="card empty">
@@ -50,6 +51,7 @@ const REGIONS = [
       </section>
     } @else if (profile(); as p) {
       <section class="card head">
+        <div class="me">
         @if (icon(p.iconId); as url) { <img class="avatar" [src]="url" alt="" /> } @else { <div class="avatar"></div> }
         <div class="who">
           <h2>{{ p.name }}</h2>
@@ -60,6 +62,7 @@ const REGIONS = [
               <button class="link" (click)="editing.set(true)">Change Riot ID</button>
             </div>
           }
+        </div>
         </div>
         <div class="ranks">
           @for (r of ranks(p); track r.label) {
@@ -74,6 +77,7 @@ const REGIONS = [
                   <div class="tier-none">Unranked</div>
                 }
               </div>
+              @if (r.line) { <rl-lp-graph [points]="r.history" /> }
             </div>
           }
         </div>
@@ -150,26 +154,32 @@ const REGIONS = [
               }
             </section>
           }
-          @if (hasLanes()) {
+          @if (hasLanes() || hasEnemies()) {
             <section class="card stack">
-              <h3>Toughest lane opponents</h3>
-              @for (c of ins.toughestLanes; track c.championId) {
-                <ng-container *ngTemplateOutlet="vsRow; context: { $implicit: c }" />
-              } @empty {
-                <p class="faint small">No lane opponent has beaten you more often than not in 2+ games.</p>
+              <div class="card-head">
+                <h3>Toughest {{ tough() === 'lane' ? 'lane opponents' : 'enemies' }}</h3>
+                @if (hasLanes() && hasEnemies()) {
+                  <div class="seg mini" role="tablist">
+                    <button role="tab" [class.on]="tough() === 'lane'" [attr.aria-selected]="tough() === 'lane'" (click)="toughTab.set('lane')">Lane</button>
+                    <button role="tab" [class.on]="tough() === 'enemy'" [attr.aria-selected]="tough() === 'enemy'" (click)="toughTab.set('enemy')">Any enemy</button>
+                  </div>
+                }
+              </div>
+              @if (tough() === 'lane') {
+                @for (c of ins.toughestLanes; track c.championId) {
+                  <ng-container *ngTemplateOutlet="vsRow; context: { $implicit: c }" />
+                } @empty {
+                  <p class="faint small">No lane opponent has beaten you more often than not in 2+ games.</p>
+                }
+                <p class="faint small foot">Your lane opponent is a best guess from the client's lane data, Smite and CS.</p>
+              } @else {
+                @for (c of ins.toughestEnemies; track c.championId) {
+                  <ng-container *ngTemplateOutlet="vsRow; context: { $implicit: c }" />
+                } @empty {
+                  <p class="faint small">No enemy champion has beaten you more often than not in 2+ games.</p>
+                }
+                <p class="faint small foot">Anywhere on the enemy team. Your K/D/A in those games.</p>
               }
-              <p class="faint small foot">Your lane opponent is a best guess from the client's lane data, Smite and CS.</p>
-            </section>
-          }
-          @if (hasEnemies()) {
-            <section class="card stack">
-              <h3>Toughest enemy champions</h3>
-              @for (c of ins.toughestEnemies; track c.championId) {
-                <ng-container *ngTemplateOutlet="vsRow; context: { $implicit: c }" />
-              } @empty {
-                <p class="faint small">No enemy champion has beaten you more often than not in 2+ games.</p>
-              }
-              <p class="faint small foot">Anywhere on the enemy team. Your K/D/A in those games.</p>
             </section>
           }
         </div>
@@ -273,31 +283,44 @@ const REGIONS = [
   `,
   styles: `
     .empty { max-width: 560px; margin: 40px auto; text-align: center; }
-    .head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    /* You on the left, your ranks centered, buttons on the right. */
+    .head { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 20px; }
+    .me { display: flex; align-items: center; gap: 16px; min-width: 0; }
+    .head .actions { justify-self: end; }
+    @media (max-width: 1100px) {
+      .head { grid-template-columns: 1fr auto; }
+      .head .ranks { grid-column: 1 / -1; grid-row: 2; justify-content: center; }
+    }
     .avatar { width: 64px; height: 64px; border-radius: 50%; border: 2px solid var(--accent); background: var(--bg-sunken); box-shadow: 0 0 22px var(--accent-glow); }
-    .who { flex: 1; min-width: 160px; }
+    .who { min-width: 0; }
     .who h2 { font-size: 24px; }
-    .ranks { display: flex; gap: 26px; }
-    .rank { display: flex; align-items: center; gap: 10px; }
+    .ranks { display: flex; gap: 36px; flex-wrap: wrap; }
+    .rank { display: flex; align-items: center; gap: 12px; }
     .rank-text { display: flex; flex-direction: column; gap: 2px; }
     .crest { width: 44px; height: 44px; object-fit: contain; flex: none; }
     .crest.unranked { opacity: 0.45; }
     .cap { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; }
     .small { font-size: 12.5px; margin: 0; }
     .note { margin-top: 8px; }
-    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; margin-top: 16px; }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 12px; margin-top: 12px; }
     .tile { background: var(--glass), var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
     .big { font: 800 22px var(--display); }
-    .modes { margin-top: 16px; flex-wrap: wrap; border-radius: 18px; }
+    .modes { margin-top: 12px; flex-wrap: wrap; border-radius: 18px; }
     .modes .count { opacity: 0.6; margin-left: 4px; }
     .now { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--win); margin-right: 5px; vertical-align: 1px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-top: 16px; align-items: start; }
+    /* Cards in a row share its height, so the row has no ragged gaps under the shorter ones. */
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-top: 12px; }
     .card.stack { gap: 6px; }
     h3 { margin: 0; }
+    /* Same header height with or without tabs, so rows line up across cards. */
+    .card.stack > h3 { min-height: 26px; display: flex; align-items: center; }
     .crow, .qrow { display: flex; align-items: center; gap: 10px; font-size: 13px; }
     .qrow { width: 100%; padding: 2px 0; background: none; border: none; border-radius: 6px; color: var(--text); text-align: left; }
     .qrow:hover:not(:disabled) { background: var(--bg-hover); }
-    .foot { margin-top: 4px; }
+    .foot { margin-top: auto; padding-top: 6px; }
+    .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 26px; }
+    .seg.mini { padding: 2px; }
+    .seg.mini button { padding: 1px 10px; font-size: 12px; }
     .vs { width: 16px; height: 16px; border-radius: 4px; vertical-align: -3px; }
     .grow { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .wr { width: 40px; text-align: right; }
@@ -423,6 +446,9 @@ export class ProfileView {
   });
   protected readonly hasLanes = computed(() => this.matches().some((m) => m.laneOpponent));
   protected readonly hasEnemies = computed(() => this.matches().some((m) => m.enemies.length > 0));
+  /** The Toughest card's tab; falls back to whichever list has data. */
+  protected readonly toughTab = signal<'lane' | 'enemy'>('lane');
+  protected readonly tough = computed(() => (this.hasLanes() && this.hasEnemies() ? this.toughTab() : this.hasLanes() ? 'lane' : 'enemy'));
   protected readonly winRate = computed(() => {
     const i = this.ins();
     return i ? this.pct(i.wins, i.games) : 0;
@@ -550,10 +576,10 @@ export class ProfileView {
   modeName(p: MyProfile, queueId: number): string {
     return p.matches.find((m) => m.queueId === queueId)?.gameMode ?? '';
   }
-  ranks(p: MyProfile): { label: string; line: RankLine | null }[] {
+  ranks(p: MyProfile): { label: string; line: RankLine | null; history: LpPoint[] }[] {
     return [
-      { label: 'Solo/Duo', line: p.solo },
-      { label: 'Flex', line: p.flex },
+      { label: 'Solo/Duo', line: p.solo, history: p.lpHistory?.solo ?? [] },
+      { label: 'Flex', line: p.flex, history: p.lpHistory?.flex ?? [] },
     ];
   }
   pct = winPct;

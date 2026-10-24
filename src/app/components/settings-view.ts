@@ -8,6 +8,7 @@ type BoolKey =
   | 'scoutInChampSelect'
   | 'scoutOnLoading'
   | 'showRoasts'
+  | 'shareUsageStats'
   | 'overlayEnabled'
   | 'autoImportRunes'
   | 'importOnHover'
@@ -205,6 +206,15 @@ type BoolKey =
             <input type="checkbox" [checked]="cfg.showRoasts" (change)="setBool('showRoasts', $any($event.target).checked)" />
             <span class="track"></span>
             <span class="label"><b>Roasts</b><span>"The Bro's review" after each game: a bit of trash talk for what went badly, and some hype for what went well. Also shown for other players when you click them.</span></span>
+          </label>
+        </section>
+
+        <section class="card stack">
+          <h2>Privacy</h2>
+          <label class="toggle">
+            <input type="checkbox" [checked]="cfg.shareUsageStats" (change)="setBool('shareUsageStats', $any($event.target).checked)" />
+            <span class="track"></span>
+            <span class="label"><b>Share anonymous usage stats</b><span>Once a day, League Bro says "the app was opened" with a random ID made up on this PC, the app version and the Windows version. Never your Riot ID, games or settings. It only helps count how many people use the app.</span></span>
           </label>
         </section>
 

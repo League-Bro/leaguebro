@@ -107,6 +107,7 @@ src-tauri/src/
   scout.rs      rank + match history summaries
   live.rs       live game: timers, next items, skill hint, overlay state
   postgame.rs   post-game summary from the match-history record
+  usage.rs      anonymous daily usage ping to Aptabase ("app_open": random install ID as sessionId, app + Windows version, nothing else). Key baked in at build time from APTABASE_APP_KEY (release workflow secret); no key = sends nothing. At most once per UTC day (usage.json next to settings.json), checked at startup and every 6 h; Settings → Privacy → shareUsageStats off stops it. Don't add feature events without asking Dom.
   profile.rs    your profile: rank, recent matches, insights; the Brawl/League Classic filter
   opgg_profile.rs  the same profile from OP.GG by Riot ID while the client isn't running; OP.GG's Update (renew)
   guide.rs      champion guides: kit, Riot ability clips, Data Dragon tips (Champions tab → Guide)

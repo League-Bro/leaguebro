@@ -5,6 +5,7 @@ mod engine;
 mod guide;
 mod itemsets;
 mod lcu;
+mod lp_history;
 mod opgg;
 mod opgg_profile;
 mod live;
@@ -16,6 +17,7 @@ mod profile;
 mod runes;
 mod scout;
 mod tierlist;
+mod usage;
 
 use crate::util::{msg, text};
 use config::Config;
@@ -72,14 +74,17 @@ async fn import_swiftplay_now(app: AppHandle) -> Result<Vec<engine::ImportEvent>
 async fn get_my_profile(app: AppHandle, state: State<'_, AppState>) -> Result<profile::MyProfile, String> {
     let lcu = state.shared.lock().await.lcu.clone();
     if let Some(lcu) = lcu {
-        let p = profile::load(&lcu).await.map_err(msg)?;
+        let mut p = profile::load(&lcu).await.map_err(msg)?;
         remember_riot_id(&app, &state, &lcu, &p.name).await;
+        state.lp.record(&mut p);
         return Ok(p);
     }
     client_closed().await?;
     let (riot_id, region) = riot_id(&state)?;
     load_web_statics(&app, &state).await;
-    opgg_profile::load(&state.opgg, &riot_id, &region).await.map_err(msg)
+    let mut p = opgg_profile::load(&state.opgg, &riot_id, &region).await.map_err(msg)?;
+    state.lp.record(&mut p);
+    Ok(p)
 }
 
 /// Has OP.GG fetch your latest games and rank (its "Update" button), then
@@ -91,7 +96,9 @@ async fn renew_profile(state: State<'_, AppState>, updated_at: Option<i64>) -> R
     }
     client_closed().await?;
     let (riot_id, region) = riot_id(&state)?;
-    opgg_profile::renew(&state.opgg, &riot_id, &region, updated_at).await.map_err(msg)
+    let mut p = opgg_profile::renew(&state.opgg, &riot_id, &region, updated_at).await.map_err(msg)?;
+    state.lp.record(&mut p);
+    Ok(p)
 }
 
 /// Errs while the League client is open but not connected yet (starting up),
@@ -415,6 +422,7 @@ pub fn run() {
                 ),
                 tiers: tierlist::TierLists::new(),
                 guides: guide::Guides::new(),
+                lp: lp_history::LpStore::new(app.path().app_data_dir().ok()),
                 overlay_input: std::sync::Mutex::new(engine::OverlayInput { passthrough: true, ..Default::default() }),
             });
             if let Some(overlay) = app.get_webview_window("overlay") {
@@ -422,7 +430,8 @@ pub fn run() {
             }
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(engine::run(handle.clone()));
-            tauri::async_runtime::spawn(engine::watch_overlay_cursor(handle));
+            tauri::async_runtime::spawn(engine::watch_overlay_cursor(handle.clone()));
+            tauri::async_runtime::spawn(usage::run(handle));
             Ok(())
         })
         .on_window_event(|window, event| {

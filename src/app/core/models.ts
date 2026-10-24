@@ -59,6 +59,23 @@ export interface RankLine {
   losses: number;
 }
 
+/** A rank at one time, for the LP graph. */
+export interface LpPoint {
+  /** Unix ms. */
+  at: number;
+  tier: string;
+  division: string;
+  lp: number;
+  /** Wins + losses then; null for OP.GG's points. */
+  games: number | null;
+}
+
+/** Oldest first. Saved by League Bro on each profile load and after each game, plus OP.GG's Solo/Duo points. */
+export interface LpHistory {
+  solo: LpPoint[];
+  flex: LpPoint[];
+}
+
 /** One of your past games (custom, Brawl and League Classic games are left out). */
 export interface MatchLine {
   gameId: number;
@@ -152,6 +169,7 @@ export interface MyProfile {
   updatedAt: number | null;
   /** When OP.GG next allows an update (unix ms; OP.GG only). */
   renewableAt: number | null;
+  lpHistory: LpHistory;
 }
 
 export interface GameLine {
@@ -652,6 +670,8 @@ export interface Config {
   scoutOnLoading: boolean;
   /** The trash-talk card ("The Bro's review") in post-game summaries. */
   showRoasts: boolean;
+  /** One anonymous "app open" ping a day (random install ID + app version). */
+  shareUsageStats: boolean;
   overlayEnabled: boolean;
   overlayX: number | null;
   overlayY: number | null;
