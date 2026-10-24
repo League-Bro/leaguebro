@@ -45,7 +45,12 @@ const PREVIEW: OverlayState = {
   imports: [],
   // Laid out at the configured width whatever the window's size, so the
   // measured height is right before the window is resized to fit it.
-  host: { '[style.width.px]': 'width() / scale()', '[style.zoom]': 'scale()' },
+  // No right-click menu: WebView2's own (Back, Refresh, Inspect…) would show over the game.
+  host: {
+    '[style.width.px]': 'width() / scale()',
+    '[style.zoom]': 'scale()',
+    '(document:contextmenu)': '$event.preventDefault()',
+  },
   template: `
     @if (state(); as o) {
       <div class="panel" [style.opacity]="opacity()">
