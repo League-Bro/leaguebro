@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, effect, inject, signal, untracked } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { UpdateService } from '../core/update.service';
 import { LiveView } from './live-view';
@@ -39,7 +39,12 @@ const PHASE_LABELS: Record<string, string> = {
       </button>
       <nav>
         @for (t of tabs; track t.id) {
-          <button [class.active]="tab() === t.id" (click)="go(t.id)">{{ t.label }}</button>
+          <button [class.active]="tab() === t.id" [title]="t.label + ' (Ctrl+' + ($index + 1) + ')'" (click)="go(t.id)">
+            {{ t.label }}
+            @if (t.id === 'live' && tab() !== 'live' && liveActivity(); as what) {
+              <span class="live-dot" [title]="what"></span>
+            }
+          </button>
         }
       </nav>
       <div class="spacer"></div>
@@ -86,7 +91,7 @@ const PHASE_LABELS: Record<string, string> = {
         <button class="back" title="Back (Alt+←)" (click)="back()">← Back to {{ label(b) }}</button>
       }
       @switch (tab()) {
-        @case ('live') { <rl-live /> }
+        @case ('live') { <rl-live (open)="go($event)" /> }
         @case ('champions') { <rl-champions /> }
         @case ('tiers') { <rl-tierlist (openChampion)="openChampion($event)" /> }
         @case ('patch') { <rl-patch /> }
@@ -100,6 +105,7 @@ const PHASE_LABELS: Record<string, string> = {
   host: {
     '(document:keydown.alt.arrowleft)': 'back()',
     '(document:mouseup)': 'mouseBack($event)',
+    '(document:keydown)': 'tabKey($event)',
   },
   styles: `
     :host { display: flex; flex-direction: column; height: 100vh; }
@@ -120,7 +126,12 @@ const PHASE_LABELS: Record<string, string> = {
       display: flex; gap: 2px; padding: 4px;
       background: var(--bg-sunken); border: 1px solid var(--line); border-radius: 999px;
     }
-    nav button { background: none; border: none; padding: 6px 16px; color: var(--text-dim); font-weight: 500; }
+    nav button { position: relative; background: none; border: none; padding: 6px 16px; color: var(--text-dim); font-weight: 500; }
+    .live-dot {
+      position: absolute; top: 5px; right: 7px; width: 7px; height: 7px; border-radius: 50%;
+      background: var(--accent); box-shadow: 0 0 8px var(--accent-glow); animation: pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse { 50% { opacity: 0.35; } }
     nav button:hover:not(:disabled) { color: var(--text); background: var(--bg-hover); }
     nav button.active, nav button.active:hover:not(:disabled) {
       color: var(--on-accent); background: var(--accent); font-weight: 600; box-shadow: 0 2px 14px var(--accent-glow);
@@ -169,6 +180,37 @@ export class Shell implements OnInit {
   ];
   ngOnInit(): void {
     this.updates.start();
+  }
+
+  /** What's on the Live tab right now: champ select, the game, or a post-game summary not yet closed. */
+  protected readonly liveActivity = computed(() => {
+    if (this.rift.champSelect()) return 'Champ select';
+    if (this.rift.loading()) return 'In game';
+    const pg = this.rift.postGame();
+    return pg && pg.gameId !== this.rift.closedPostGame() ? 'Game summary' : null;
+  });
+
+  constructor() {
+    // Champ select, the loading screen and the post-game summary each pull you to the Live tab once
+    // when they start (Back returns you); switching away afterwards is left alone.
+    effect(() => {
+      if (!this.liveActivity()) return;
+      untracked(() => {
+        const t = this.tab();
+        if (t === 'live') return;
+        this.backTo.set(t);
+        this.tab.set('live');
+      });
+    });
+  }
+
+  /** Ctrl+1…6 switch tabs. */
+  protected tabKey(e: KeyboardEvent): void {
+    if (!e.ctrlKey || e.altKey || e.shiftKey || e.metaKey) return;
+    const t = this.tabs[Number(e.key) - 1];
+    if (!t) return;
+    e.preventDefault();
+    this.go(t.id);
   }
 
   /** The screen a link brought you here from, for the Back button. Cleared when you pick a tab yourself. */

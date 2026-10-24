@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, output, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { PlayerCard } from './player-card';
@@ -21,6 +21,12 @@ import { ImportEvent } from '../core/models';
       <div class="empty card">
         <h2>Waiting for League</h2>
         <p class="muted">Open the League client and League Bro will connect on its own. If it never connects, set your install folder under Settings.</p>
+        <p class="faint">These work without the client:</p>
+        <div class="row links">
+          <button (click)="open.emit('champions')">Champion builds</button>
+          <button (click)="open.emit('tiers')">Tier list</button>
+          <button (click)="open.emit('profile')">Your profile</button>
+        </div>
       </div>
     } @else if (rift.champSelect(); as cs) {
       <section class="hero card">
@@ -50,7 +56,7 @@ import { ImportEvent } from '../core/models';
             }
           </div>
         </div>
-        <button class="primary" [disabled]="!cs.myChampionId || busy()" (click)="importNow()">Import now</button>
+        <button class="primary" [disabled]="!cs.myChampionId || busy()" (click)="importNow()">{{ busy() ? 'Importing…' : 'Import now' }}</button>
       </section>
       <rl-matchup />
       <rl-rec-card />
@@ -141,7 +147,7 @@ import { ImportEvent } from '../core/models';
             <h2>Swiftplay</h2>
             <span class="muted">{{ swiftAutoText() }}</span>
           </div>
-          <button class="primary" [disabled]="busy() || !swiftHasChamp()" (click)="importSwiftplay()">Import runes</button>
+          <button class="primary" [disabled]="busy() || !swiftHasChamp()" (click)="importSwiftplay()">{{ busy() ? 'Importing…' : 'Import runes' }}</button>
         </div>
         @if (swiftError(); as err) {
           <div class="import bad">{{ err }}</div>
@@ -179,6 +185,7 @@ import { ImportEvent } from '../core/models';
     .top-hint { display: block; margin-bottom: 14px; }
     .empty { max-width: 560px; margin: 60px auto; text-align: center; }
     .empty h2 { font-size: 18px; margin-bottom: 6px; }
+    .empty .links { justify-content: center; flex-wrap: wrap; }
     .hero { position: relative; display: flex; align-items: center; gap: 20px; margin-bottom: 8px; padding: 24px; min-height: 132px; }
     .hero > :not(.splash) { position: relative; }
     .hero .big { width: 80px; height: 80px; border-radius: 18px; border: 2px solid var(--accent); background: var(--bg-sunken); box-shadow: 0 0 22px var(--accent-glow); }
@@ -207,6 +214,8 @@ import { ImportEvent } from '../core/models';
 })
 export class LiveView {
   protected readonly rift = inject(RiftService);
+  /** Asks the shell to switch tabs (the client-free pages, from the "Waiting for League" card). */
+  readonly open = output<'champions' | 'tiers' | 'profile'>();
   protected readonly busy = signal(false);
   protected readonly manualMsg = signal<string | null>(null);
 
