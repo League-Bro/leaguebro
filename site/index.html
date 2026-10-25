@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-os="win">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>League Bro: a free League of Legends companion app</title>
-  <meta name="description" content="League Bro is a free, open-source hobby project: a small Windows app that sets your runes and build in champ select, shows your lane matchup, keeps a small overlay in game and sums up your game after.">
+  <meta name="description" content="League Bro is a free, open-source hobby project: a small Windows and Mac app that sets your runes and build in champ select, shows your lane matchup, keeps a small overlay in game and sums up your game after.">
   <meta property="og:title" content="League Bro">
-  <meta property="og:description" content="A free, open-source League of Legends companion for Windows. A hobby project.">
+  <meta property="og:description" content="A free, open-source League of Legends companion for Windows and Mac. A hobby project.">
   <meta property="og:image" content="https://doliaro.github.io/leaguebro/shots/og.jpg">
   <link rel="icon" type="image/png" href="icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -78,6 +78,11 @@
     .meta { font-size: 15px; color: var(--faint); line-height: 1.4; }
     .meta strong { color: var(--dim); font-weight: 600; }
     .not-windows { margin-top: 14px; font-size: 15px; color: var(--pink); }
+    .alt-os { margin: 12px 0 0; font-size: 15px; color: var(--faint); }
+
+    /* Windows or Mac: set on <html> from the visitor's computer; the switch under Installing sets data-steps. */
+    [data-os="mac"] .win-only, [data-os="win"] .mac-only { display: none !important; }
+    [data-steps="mac"] .steps-win, [data-steps="win"] .steps-mac { display: none !important; }
 
     /* Real screenshots from the app's browser preview (demo data). */
     .shot {
@@ -155,6 +160,23 @@
     }
     .window-mode span { padding: 6px 12px; color: var(--faint); }
     .window-mode span.on { background: rgba(47, 212, 196, 0.16); color: var(--teal); font-weight: 600; }
+    .os-switch {
+      display: inline-flex; margin: 0 0 28px; padding: 4px; gap: 2px;
+      border: 1px solid var(--line); border-radius: 999px; background: var(--deep);
+    }
+    .os-switch button {
+      border: none; background: none; color: var(--dim); font: 600 15px var(--font);
+      padding: 6px 18px; border-radius: 999px; cursor: pointer;
+    }
+    .os-switch button[aria-pressed="true"] { background: rgba(47, 212, 196, 0.16); color: var(--teal); }
+    .gatekeeper {
+      border-radius: 10px; background: #2a2a2c; color: #e8e8ea; padding: 14px 16px;
+      font: 13.5px -apple-system, 'Helvetica Neue', system-ui, sans-serif; max-width: 320px;
+      border: 1px solid #3a3a3d;
+    }
+    .gatekeeper b { display: block; font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .gatekeeper .row { display: flex; justify-content: flex-end; margin-top: 10px; }
+    .gatekeeper .row span { padding: 3px 12px; border-radius: 6px; background: #4a4a4e; color: #fff; }
 
     /* ---------- faq ---------- */
     .faq { display: grid; gap: 10px; max-width: 820px; }
@@ -215,7 +237,7 @@
       <div>
         <h1>League Bro</h1>
         <p class="lede">
-          A small League of Legends companion for Windows. It sets your runes and build in champ select,
+          A small League of Legends companion for Windows and Mac. It sets your runes and build in champ select,
           shows your lane matchup, keeps a little overlay of timers in game, and sums up the game when it ends.
         </p>
         <p class="lede">
@@ -224,12 +246,15 @@
         </p>
         <div class="download">
           <a class="btn" id="download" href="https://github.com/doliaro/leaguebro/releases/latest">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 5.5 10 4.5v7H3zm8-1.1L21 3v8.5H11zM3 12.5h7v7l-7-1zm8 0h10V21l-10-1.4z"/></svg>
-            <span id="download-label">Download</span>
+            <svg class="win-only" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 5.5 10 4.5v7H3zm8-1.1L21 3v8.5H11zM3 12.5h7v7l-7-1zm8 0h10V21l-10-1.4z"/></svg>
+            <svg class="mac-only" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m-5-5 5 5 5-5M4 20h16"/></svg>
+            <span id="download-label"><span class="win-only">Download for Windows</span><span class="mac-only">Download for Mac</span></span>
           </a>
-          <div class="meta" id="download-meta">Windows 10 and 11, 64-bit</div>
+          <div class="meta" id="download-meta"><span class="win-only">Windows 10 and 11, 64-bit</span><span class="mac-only">macOS 11 or newer, Apple Silicon and Intel</span></div>
         </div>
-        <p class="not-windows" id="not-windows" hidden>League Bro runs on Windows only. Open this page on the PC you play League on.</p>
+        <p class="alt-os" id="alt-os">Also for <a id="alt-link" href="https://github.com/doliaro/leaguebro/releases/latest"><span class="mac-only">Windows</span><span class="win-only">Mac</span></a></p>
+        <p class="not-windows" id="mac-soon" hidden>The Mac version comes out with the next release. Check back soon.</p>
+        <p class="not-windows" id="not-windows" hidden>League Bro runs on Windows and Mac. Open this page on the computer you play League on.</p>
       </div>
 
       <figure class="shot">
@@ -334,16 +359,32 @@
       </div>
     </section>
 
-    <section id="install">
+    <section id="install" data-steps="win">
       <div class="wrap">
         <h2>Installing</h2>
         <p class="sub">After that it updates itself: a banner shows when there's a new version, and your version is shown next to your name at the top of the window.</p>
+        <div class="os-switch" role="group" aria-label="Show steps for">
+          <button type="button" data-pick="win" aria-pressed="true">Windows</button>
+          <button type="button" data-pick="mac" aria-pressed="false">Mac</button>
+        </div>
         <ol class="steps">
-          <li>
+          <li class="steps-win">
             <h3>Download and run it</h3>
             <p>Run the installer you downloaded. It installs for your Windows account only, so it doesn't ask for admin rights.</p>
           </li>
-          <li>
+          <li class="steps-mac">
+            <h3>Download and install it</h3>
+            <p>Open the .dmg you downloaded and drag League Bro into Applications. One download works on Apple Silicon and Intel Macs.</p>
+          </li>
+          <li class="steps-mac">
+            <h3>Allow it to open</h3>
+            <p>League Bro isn't notarized by Apple, so the first time your Mac says it can't check it. Open System Settings, then Privacy &amp; Security, scroll down and click <strong>Open Anyway</strong>.</p>
+            <div class="gatekeeper" aria-hidden="true">
+              <b>"League Bro" was blocked to protect your Mac.</b>
+              <div class="row"><span>Open Anyway</span></div>
+            </div>
+          </li>
+          <li class="steps-win">
             <h3>Allow it past SmartScreen</h3>
             <p>League Bro isn't code-signed yet, so Windows warns about it the first time. Click <strong>More info</strong>, then <strong>Run anyway</strong>.</p>
             <div class="smartscreen" aria-hidden="true">
@@ -379,6 +420,10 @@
             <div><p>Windows trusts apps that are signed with a paid certificate and downloaded by lots of people. League Bro isn't signed yet. The installer is built from the public source code on GitHub, so you can see exactly what's in it.</p></div>
           </details>
           <details>
+            <summary>Why does my Mac say it can't check the app?</summary>
+            <div><p>Macs open apps without asking only when Apple has checked them, which needs a paid Apple developer account. League Bro doesn't have one. Click <strong>Open Anyway</strong> in System Settings, under Privacy &amp; Security, once, and it opens normally after that. The app is built from the public source code on GitHub.</p></div>
+          </details>
+          <details>
             <summary>The overlay doesn't show in game</summary>
             <div><p>Set League's Window Mode to Borderless or Windowed. Fullscreen draws over every other window. Also check that "Show the in-game overlay" is on in League Bro's Settings.</p></div>
           </details>
@@ -392,7 +437,7 @@
           </details>
           <details>
             <summary>Does it collect any data?</summary>
-            <div><p>Only an anonymous count of how many people use it. Once a day, League Bro sends "the app was opened" with a random ID made up on your PC, the app version and the Windows version, through <a href="https://aptabase.com">Aptabase</a>. It never sends your Riot ID, your games or your settings. Turn it off in Settings, under Privacy, with "Share anonymous usage stats".</p></div>
+            <div><p>Only an anonymous count of how many people use it. Once a day, League Bro sends "the app was opened" with a random ID made up on your computer, the app version and the Windows or macOS version, through <a href="https://aptabase.com">Aptabase</a>. It never sends your Riot ID, your games or your settings. Turn it off in Settings, under Privacy, with "Share anonymous usage stats".</p></div>
           </details>
           <details>
             <summary>Which version do I have?</summary>
@@ -408,7 +453,7 @@
           </details>
           <details>
             <summary>How do I uninstall it?</summary>
-            <div><p>Windows Settings, Apps, Installed apps, League Bro, Uninstall.</p></div>
+            <div><p>On Windows: Settings, Apps, Installed apps, League Bro, Uninstall. On a Mac: drag League Bro from Applications to the Trash.</p></div>
           </details>
         </div>
       </div>
@@ -454,26 +499,59 @@
       var btn = document.getElementById('download');
       var label = document.getElementById('download-label');
       var meta = document.getElementById('download-meta');
+      var altLink = document.getElementById('alt-link');
+      var ua = navigator.userAgent;
+      // iPads report themselves as Macs; a touch screen gives them away.
+      var mac = /Macintosh|Mac OS X/i.test(ua) && !(navigator.maxTouchPoints > 1);
+      var os = mac ? 'mac' : 'win';
+      document.documentElement.setAttribute('data-os', os);
 
-      if (!/Windows/i.test(navigator.userAgent)) {
+      // The Installing switch only changes which steps show.
+      var install = document.getElementById('install');
+      function show(which) {
+        install.setAttribute('data-steps', which);
+        document.querySelectorAll('.os-switch button').forEach(function (b) {
+          b.setAttribute('aria-pressed', String(b.getAttribute('data-pick') === which));
+        });
+      }
+      document.querySelectorAll('.os-switch button').forEach(function (b) {
+        b.addEventListener('click', function () { show(b.getAttribute('data-pick')); });
+      });
+      show(os);
+
+      if (!mac && !/Windows/i.test(ua)) {
         document.getElementById('not-windows').hidden = false;
       }
 
       fetch('https://api.github.com/repos/' + REPO + '/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
         .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
         .then(function (rel) {
-          var exe = (rel.assets || []).filter(function (a) { return /-setup\.exe$/i.test(a.name); })[0];
-          if (!exe) return;
-          btn.href = exe.browser_download_url;
+          var pick = function (re) { return (rel.assets || []).filter(function (a) { return re.test(a.name); })[0]; };
+          var exe = pick(/-setup\.exe$/i);
+          var dmg = pick(/\.dmg$/i);
+          if (mac && !dmg) {
+            // No Mac build in this release yet: say so instead of offering the .exe.
+            document.getElementById('mac-soon').hidden = false;
+            document.getElementById('alt-os').hidden = true;
+            label.textContent = 'Mac version coming soon';
+            meta.hidden = true;
+            return;
+          }
+          var file = mac ? dmg : exe;
+          if (!file) return;
+          btn.href = file.browser_download_url;
+          var other = mac ? exe : dmg;
+          if (other) altLink.href = other.browser_download_url;
+          else document.getElementById('alt-os').hidden = true;
           var version = (rel.tag_name || '').replace(/^v/, '');
-          label.textContent = 'Download League Bro' + (version ? ' ' + version : '');
-          var mb = (exe.size / 1048576).toFixed(1);
+          label.textContent = 'Download League Bro' + (version ? ' ' + version : '') + (mac ? ' for Mac' : '');
+          var mb = (file.size / 1048576).toFixed(1);
           var date = rel.published_at
             ? new Date(rel.published_at).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
             : '';
           meta.innerHTML = '';
           var top = document.createElement('strong');
-          top.textContent = 'Windows 10 and 11, ' + mb + ' MB';
+          top.textContent = (mac ? 'macOS 11 or newer, ' : 'Windows 10 and 11, ') + mb + ' MB';
           meta.appendChild(top);
           if (date) {
             meta.appendChild(document.createElement('br'));
