@@ -6,13 +6,14 @@ import { RecCard } from './rec-card';
 import { MatchupCard } from './matchup-card';
 import { PostGameView } from './post-game';
 import { FullscreenHint } from './fullscreen-hint';
+import { TeamDamage } from './team-damage';
 import { championIcon, clock, positionLabel } from '../core/assets';
 import { ImportEvent } from '../core/models';
 
 @Component({
   selector: 'rl-live',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [PlayerCard, RecCard, MatchupCard, PostGameView, DecimalPipe, FullscreenHint],
+  imports: [PlayerCard, RecCard, MatchupCard, PostGameView, DecimalPipe, FullscreenHint, TeamDamage],
   template: `
     @if (rift.fullscreenHint()) {
       <rl-fullscreen-hint class="top-hint" />
@@ -58,6 +59,7 @@ import { ImportEvent } from '../core/models';
         </div>
         <button class="primary" [disabled]="!cs.myChampionId || busy()" (click)="importNow()">{{ busy() ? 'Importing…' : 'Import now' }}</button>
       </section>
+      <rl-team-damage [allies]="csAllyIds()" [enemies]="csEnemyIds()" />
       <rl-matchup />
       <rl-rec-card />
 
@@ -112,6 +114,7 @@ import { ImportEvent } from '../core/models';
           }
         </section>
       }
+      <rl-team-damage [allies]="loadAllyIds()" [enemies]="loadEnemyIds()" />
       <rl-matchup />
       <rl-rec-card />
       <div class="row head">
@@ -284,6 +287,18 @@ export class LiveView {
     return [...l.allies, ...l.enemies].filter((p) => p.puuid && !p.isMe && profiles[p.puuid]).length;
   });
 
+  /** Champions for the damage bars. In champ select an ally's hover counts until they lock in. */
+  protected readonly csAllyIds = computed(() => this.rift.champSelect()?.allies.map((p) => p.championId || p.pickIntent) ?? []);
+  protected readonly csEnemyIds = computed(() => this.rift.champSelect()?.enemies.map((p) => p.championId) ?? []);
+  // Once the game runs, its own player list wins: the loading screen data can miss
+  // champions (bots, or picks it hadn't caught yet).
+  protected readonly loadAllyIds = computed(
+    () => nonEmpty(this.rift.overlay()?.allyChampions) ?? this.rift.loading()?.allies.map((p) => p.championId) ?? [],
+  );
+  protected readonly loadEnemyIds = computed(
+    () => nonEmpty(this.rift.overlay()?.enemyChampions) ?? this.rift.loading()?.enemies.map((p) => p.championId) ?? [],
+  );
+
   protected icon = championIcon;
   protected pos = positionLabel;
   protected time = clock;
@@ -317,4 +332,8 @@ export class LiveView {
       setTimeout(() => this.manualMsg.set(null), 8000);
     }
   }
+}
+
+function nonEmpty(ids: number[] | undefined): number[] | undefined {
+  return ids?.length ? ids : undefined;
 }

@@ -393,6 +393,9 @@ export interface OverlayState {
   lane: LaneDiff | null;
   /** Your team's item value against the enemy team's. */
   team?: TeamDiff | null;
+  /** Champion ids on each team, bots included, for the Live tab's damage bars. */
+  allyChampions?: number[];
+  enemyChampions?: number[];
   /** Situational items for this game, best first (empty when off in Settings). */
   situational: SituationalPick[];
 }

@@ -122,6 +122,9 @@ pub struct OverlayState {
     pub lane: Option<LaneDiff>,
     /// Your team's item value against the enemy team's (every mode).
     pub team: Option<TeamDiff>,
+    /// Champion ids on each team (filled in by the engine), for the Live tab's damage bars.
+    pub ally_champions: Vec<i64>,
+    pub enemy_champions: Vec<i64>,
     /// Situational items for this game, best first (empty when off in Settings).
     pub situational: Vec<SituationalPick>,
 }
@@ -254,6 +257,19 @@ pub fn enemies(data: &Value) -> Vec<ScoreboardEnemy> {
             assists: int(p, "/scores/assists"),
         })
         .collect()
+}
+
+/// Every player's champion as (raw key, display name): your team, then the other.
+/// Bots are in here too, unlike the client's loading screen data.
+pub fn team_champions(data: &Value) -> (Vec<(String, String)>, Vec<(String, String)>) {
+    let Some(team) = find_me(data).map(|p| text(p, "team")) else { return Default::default() };
+    list(data, "allPlayers")
+        .iter()
+        .map(|p| (text(p, "team") == team, (raw_champion_key(p), text(p, "championName").to_string())))
+        .fold((Vec::new(), Vec::new()), |(mut ours, mut theirs), (mine, c)| {
+            if mine { ours.push(c) } else { theirs.push(c) }
+            (ours, theirs)
+        })
 }
 
 /// Your item ids, as the normal items (`base_item`), so they match OP.GG's builds.
@@ -526,6 +542,8 @@ pub fn overlay_state(
         next_skill: next_skill(data, guide.skill_order),
         lane: lane_diff(data, items),
         team: team_diff(data, items),
+        ally_champions: Vec::new(),
+        enemy_champions: Vec::new(),
         situational: Vec::new(),
     }
 }
@@ -759,6 +777,14 @@ mod tests {
         assert_eq!(foes.len(), 1);
         assert_eq!((foes[0].champion_name.as_str(), foes[0].items.clone(), foes[0].kills, foes[0].deaths), ("Zed", vec![3075], 5, 2));
         assert_eq!(my_items(&d, &HashMap::new()), vec![1056, 3020]);
+    }
+
+    #[test]
+    fn champions_by_team() {
+        let (ours, theirs) = team_champions(&sample(600.0, json!([])));
+        let names = |t: &[(String, String)]| t.iter().map(|(_, n)| n.clone()).collect::<Vec<_>>();
+        assert_eq!(names(&ours), vec!["Ahri", "Lee Sin"]);
+        assert_eq!(theirs, vec![("Zed".to_string(), "Zed".to_string())]);
     }
 
     #[test]

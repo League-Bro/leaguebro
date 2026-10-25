@@ -132,6 +132,8 @@ export function demoSnapshot(): Snapshot {
       nextSkill: 'Q',
       lane: { opponent: 'Zed', championId: 238, mine: 5350, theirs: 3967 },
       team: { ours: 21400, theirs: 22650 },
+      allyChampions: [516, 64, 103, 222, 412],
+      enemyChampions: [122, 254, 238, 145, 555],
       // Priced like the engine does; Void Staff's Blasting Wand is owned.
       situational: demoSituational(true).items.map((it) => {
         const price = { 3102: 3000, 3135: 2150, 3165: 2950 }[it.id] ?? 0;

@@ -1204,6 +1204,10 @@ impl Engine {
             if let Some(lane) = st.lane.as_mut() {
                 lane.champion_id = sh.live_champion(&lane.opponent_key, &lane.opponent).map_or(0, |c| c.id);
             }
+            let (ours, theirs) = live::team_champions(&data);
+            let ids = |t: &[(String, String)]| t.iter().filter_map(|(k, n)| sh.live_champion(k, n)).map(|c| c.id).collect();
+            st.ally_champions = ids(&ours);
+            st.enemy_champions = ids(&theirs);
             sh.overlay = Some(st.clone());
             let enemies: Vec<EnemySeen> = live::enemies(&data)
                 .into_iter()
