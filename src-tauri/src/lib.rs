@@ -392,11 +392,19 @@ fn open_guide_videos(champion: String) -> Result<(), String> {
     open_in_browser(url.as_str())
 }
 
-/// Hands a URL to Windows' default browser. Passed as one argument (no
-/// cmd.exe), so `&` in the query string is safe. Callers check the URL first.
+/// Hands a URL to the default browser. Passed as one argument (no shell),
+/// so `&` in the query string is safe. Callers check the URL first.
 fn open_in_browser(url: &str) -> Result<(), String> {
-    std::process::Command::new("rundll32")
-        .args(["url.dll,FileProtocolHandler", url])
+    let mut cmd = if cfg!(windows) {
+        let mut c = std::process::Command::new("rundll32");
+        c.arg("url.dll,FileProtocolHandler");
+        c
+    } else if cfg!(target_os = "macos") {
+        std::process::Command::new("open")
+    } else {
+        std::process::Command::new("xdg-open")
+    };
+    cmd.arg(url)
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("Couldn't open the browser: {e}"))
@@ -427,6 +435,10 @@ pub fn run() {
             });
             if let Some(overlay) = app.get_webview_window("overlay") {
                 let _ = overlay.set_ignore_cursor_events(true);
+                // macOS puts a full-screen game in its own Space; this lets the
+                // overlay follow it there instead of staying on the desktop.
+                #[cfg(target_os = "macos")]
+                let _ = overlay.set_visible_on_all_workspaces(true);
             }
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(engine::run(handle.clone()));

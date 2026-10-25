@@ -1,8 +1,8 @@
 //! Anonymous usage stats: at most one "app_open" event per day, sent to
 //! Aptabase, so we can see roughly how many people use League Bro.
 //!
-//! The event carries a random install ID (made up on this PC, not linked to
-//! the Riot account), the app version and the Windows version. Nothing else:
+//! The event carries a random install ID (made up on this computer, not linked to
+//! the Riot account), the app version and the Windows or macOS version. Nothing else:
 //! no Riot ID, no games, no settings. Settings → Privacy turns it off.
 //!
 //! The Aptabase app key is baked in at build time from the `APTABASE_APP_KEY`
@@ -90,7 +90,7 @@ fn event(install_id: &str, now_secs: u64) -> serde_json::Value {
         "eventName": "app_open",
         "systemProps": {
             "isDebug": cfg!(debug_assertions),
-            "osName": "Windows",
+            "osName": if cfg!(target_os = "macos") { "macOS" } else { "Windows" },
             "osVersion": sysinfo::System::os_version().unwrap_or_default(),
             "locale": "",
             "appVersion": env!("CARGO_PKG_VERSION"),

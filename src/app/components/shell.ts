@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, effect, inject, signal, untracked } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { UpdateService } from '../core/update.service';
+import { IS_MAC, MOD_KEY } from '../core/platform';
 import { LiveView } from './live-view';
 import { ChampionsView } from './champions-view';
 import { SettingsView } from './settings-view';
@@ -39,7 +40,7 @@ const PHASE_LABELS: Record<string, string> = {
       </button>
       <nav>
         @for (t of tabs; track t.id) {
-          <button [class.active]="tab() === t.id" [title]="t.label + ' (Ctrl+' + ($index + 1) + ')'" (click)="go(t.id)">
+          <button [class.active]="tab() === t.id" [title]="t.label + ' (' + modKey + ($index + 1) + ')'" (click)="go(t.id)">
             {{ t.label }}
             @if (t.id === 'live' && tab() !== 'live' && liveActivity(); as what) {
               <span class="live-dot" [title]="what"></span>
@@ -205,9 +206,12 @@ export class Shell implements OnInit {
     });
   }
 
-  /** Ctrl+1…6 switch tabs. */
+  protected readonly modKey = MOD_KEY;
+
+  /** Ctrl+1…6 (Cmd+1…6 on a Mac) switch tabs. */
   protected tabKey(e: KeyboardEvent): void {
-    if (!e.ctrlKey || e.altKey || e.shiftKey || e.metaKey) return;
+    const mod = IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+    if (!mod || e.altKey || e.shiftKey) return;
     const t = this.tabs[Number(e.key) - 1];
     if (!t) return;
     e.preventDefault();

@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, effect, inject, signal, untracked }
 import { RiftService } from '../core/rift.service';
 import { UpdateService } from '../core/update.service';
 import { FullscreenHint } from './fullscreen-hint';
+import { IS_MAC } from '../core/platform';
 import { AbilityKeys, CacheInfo, CacheName, Config, GlobalSets } from '../core/models';
 
 type BoolKey =
@@ -214,7 +215,7 @@ type BoolKey =
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.shareUsageStats" (change)="setBool('shareUsageStats', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Share anonymous usage stats</b><span>Once a day, League Bro says "the app was opened" with a random ID made up on this PC, the app version and the Windows version. Never your Riot ID, games or settings. It only helps count how many people use the app.</span></span>
+            <span class="label"><b>Share anonymous usage stats</b><span>Once a day, League Bro says "the app was opened" with a random ID made up on this computer, the app version and the {{ osName }} version. Never your Riot ID, games or settings. It only helps count how many people use the app.</span></span>
           </label>
         </section>
 
@@ -222,7 +223,7 @@ type BoolKey =
           <h2>League install folder</h2>
           <p class="faint small">Only needed if League Bro never connects. It normally finds the client on its own.</p>
           <div class="field">
-            <input type="text" class="wide" placeholder="C:\\Riot Games\\League of Legends" [value]="cfg.installDir ?? ''"
+            <input type="text" class="wide" [placeholder]="installHint" [value]="cfg.installDir ?? ''"
               (change)="setInstall($any($event.target).value)" />
           </div>
         </section>
@@ -290,6 +291,8 @@ export class SettingsView {
   protected readonly updates = inject(UpdateService);
   protected readonly error = signal('');
   protected readonly abilitySlots: (keyof AbilityKeys)[] = ['q', 'w', 'e', 'r'];
+  protected readonly osName = IS_MAC ? 'macOS' : 'Windows';
+  protected readonly installHint = IS_MAC ? '/Applications/League of Legends.app/Contents/LoL' : 'C:\\Riot Games\\League of Legends';
 
   protected readonly cache = signal<CacheInfo | null>(null);
   protected readonly clearing = signal<CacheName | null>(null);

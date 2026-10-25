@@ -92,9 +92,17 @@ fn lockfile_candidates(install_hint: Option<&str>) -> Vec<PathBuf> {
     if let Some(dir) = install_hint {
         v.push(Path::new(dir).join("lockfile"));
     }
-    for drive in ["C", "D", "E", "F"] {
-        v.push(PathBuf::from(format!(r"{drive}:\Riot Games\League of Legends\lockfile")));
-        v.push(PathBuf::from(format!(r"{drive}:\Games\Riot Games\League of Legends\lockfile")));
+    if cfg!(target_os = "macos") {
+        // The client lives inside the app bundle on macOS.
+        v.push(PathBuf::from("/Applications/League of Legends.app/Contents/LoL/lockfile"));
+        if let Some(home) = std::env::var_os("HOME") {
+            v.push(Path::new(&home).join("Applications/League of Legends.app/Contents/LoL/lockfile"));
+        }
+    } else {
+        for drive in ["C", "D", "E", "F"] {
+            v.push(PathBuf::from(format!(r"{drive}:\Riot Games\League of Legends\lockfile")));
+            v.push(PathBuf::from(format!(r"{drive}:\Games\Riot Games\League of Legends\lockfile")));
+        }
     }
     v
 }
@@ -247,5 +255,21 @@ mod tests {
         let (c, dir) = parse_cmdline(&args);
         assert_eq!(c, Some(Credentials { port: 60000, password: "tok123".into() }));
         assert_eq!(dir.as_deref(), Some(r"C:\Riot Games\League of Legends"));
+    }
+
+    #[test]
+    fn cmdline_macos() {
+        let args: Vec<String> = [
+            "/Applications/League of Legends.app/Contents/LoL/League of Legends.app/Contents/MacOS/LeagueClientUx",
+            "--app-port=61000",
+            "--remoting-auth-token=mac456",
+            "--install-directory=/Applications/League of Legends.app/Contents/LoL",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let (c, dir) = parse_cmdline(&args);
+        assert_eq!(c, Some(Credentials { port: 61000, password: "mac456".into() }));
+        assert_eq!(dir.as_deref(), Some("/Applications/League of Legends.app/Contents/LoL"));
     }
 }

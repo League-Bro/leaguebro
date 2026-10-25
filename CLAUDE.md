@@ -2,7 +2,7 @@
 
 An ad-free, lightweight League of Legends companion for Windows (a personal alternative to Blitz). Dom (GitHub `doliaro`) owns it and shares it with a few friends through GitHub Releases. Repo: https://github.com/doliaro/leaguebro (renamed from `leaguebuddy` in October 2026; the app was renamed from League Buddy to League Bro in issue 5). Dom's local folder is still `Desktop\leaguebuddy`: a fresh clone elsewhere hit Windows Smart App Control blocking Cargo's build scripts, so he kept the old folder. The updater endpoint uses the new URL; copies installed before the rename still have the old one and rely on GitHub's redirect, so never create a new `doliaro/leaguebuddy` repo.
 
-Stack: **Tauri 2** (Rust backend, `src-tauri/`) + **Angular 21** (standalone components, signals, zoneless, `src/`). Windows only.
+Stack: **Tauri 2** (Rust backend, `src-tauri/`) + **Angular 21** (standalone components, signals, zoneless, `src/`). Windows and macOS. macOS-only bits: `tauri.macos.conf.json` (`.app`/`.dmg`, ad-hoc signing), the lockfile path inside `/Applications/League of Legends.app/Contents/LoL` (`lcu.rs`), `open` for links (`lib.rs`), the overlay joining every Space (`lib.rs` setup) and Cmd+1…6 tabs (`core/platform.ts`). Nobody on the team has a Mac, so Mac builds only come from the release workflow.
 
 ## Working with Dom
 
@@ -119,7 +119,7 @@ src-tauri/tauri.conf.json   windows (main + transparent overlay), CSP, updater p
 src/app/core/   rift.service.ts (events/commands), update.service.ts (auto-update), models.ts, demo.ts, assets.ts, why.ts (recommendation explanations)
 src/app/components/  shell, live-view, post-game, champions-view, guide-card, profile-view, rec-card, player-card, patch-view, settings-view, feedback-view, overlay
                      (the Profile page isn't in the tab bar; the "League Bro" brand and your name in the header open it)
-.github/workflows/build-windows.yml   release workflow (tauri-action, signs updates, publishes latest.json)
+.github/workflows/build-windows.yml   release workflow: Windows job, then a macOS job (universal .dmg) that adds to the same latest.json
 .github/workflows/pages.yml           publishes site/ to GitHub Pages (https://doliaro.github.io/leaguebro/)
 .github/ISSUE_TEMPLATE/               bug report + feature request issue forms; the Feedback tab opens them prefilled
                                       (query params = field ids) via `open_issue_page`, which only opens github.com/doliaro/leaguebro/issues links
@@ -135,7 +135,7 @@ Adding a setting: add it to `config.rs` (with a default; `#[serde(default)]` kee
 ## Releases and auto-updates
 
 - Version lives in `src-tauri/tauri.conf.json`, `package.json` and `src-tauri/Cargo.toml`, mirrored in `package-lock.json` (twice) and `Cargo.lock` (the `leaguebro` entry). Bump with `bump` from the project folder (next patch version, one above the current version or newest local `v*` tag) or `bump <x.y.z>`; `bump.cmd` just calls `scripts\bump-version.cmd`. It edits just those six spots (no find-and-replace; the lock files hold unrelated packages at the same version numbers), refuses a version not higher than the current one or the newest local `v*` tag, and writes nothing unless every spot matched.
-- Dom pushes, then runs **Actions → Release Windows installer → Run workflow**. That publishes `League.Bro_x.y.z_x64-setup.exe`, the `.sig`, and `latest.json`.
+- Dom pushes, then runs **Actions → Release installers → Run workflow**. That publishes `League.Bro_x.y.z_x64-setup.exe`, `League.Bro_x.y.z_universal.dmg`, the updater bundles with their `.sig`s, and `latest.json`.
 - Installed copies check `releases/latest/download/latest.json` on startup and every 6 h, then show an "Update and restart" banner. Dev builds never self-update (`isDevMode()`).
 - Updates are signed. The private key and password are the repo secrets `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; the public key is in `tauri.conf.json`. Never change the pubkey unless Dom has lost the key, because that breaks updates for everyone already installed.
 - The website (`site/`) needs no change per release. Keep its copy in step with the app when features change, and keep the Riot "isn't endorsed by Riot Games" notice in its footer (required for fan projects). It uses no Riot logos or champion art.

@@ -160,8 +160,8 @@ const REGIONS = [
                 <h3>Toughest {{ tough() === 'lane' ? 'lane opponents' : 'enemies' }}</h3>
                 @if (hasLanes() && hasEnemies()) {
                   <div class="seg mini" role="tablist">
-                    <button role="tab" [class.on]="tough() === 'lane'" [attr.aria-selected]="tough() === 'lane'" (click)="toughTab.set('lane')">Lane</button>
                     <button role="tab" [class.on]="tough() === 'enemy'" [attr.aria-selected]="tough() === 'enemy'" (click)="toughTab.set('enemy')">Any enemy</button>
+                    <button role="tab" [class.on]="tough() === 'lane'" [attr.aria-selected]="tough() === 'lane'" (click)="toughTab.set('lane')">Lane</button>
                   </div>
                 }
               </div>
@@ -447,7 +447,7 @@ export class ProfileView {
   protected readonly hasLanes = computed(() => this.matches().some((m) => m.laneOpponent));
   protected readonly hasEnemies = computed(() => this.matches().some((m) => m.enemies.length > 0));
   /** The Toughest card's tab; falls back to whichever list has data. */
-  protected readonly toughTab = signal<'lane' | 'enemy'>('lane');
+  protected readonly toughTab = signal<'lane' | 'enemy'>('enemy');
   protected readonly tough = computed(() => (this.hasLanes() && this.hasEnemies() ? this.toughTab() : this.hasLanes() ? 'lane' : 'enemy'));
   protected readonly winRate = computed(() => {
     const i = this.ins();

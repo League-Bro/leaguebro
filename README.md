@@ -1,6 +1,6 @@
 # League Bro
 
-A small, ad-free League of Legends companion for Windows. It imports your runes automatically, shows who you're playing with and against, and adds a lightweight in-game overlay with objective timers. There are no ads, no accounts and no tracking.
+A small, ad-free League of Legends companion for Windows and Mac. It imports your runes automatically, shows who you're playing with and against, and adds a lightweight in-game overlay with objective timers. There are no ads, no accounts and no tracking.
 
 ## Install
 
@@ -10,13 +10,15 @@ Download it from **[doliaro.github.io/leaguebro](https://doliaro.github.io/leagu
 2. Run it. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**. That warning appears because the app isn't code-signed, not because something is wrong with it.
 3. Open League Bro, then open League. It connects on its own.
 
+On a Mac, download `League.Bro_x.y.z_universal.dmg` from the same release instead, open it and drag League Bro into Applications. The first time you open it, macOS says it can't check the app, because the app isn't notarized by Apple. Go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. One download works on both Apple Silicon and Intel Macs.
+
 In League, set **Settings → Video → Window Mode** to **Borderless** (or Windowed). In Fullscreen the game covers the overlay.
 
 To move the overlay, click the padlock in its top-right corner, drag it where you want it, then click the padlock again. The rest of the overlay ignores the mouse, so clicks go through to the game.
 
 League Bro updates itself. When a new version is out, a banner at the top of the window offers **Update and restart**. It never installs in the middle of a game unless you click. You can also check under **Settings → About & updates**.
 
-To uninstall, use Windows **Settings → Apps → Installed apps → League Bro**.
+To uninstall, use Windows **Settings → Apps → Installed apps → League Bro**. On a Mac, drag League Bro from Applications to the Trash.
 
 If you installed the app before it was renamed to League Bro, updating installs League Bro next to the old copy and starts with default settings. Uninstall the old copy from Installed apps, and delete its old rune page and item set in the League client.
 
@@ -174,7 +176,7 @@ One-time setup: in the repo's **Settings → Pages**, set **Source** to **GitHub
 
 ### Releasing a new version
 
-Installers are built on GitHub's servers by `.github/workflows/build-windows.yml`, so releasing doesn't need Rust installed locally.
+Installers are built on GitHub's servers by `.github/workflows/build-windows.yml` (Windows first, then the Mac app on a macOS runner), so releasing doesn't need Rust or a Mac.
 
 1. Bump the version from the project folder. `bump` goes to the next patch version (e.g. `0.1.13` → `0.1.14`); `bump 0.2.0` sets a specific one. Installed copies only update to a higher version, so it has to go up:
    ```powershell
@@ -188,7 +190,7 @@ Installers are built on GitHub's servers by `.github/workflows/build-windows.yml
    git commit -m "Release 0.1.7"
    git push
    ```
-3. Go to **Actions → Release Windows installer → Run workflow**. About 10–15 minutes later, a new release appears with the installer attached. Everyone who has League Bro installed gets the update banner the next time it checks.
+3. Go to **Actions → Release installers → Run workflow**. About 10–15 minutes later, a new release appears with the Windows installer attached; the Mac `.dmg` follows about 15 minutes after that. Everyone who has League Bro installed gets the update banner the next time it checks.
 
 ### Auto-updates
 
