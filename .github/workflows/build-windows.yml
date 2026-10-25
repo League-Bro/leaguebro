@@ -52,6 +52,9 @@ jobs:
           # Signs the update so installed copies trust it (see README: "Auto-updates").
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Aptabase key for the anonymous daily usage ping (see README: "Usage stats key").
+          # Optional: without it the installer simply sends no stats.
+          APTABASE_APP_KEY: ${{ secrets.APTABASE_APP_KEY }}
         with:
           tagName: v__VERSION__
           releaseName: League Bro v__VERSION__
