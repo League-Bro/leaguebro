@@ -1,3 +1,4 @@
+import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, ElementRef, afterRenderEffect, computed, inject, signal, viewChild } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { championIcon, clock } from '../core/assets';
@@ -11,6 +12,7 @@ const PREVIEW: OverlayState = {
   kills: 3,
   deaths: 1,
   assists: 5,
+  cs: 90,
   timers: [
     { key: 'dragon', label: 'Dragon', spawnAt: 860, side: 'neutral' },
     { key: 'inhib', label: 'Enemy Mid inhib', spawnAt: 1012, side: 'enemy' },
@@ -28,6 +30,9 @@ const PREVIEW: OverlayState = {
     { id: 3089, name: "Rabadon's Deathcap", price: 3600, affordable: false },
     { id: 3135, name: 'Void Staff', price: 3000, affordable: false },
   ],
+  buyNow: [
+    { id: 3802, name: 'Lost Chapter', count: 1, price: 1200 },
+  ],
   hasBuild: true,
   skillMax: ['Q', 'W', 'E'],
   nextSkill: 'Q',
@@ -42,7 +47,7 @@ const PREVIEW: OverlayState = {
 @Component({
   selector: 'rl-overlay',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [],
+  imports: [DecimalPipe],
   // Laid out at the configured width whatever the window's size, so the
   // measured height is right before the window is resized to fit it.
   // No right-click menu: WebView2's own (Back, Refresh, Inspect…) would show over the game.
@@ -58,46 +63,43 @@ const PREVIEW: OverlayState = {
           <!-- Invisible: unlocked looks the same as locked, it just takes the drag. -->
           <div class="drag-layer" data-tauri-drag-region></div>
         }
-        <!-- One line: skill order, item gold diffs, padlock. -->
-        <div class="top">
-          @if (o.skillMax.length) {
-            <div class="skills">
-              @for (k of o.skillMax; track $index; let last = $last) {
-                <b [class.levelup]="k === o.nextSkill">{{ rift.abilityKey(k) }}</b>@if (!last) { <span class="sep">›</span> }
-              }
-              @if (o.nextSkill && !o.skillMax.includes(o.nextSkill)) {
-                <b class="levelup">{{ rift.abilityKey(o.nextSkill) }}</b>
-              }
-            </div>
-          }
-          <!-- Item gold: you vs your lane opponent (their icon), then team vs team. -->
-          @if (showLane() && o.lane; as l) {
-            <div class="gold">
-              <span class="cap">vs</span>
-              @if (champIcon(l.championId ?? 0); as url) {
-                <img class="champ" [src]="url" [alt]="l.opponent" (error)="rift.hideImg($event)" />
-              } @else {
-                <span class="cap">{{ l.opponent.slice(0, 3) }}</span>
-              }
-              <svg class="coin" viewBox="0 0 16 16" aria-hidden="true"><g stroke="#3a2606" stroke-width="0.8"><path d="M2.5 11.2v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1v-1.6z" fill="#b07a1e" /><ellipse cx="8" cy="11.2" rx="5.5" ry="2.1" fill="#e9b949" /><path d="M2.5 7.7v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1V7.7z" fill="#b07a1e" /><ellipse cx="8" cy="7.7" rx="5.5" ry="2.1" fill="#e9b949" /><path d="M2.5 4.2v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1V4.2z" fill="#b07a1e" /><ellipse cx="8" cy="4.2" rx="5.5" ry="2.1" fill="#fbd96b" /></g><ellipse cx="8" cy="4.2" rx="3" ry="1" fill="none" stroke="#c48d22" stroke-width="0.7" /></svg>
-              <span class="diff" [class.ahead]="l.mine > l.theirs" [class.behind]="l.mine < l.theirs">{{ gold(l.mine - l.theirs) }}</span>
-            </div>
-          }
-          @if (showLane() && o.team; as t) {
-            <div class="gold">
-              <span class="cap">Team</span>
-              <svg class="coin" viewBox="0 0 16 16" aria-hidden="true"><g stroke="#3a2606" stroke-width="0.8"><path d="M2.5 11.2v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1v-1.6z" fill="#b07a1e" /><ellipse cx="8" cy="11.2" rx="5.5" ry="2.1" fill="#e9b949" /><path d="M2.5 7.7v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1V7.7z" fill="#b07a1e" /><ellipse cx="8" cy="7.7" rx="5.5" ry="2.1" fill="#e9b949" /><path d="M2.5 4.2v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1V4.2z" fill="#b07a1e" /><ellipse cx="8" cy="4.2" rx="5.5" ry="2.1" fill="#fbd96b" /></g><ellipse cx="8" cy="4.2" rx="3" ry="1" fill="none" stroke="#c48d22" stroke-width="0.7" /></svg>
-              <span class="diff" [class.ahead]="t.ours > t.theirs" [class.behind]="t.ours < t.theirs">{{ gold(t.ours - t.theirs) }}</span>
-            </div>
-          }
-          <button #lockBtn class="lock" [title]="locked() ? 'Unlock to move' : 'Lock in place'"
-            (click)="rift.setOverlayLocked(!locked())">
-            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
-              <rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor" />
-              <path [attr.d]="locked() ? 'M5 7V5a3 3 0 0 1 6 0v2' : 'M5 7V5a3 3 0 0 1 6 0'" fill="none" stroke="currentColor" stroke-width="1.6" />
-            </svg>
-          </button>
-        </div>
+        <!-- One line, spread across the width: skill order, item gold diffs, CS/min (each can be off). -->
+        @if (o.skillMax.length || (showLane() && o.lane) || (showTeam() && o.team) || (showCs() && csPerMin(o))) {
+          <div class="top">
+            @if (o.skillMax.length) {
+              <div class="skills">
+                @for (k of o.skillMax; track $index; let last = $last) {
+                  <b [class.levelup]="k === o.nextSkill">{{ rift.abilityKey(k) }}</b>@if (!last) { <span class="sep">›</span> }
+                }
+                @if (o.nextSkill && !o.skillMax.includes(o.nextSkill)) {
+                  <b class="levelup">{{ rift.abilityKey(o.nextSkill) }}</b>
+                }
+              </div>
+            }
+            <!-- Item gold: you vs your lane opponent (their icon), then team vs team, then CS/min. -->
+            @if (showLane() && o.lane; as l) {
+              <div class="gold">
+                @if (champIcon(l.championId ?? 0); as url) {
+                  <img class="champ" [src]="url" [alt]="l.opponent" (error)="rift.hideImg($event)" />
+                } @else {
+                  <span class="cap">vs {{ l.opponent.slice(0, 3) }}</span>
+                }
+                <svg class="coin" viewBox="0 0 16 16" aria-hidden="true"><g stroke="#3a2606" stroke-width="0.8"><path d="M2.5 11.2v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1v-1.6z" fill="#b07a1e" /><ellipse cx="8" cy="11.2" rx="5.5" ry="2.1" fill="#e9b949" /><path d="M2.5 7.7v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1V7.7z" fill="#b07a1e" /><ellipse cx="8" cy="7.7" rx="5.5" ry="2.1" fill="#e9b949" /><path d="M2.5 4.2v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1V4.2z" fill="#b07a1e" /><ellipse cx="8" cy="4.2" rx="5.5" ry="2.1" fill="#fbd96b" /></g><ellipse cx="8" cy="4.2" rx="3" ry="1" fill="none" stroke="#c48d22" stroke-width="0.7" /></svg>
+                <span class="diff" [class.ahead]="l.mine > l.theirs" [class.behind]="l.mine < l.theirs">{{ gold(l.mine - l.theirs) }}</span>
+              </div>
+            }
+            @if (showTeam() && o.team; as t) {
+              <div class="gold">
+                <span class="cap">Team</span>
+                <svg class="coin" viewBox="0 0 16 16" aria-hidden="true"><g stroke="#3a2606" stroke-width="0.8"><path d="M2.5 11.2v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1v-1.6z" fill="#b07a1e" /><ellipse cx="8" cy="11.2" rx="5.5" ry="2.1" fill="#e9b949" /><path d="M2.5 7.7v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1V7.7z" fill="#b07a1e" /><ellipse cx="8" cy="7.7" rx="5.5" ry="2.1" fill="#e9b949" /><path d="M2.5 4.2v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1V4.2z" fill="#b07a1e" /><ellipse cx="8" cy="4.2" rx="5.5" ry="2.1" fill="#fbd96b" /></g><ellipse cx="8" cy="4.2" rx="3" ry="1" fill="none" stroke="#c48d22" stroke-width="0.7" /></svg>
+                <span class="diff" [class.ahead]="t.ours > t.theirs" [class.behind]="t.ours < t.theirs">{{ gold(t.ours - t.theirs) }}</span>
+              </div>
+            }
+            @if (showCs() && csPerMin(o); as cs) {
+              <div class="gold"><span class="cap">CS</span><span class="diff cs" [class.low]="+cs < 5" [class.great]="+cs >= 8">{{ cs }}</span></div>
+            }
+          </div>
+        }
         @if (showTimers() && o.timers.length) {
           <div class="timers">
             @for (t of o.timers; track t.key) {
@@ -121,6 +123,21 @@ const PREVIEW: OverlayState = {
             }
           </div>
         } @else if (o.nextItems[0]; as it) {
+          @if (showBuyNow() && buyNow().length) {
+            <!-- Your gold right now, spent toward the build: the next item or the pieces of it that fit. -->
+            <div class="build buy">
+              <div class="cap">Buy now · {{ o.gold | number: '1.0-0' }} gold</div>
+              <div class="chips">
+                @for (b of buyNow(); track b.id) {
+                  <span class="chip">
+                    @if (rift.itemIcon(b.id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+                    <span class="name">{{ b.name }}@if (b.count > 1) { <span class="count">×{{ b.count }}</span> }</span>
+                    <span class="price">{{ b.price * b.count }}</span>
+                  </span>
+                }
+              </div>
+            </div>
+          }
           <div class="build">
             <div class="cap">Next · OP.GG build</div>
             <!-- The next item, then its components left to buy; bought ones drop off. -->
@@ -160,6 +177,14 @@ const PREVIEW: OverlayState = {
             }
           </div>
         }
+        <!-- Bottom-right corner, out of the top line's way. -->
+        <button #lockBtn class="lock" [title]="locked() ? 'Unlock to move' : 'Lock in place'"
+          (click)="rift.setOverlayLocked(!locked())">
+          <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+            <rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor" />
+            <path [attr.d]="locked() ? 'M5 7V5a3 3 0 0 1 6 0v2' : 'M5 7V5a3 3 0 0 1 6 0'" fill="none" stroke="currentColor" stroke-width="1.6" />
+          </svg>
+        </button>
         @if (preview() && !rift.overlay()) {
           <div class="cap center">Preview</div>
         }
@@ -173,28 +198,34 @@ const PREVIEW: OverlayState = {
       background: rgba(15, 13, 20, 0.88);
       border: 1px solid rgba(255, 79, 163, 0.35);
       border-radius: 14px;
-      padding: 10px 12px;
+      padding: 10px 12px 14px;
       color: #f1f2f5;
       font-size: 13px;
       text-shadow: 0 1px 2px #000;
     }
     .drag-layer { position: absolute; inset: 0; z-index: 10; border-radius: 14px; cursor: move; }
-    .top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-bottom: 6px; }
+    .top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 5px; margin-bottom: 6px; }
+    /* Tighter labels so skills, both gold diffs and CS/min fit one line at the default width. */
+    .top .cap { letter-spacing: 0.02em; }
     .lock {
       all: unset; position: relative; z-index: 11;
       display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px;
       color: var(--text-faint); cursor: pointer;
     }
     .lock:hover { color: var(--accent); background: rgba(255, 79, 163, 0.16); }
-    .lock { margin-left: auto; flex-shrink: 0; }
-    .gold { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+    .lock { position: absolute; right: 4px; bottom: 3px; width: 16px; height: 16px; }
+    .gold { display: flex; align-items: center; gap: 2px; white-space: nowrap; }
     .gold .champ { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.15); }
     .gold .coin { width: 15px; height: 15px; margin-right: -2px; flex-shrink: 0; }
     .gold .diff { font: 600 13px var(--mono); color: var(--text-dim); }
     .gold .diff.ahead { color: var(--win); }
     .gold .diff.behind { color: var(--loss); }
+    /* CS/min: red under 5, blue (the situational tags' blue) for 5–7.9, green from 8. */
+    .gold .diff.cs { color: #7cc4ff; }
+    .gold .diff.cs.low { color: var(--loss); }
+    .gold .diff.cs.great { color: var(--win); }
     .skills { display: flex; align-items: center; gap: 2px; font-size: 13px; flex-shrink: 0; }
-    .skills b { color: var(--accent); padding: 0 2px; border-radius: 4px; }
+    .skills b { color: var(--accent); padding: 0 1px; border-radius: 4px; }
     .skills .sep { color: var(--text-faint); }
     /* The key to put your next point in. */
     .levelup { color: #fff; background: rgba(255, 79, 163, 0.35); animation: pulse 1.6s ease-in-out infinite; }
@@ -215,6 +246,16 @@ const PREVIEW: OverlayState = {
     .item .price { font: 12px var(--mono); color: var(--text-faint); }
     .item .count { margin-left: 5px; font: 12px var(--mono); color: var(--text-dim); }
     .item.ready .price { color: var(--win); }
+    .buy .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+    .buy .chip {
+      display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+      padding: 2px 7px 2px 2px; border-radius: 6px; font-size: 12px;
+      border: 1px solid rgba(60, 207, 142, 0.45); background: rgba(60, 207, 142, 0.1);
+    }
+    .buy .chip img { width: 20px; height: 20px; border-radius: 4px; }
+    .buy .chip .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .buy .chip .price { font: 11.5px var(--mono); color: var(--win); }
+    .buy .chip .count { margin-left: 3px; font: 11.5px var(--mono); color: var(--text-dim); }
     .comp { padding-left: 14px; font-size: 12px; color: var(--text-dim); }
     .comp img { width: 20px; height: 20px; }
     .comp .n { width: 10px; margin-left: -14px; font: 10px var(--mono); color: var(--text-faint); text-align: right; }
@@ -245,7 +286,18 @@ export class Overlay {
   protected readonly showTimers = computed(() => this.rift.config()?.showTimers ?? true);
   protected readonly showLane = computed(() => this.rift.config()?.showLaneDiff ?? true);
   protected readonly showSit = computed(() => this.rift.config()?.showSituational ?? true);
+  protected readonly showTeam = computed(() => this.rift.config()?.showTeamDiff ?? true);
+  protected readonly showCs = computed(() => this.rift.config()?.showCs ?? true);
+  protected readonly showBuyNow = computed(() => this.rift.config()?.showBuyNow ?? true);
   protected readonly expanded = signal(false);
+  /** The shopping list, unless it only repeats rows the build card already marks green. */
+  protected readonly buyNow = computed(() => {
+    const o = this.state();
+    const list = o?.buyNow ?? [];
+    const it = o?.nextItems[0];
+    const ready = new Set([it, ...(it?.components ?? [])].filter((x) => x?.affordable).map((x) => x!.id));
+    return list.every((b) => ready.has(b.id) && b.count === 1) ? [] : list;
+  });
   protected readonly locked = this.rift.overlayLocked;
   protected time = clock;
   protected champIcon = championIcon;
@@ -262,6 +314,9 @@ export class Overlay {
       this.showTimers();
       this.showLane();
       this.showSit();
+      this.showCs();
+      this.showTeam();
+      this.showBuyNow();
       this.width();
       this.scale();
       const rects = [this.lockBtn(), this.moreBtn()]
@@ -273,6 +328,11 @@ export class Overlay {
       const r = this.host.nativeElement.getBoundingClientRect();
       if (this.state()) this.rift.fitOverlay(r.width, r.height);
     });
+  }
+
+  /** CS per minute to one decimal, e.g. "7.2"; nothing in the first minute, when it jumps around. */
+  csPerMin(o: OverlayState): string {
+    return o.gameTime >= 60 && o.cs != null ? ((o.cs * 60) / o.gameTime).toFixed(1) : '';
   }
 
   /** Signed and short: +500, −1.3k. */

@@ -16,7 +16,11 @@ type BoolKey =
   | 'keepMyPagesWhenFull'
   | 'showTimers'
   | 'showLaneDiff'
-  | 'showSituational';
+  | 'showSituational'
+  | 'showCs'
+  | 'overlayGrowUp'
+  | 'showTeamDiff'
+  | 'showBuyNow';
 
 @Component({
   selector: 'rl-settings',
@@ -53,6 +57,11 @@ type BoolKey =
             <button class="ghost" [disabled]="cfg.overlayWidth === 340 && cfg.overlayScale === 1" (click)="resetSize()">Reset</button>
           </div>
           <p class="faint small">The height follows what's on the overlay. Size makes text and icons bigger, so it gets taller.</p>
+          <label class="toggle">
+            <input type="checkbox" [checked]="cfg.overlayGrowUp ?? false" (change)="setBool('overlayGrowUp', $any($event.target).checked)" />
+            <span class="track"></span>
+            <span class="label"><b>Grow upward</b><span>For an overlay at the bottom of your screen: its bottom edge stays put and new rows push the top up. Off, the top stays put and it grows down.</span></span>
+          </label>
           <div class="field">
             <span>Position</span>
             <input type="number" placeholder="auto" [value]="cfg.overlayX ?? ''" (change)="setPos('overlayX', $any($event.target).value)" />
@@ -75,17 +84,28 @@ type BoolKey =
             </button>
           </div>
 
-          <h3 class="sub">Show on the overlay</h3>
+          <h3 class="sub">Overlay top bar</h3>
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.showLaneDiff" (change)="setBool('showLaneDiff', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Item gold vs your lane opponent and their team</b><span>The total cost of your items against theirs, and your team's against the enemy team's. The lane one isn't shown in modes without roles, like ARAM.</span></span>
+            <span class="label"><b>Item gold vs your lane opponent</b><span>The total cost of your items against theirs. Not shown in modes without roles, like ARAM.</span></span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" [checked]="cfg.showTeamDiff ?? true" (change)="setBool('showTeamDiff', $any($event.target).checked)" />
+            <span class="track"></span>
+            <span class="label"><b>Item gold vs the enemy team</b><span>Your team's item value against theirs.</span></span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" [checked]="cfg.showCs ?? true" (change)="setBool('showCs', $any($event.target).checked)" />
+            <span class="track"></span>
+            <span class="label"><b>CS per minute</b><span>Next to the item gold, from the first minute on. The game only updates your CS every 10 minions, so it moves in small steps.</span></span>
           </label>
           <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
             <input type="checkbox" [checked]="cfg.showSkillHint" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('showSkillHint', $any($event.target).checked)" />
             <span class="track"></span>
             <span class="label"><b>Skill order</b><span>Which ability to max, and what to level when you have a point.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
           </label>
+          <h3 class="sub">Overlay sections</h3>
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.showTimers" (change)="setBool('showTimers', $any($event.target).checked)" />
             <span class="track"></span>
@@ -94,7 +114,12 @@ type BoolKey =
           <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
             <input type="checkbox" [checked]="cfg.useRecommendedBuilds" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('useRecommendedBuilds', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Next items to buy</b><span>The next two items from OP.GG's build, priced after the components you own and green when you can afford them.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
+            <span class="label"><b>Next items to buy</b><span>Your starting items, then the next item from OP.GG's build and its parts left to buy, priced after what you own and green when you can afford them.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
+          </label>
+          <label class="toggle" [class.off]="cfg.recSource !== 'opgg' || !cfg.useRecommendedBuilds">
+            <input type="checkbox" [checked]="cfg.showBuyNow ?? true" [disabled]="cfg.recSource !== 'opgg' || !cfg.useRecommendedBuilds" (change)="setBool('showBuyNow', $any($event.target).checked)" />
+            <span class="track"></span>
+            <span class="label"><b>Buy now</b><span>What your gold buys right now toward the next item, like a Long Sword when you can't afford the Noonquiver yet.@if (cfg.recSource !== 'opgg' || !cfg.useRecommendedBuilds) { Needs Next items to buy. }</span></span>
           </label>
           <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
             <input type="checkbox" [checked]="cfg.showSituational" [disabled]="cfg.recSource !== 'opgg'" (change)="setBool('showSituational', $any($event.target).checked)" />
@@ -389,14 +414,15 @@ export class SettingsView {
   }
   setPos(key: 'overlayX' | 'overlayY', raw: string): void {
     const v = raw.trim() === '' ? null : Math.round(Number(raw));
-    this.save((c) => ({ ...c, [key]: Number.isFinite(v as number) ? v : null }));
+    // A typed position wins over the saved bottom edge (see overlayGrowUp).
+    this.save((c) => ({ ...c, [key]: Number.isFinite(v as number) ? v : null, overlayBottom: null }));
   }
   /** Width and Size back to the defaults (config.rs). */
   resetSize(): void {
     this.save((c) => ({ ...c, overlayWidth: 340, overlayScale: 1 }));
   }
   resetPos(): void {
-    this.save((c) => ({ ...c, overlayX: null, overlayY: null }));
+    this.save((c) => ({ ...c, overlayX: null, overlayY: null, overlayBottom: null }));
   }
   async toggleLock(): Promise<void> {
     const unlocking = this.rift.overlayLocked();

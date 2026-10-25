@@ -381,11 +381,15 @@ export interface OverlayState {
   kills: number;
   deaths: number;
   assists: number;
+  /** Creep score; the game only updates it every 10 CS. */
+  cs?: number;
   timers: Timer[];
   /** Everything left of the recommended build, in purchase order (owned items drop off). */
   /** Recommended starting items, until bought or ~2:30 in. */
   starter?: StarterItem[];
   nextItems: NextItem[];
+  /** What your gold buys right now toward the build. */
+  buyNow?: StarterItem[];
   hasBuild: boolean;
   skillMax: string[];
   nextSkill: string | null;
@@ -667,6 +671,12 @@ export interface Config {
   showLaneDiff: boolean;
   /** The top situational item (and a "more" list) on the overlay. */
   showSituational: boolean;
+  /** Your team's item value vs the enemy team's on the overlay. */
+  showTeamDiff?: boolean;
+  /** CS per minute in the overlay's top line. */
+  showCs?: boolean;
+  /** What your current gold buys toward the build, on the overlay. */
+  showBuyNow?: boolean;
   /** The player's ability keybinds, shown in place of Q/W/E/R. */
   abilityKeys: AbilityKeys;
   scoutInChampSelect: boolean;
@@ -678,6 +688,10 @@ export interface Config {
   overlayEnabled: boolean;
   overlayX: number | null;
   overlayY: number | null;
+  /** Bottom edge when the position was saved (physical px), for growing upward. */
+  overlayBottom?: number | null;
+  /** Grow upward (bottom edge stays put) instead of downward. */
+  overlayGrowUp?: boolean;
   overlayOpacity: number;
   /** Overlay width in CSS pixels; the height follows the content. */
   overlayWidth: number;

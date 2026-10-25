@@ -255,6 +255,7 @@ async fn set_overlay_locked(app: AppHandle, state: State<'_, AppState>, locked: 
             let mut cfg = state.config();
             cfg.overlay_x = Some(pos.x);
             cfg.overlay_y = Some(pos.y);
+            cfg.overlay_bottom = overlay.outer_size().ok().map(|s| pos.y + s.height as i32);
             save_config(app.clone(), state, cfg)?;
         }
     }

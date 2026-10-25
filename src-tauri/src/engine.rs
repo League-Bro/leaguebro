@@ -587,7 +587,12 @@ pub fn set_overlay_visible(app: &AppHandle, visible: bool) {
     let Some(w) = app.get_webview_window("overlay") else { return };
     if visible {
         let cfg = app.state::<AppState>().config();
+        let height = w.outer_size().map(|s| s.height as i32).ok();
         let pos = match (cfg.overlay_x, cfg.overlay_y) {
+            // Growing upward: keep the bottom edge where it was, at today's height.
+            (Some(x), Some(_)) if cfg.overlay_grow_up && cfg.overlay_bottom.is_some() && height.is_some() => {
+                Some(PhysicalPosition::new(x, cfg.overlay_bottom.unwrap() - height.unwrap()))
+            }
             (Some(x), Some(y)) => Some(PhysicalPosition::new(x, y)),
             _ => w.primary_monitor().ok().flatten().map(|m| {
                 let scale = m.scale_factor();
@@ -616,14 +621,17 @@ pub fn set_overlay_visible(app: &AppHandle, visible: bool) {
 
 /// Saves where the overlay is, so the next game shows it there.
 pub fn save_overlay_position(app: &AppHandle) {
-    let Some(pos) = app.get_webview_window("overlay").and_then(|w| w.outer_position().ok()) else { return };
+    let Some(w) = app.get_webview_window("overlay") else { return };
+    let Ok(pos) = w.outer_position() else { return };
+    let bottom = w.outer_size().ok().map(|s| pos.y + s.height as i32);
     let state = app.state::<AppState>();
     let mut cfg = state.config();
-    if cfg.overlay_x == Some(pos.x) && cfg.overlay_y == Some(pos.y) {
+    if cfg.overlay_x == Some(pos.x) && cfg.overlay_y == Some(pos.y) && cfg.overlay_bottom == bottom {
         return;
     }
     cfg.overlay_x = Some(pos.x);
     cfg.overlay_y = Some(pos.y);
+    cfg.overlay_bottom = bottom;
     if let Err(e) = cfg.save(&state.config_path) {
         return eprintln!("couldn't save the overlay position: {e:#}");
     }

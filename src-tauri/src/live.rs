@@ -80,6 +80,66 @@ pub fn starter_items(data: &Value, starter: &[i64], items: &HashMap<i64, ShopIte
     out
 }
 
+/// What to buy with the gold you have right now, toward the build. Whole
+/// items when you can afford them, otherwise the biggest pieces of the next
+/// item that fit, going a level deeper when a component itself is too
+/// pricey (530 gold can't buy a Noonquiver, but it can buy its Long Sword).
+/// Empty when nothing fits.
+pub fn buy_now(data: &Value, next: &[NextItem], items: &HashMap<i64, ShopItem>) -> Vec<StarterItem> {
+    let mut left = float(data, "/activePlayer/currentGold").floor() as i64;
+    let mut owned = my_items(data, items);
+    let mut out: Vec<StarterItem> = Vec::new();
+    let add = |out: &mut Vec<StarterItem>, id: i64, name: &str, price: i64| match out.iter_mut().find(|s| s.id == id) {
+        Some(s) => s.count += 1,
+        None => out.push(StarterItem { id, name: name.to_string(), count: 1, price }),
+    };
+    // Each pass is one build item; move on to the next only once it's bought.
+    for (i, it) in next.iter().take(2).enumerate() {
+        if it.price > 0 && it.price <= left {
+            left -= it.price;
+            add(&mut out, it.id, &it.name, it.price);
+            continue;
+        }
+        // The first item comes with its components; later ones get them now.
+        let comps = if i == 0 { it.components.clone() } else { components_left(it.id, items, &owned, left as f64) };
+        let mut pieces = Vec::new();
+        for c in comps {
+            parts_that_fit(c.id, c.price, left, items, &mut owned, &mut pieces, 0);
+        }
+        pieces.sort_by_key(|(_, price)| -price);
+        for (id, price) in pieces {
+            if price > 0 && price <= left {
+                left -= price;
+                add(&mut out, id, &items.get(&id).map_or_else(|| format!("Item {id}"), |c| c.name.clone()), price);
+            }
+        }
+        break;
+    }
+    out
+}
+
+/// `id` itself if `price` fits in `gold`, otherwise its own components you
+/// don't own yet (owned ones are used up), a level or two down.
+fn parts_that_fit(id: i64, price: i64, gold: i64, items: &HashMap<i64, ShopItem>, owned: &mut Vec<i64>, out: &mut Vec<(i64, i64)>, depth: u8) {
+    if price <= gold {
+        out.push((id, price));
+        return;
+    }
+    if depth >= 2 {
+        return;
+    }
+    let from = items.get(&id).map(|it| it.from.clone()).unwrap_or_default();
+    for c in from {
+        if let Some(pos) = owned.iter().position(|o| *o == c) {
+            owned.remove(pos);
+            continue;
+        }
+        let Some(comp) = items.get(&c) else { continue };
+        let p = (comp.price - owned_discount(c, items, owned, 0)).max(0);
+        parts_that_fit(c, p, gold, items, owned, out, depth + 1);
+    }
+}
+
 /// A situational item on the overlay, with what's left to pay for it.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -108,11 +168,15 @@ pub struct OverlayState {
     pub kills: i64,
     pub deaths: i64,
     pub assists: i64,
+    /// Creep score. The game only updates it every 10 CS.
+    pub cs: i64,
     pub timers: Vec<Timer>,
     /// The recommended starting items, until you've bought them (see `starter_items`).
     pub starter: Vec<StarterItem>,
     /// Everything left of the recommended build, in purchase order (owned items drop off).
     pub next_items: Vec<NextItem>,
+    /// What your gold buys right now toward the build (see `buy_now`).
+    pub buy_now: Vec<StarterItem>,
     pub has_build: bool,
     /// Ability max order, e.g. ["Q", "W", "E"]; empty when the hint is off.
     pub skill_max: Vec<String>,
@@ -498,6 +562,22 @@ fn components_left(id: i64, items: &HashMap<i64, ShopItem>, owned: &[i64], gold:
     out
 }
 
+/// Finished items are what's left when nothing builds out of them (plus
+/// upgraded boots, which the tier-3 boots build from). The price floor keeps
+/// out starters and consumables (Doran's, potions, wards), which nothing
+/// builds from either.
+const FINISHED_FROM: i64 = 900;
+
+/// Six finished items: no slot left, so there's nothing to suggest buying
+/// (even if you went off the recommended build, as you often do).
+pub fn inventory_full(data: &Value, items: &HashMap<i64, ShopItem>) -> bool {
+    let components: std::collections::HashSet<i64> = items.values().flat_map(|it| it.from.iter().copied()).collect();
+    let finished = |id: &i64| {
+        items.get(id).is_some_and(|it| it.price >= FINISHED_FROM) && (!components.contains(id) || is_upgraded_boots(*id, items))
+    };
+    my_items(data, items).iter().filter(|id| finished(id)).count() >= 6
+}
+
 /// The upgraded boots in your inventory, if any.
 pub fn my_boots(data: &Value, items: &HashMap<i64, ShopItem>) -> Option<i64> {
     my_items(data, items).into_iter().find(|id| is_upgraded_boots(*id, items))
@@ -526,6 +606,14 @@ pub fn overlay_state(
     let build = guide.build;
     let me = find_me(data);
     let score = |k: &str| me.and_then(|p| p.pointer(&format!("/scores/{k}"))).and_then(Value::as_i64).unwrap_or(0);
+    // A full inventory reads as "Build complete" on the overlay.
+    let next = match build {
+        Some(b) if !inventory_full(data, items) => next_items(data, b, items, usize::MAX, guide.seen_boots),
+        _ => Vec::new(),
+    };
+    let starter = starter_items(data, guide.starter, items);
+    // The starting items are the shopping list until they're bought.
+    let buy = if starter.is_empty() { buy_now(data, &next, items) } else { Vec::new() };
     OverlayState {
         game_time: float(data, "/gameData/gameTime"),
         game_mode: text(data, "/gameData/gameMode").to_string(),
@@ -534,9 +622,11 @@ pub fn overlay_state(
         kills: score("kills"),
         deaths: score("deaths"),
         assists: score("assists"),
+        cs: score("creepScore"),
         timers: compute_timers(data, cfg),
-        starter: starter_items(data, guide.starter, items),
-        next_items: build.map(|b| next_items(data, b, items, usize::MAX, guide.seen_boots)).unwrap_or_default(),
+        starter,
+        next_items: next,
+        buy_now: buy,
         has_build: build.map(|b| !b.is_empty()).unwrap_or(false),
         skill_max: guide.skill_max.to_vec(),
         next_skill: next_skill(data, guide.skill_order),
@@ -614,7 +704,7 @@ mod tests {
         assert!(!next[0].affordable);
         assert!(next[1].affordable);
         let st = overlay_state(&sample(600.0, json!([])), &TimerConfig::default(), &Guidance::default(), &items);
-        assert_eq!((st.kills, st.champion_name.as_str()), (3, "Ahri"));
+        assert_eq!((st.kills, st.cs, st.champion_name.as_str()), (3, 120, "Ahri"));
         assert!(st.next_skill.is_none());
     }
 
@@ -682,6 +772,67 @@ mod tests {
         assert_eq!(order(1000.0), [1037, 1018, 1038]);
         // Can't afford anything: cheapest first.
         assert_eq!(order(100.0), [1018, 1037, 1038]);
+    }
+
+    #[test]
+    fn buy_now_on_an_early_back() {
+        let items = shop(&[
+            (6673, "Immortal Shieldbow", 3000, &[1037, 6670]),
+            (1037, "Pickaxe", 875, &[]),
+            (6670, "Noonquiver", 1300, &[1036, 1042]),
+            (1036, "Long Sword", 350, &[]),
+            (1042, "Dagger", 250, &[]),
+            (3006, "Berserker's Greaves", 1100, &[1001, 1042]),
+            (1001, "Boots", 300, &[]),
+        ]);
+        let plan = |gold: f64, owned: Value, time: f64| {
+            let mut d = sample(time, json!([]));
+            d["activePlayer"]["currentGold"] = json!(gold);
+            d["allPlayers"][0]["items"] = owned;
+            let next = next_items(&d, &[6673, 3006], &items, usize::MAX, None);
+            buy_now(&d, &next, &items).iter().map(|s| (s.id, s.count)).collect::<Vec<_>>()
+        };
+        // 530 gold at level 3: no Pickaxe or Noonquiver, but the Noonquiver's Long Sword.
+        assert_eq!(plan(530.0, json!([]), 260.0), [(1036, 1)]);
+        // Pickaxe fits: the biggest piece first, then a Dagger from the Noonquiver.
+        assert_eq!(plan(1200.0, json!([]), 1000.0), [(1037, 1), (1042, 1)]);
+        // Enough for the whole item: buy it, then start on the boots.
+        assert_eq!(plan(3400.0, json!([]), 1000.0), [(6673, 1), (1001, 1)]);
+        // Too poor for any piece.
+        assert!(plan(200.0, json!([]), 260.0).is_empty());
+    }
+
+    #[test]
+    fn full_inventory_means_build_complete() {
+        let mut list: Vec<(i64, &str, i64, &[i64])> = vec![
+            (1036, "Long Sword", 350, &[]),
+            (1001, "Boots", 300, &[]),
+            (3006, "Berserker's Greaves", 1100, &[1001]),
+            (3172, "Gunmetal Greaves", 1600, &[3006]),
+            (2055, "Control Ward", 75, &[]),
+            (3072, "Bloodthirster", 3400, &[1036]),
+        ];
+        let finished: [i64; 5] = [6672, 3031, 3036, 3046, 3026];
+        for id in finished {
+            list.push((id, "Finished", 3000, &[1036]));
+        }
+        let items = shop(&list);
+        let guide = Guidance { build: Some(&[3072]), ..Default::default() };
+        let state = |owned: Vec<i64>| {
+            let mut d = sample(1800.0, json!([]));
+            d["activePlayer"]["currentGold"] = json!(4000.0);
+            d["allPlayers"][0]["items"] = json!(owned.iter().map(|id| json!({"itemID": id})).collect::<Vec<_>>());
+            overlay_state(&d, &TimerConfig::default(), &guide, &items)
+        };
+        // Five finished items and upgraded boots, none of them Bloodthirster: nothing to buy.
+        let mut owned = finished.to_vec();
+        owned.extend([3006, 2055]);
+        let st = state(owned);
+        assert!(st.next_items.is_empty() && st.buy_now.is_empty() && st.has_build);
+        // A Long Sword in the sixth slot instead of boots: still room to finish an item.
+        let mut owned = finished.to_vec();
+        owned.push(1036);
+        assert_eq!(state(owned).next_items[0].id, 3072);
     }
 
     #[test]

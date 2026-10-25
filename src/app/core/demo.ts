@@ -110,6 +110,7 @@ export function demoSnapshot(): Snapshot {
       kills: 3,
       deaths: 1,
       assists: 5,
+      cs: 90,
       timers: [
         { key: 'dragon', label: 'Dragon', spawnAt: 860, side: 'neutral' },
         { key: 'baron', label: 'Baron', spawnAt: 1200, side: 'neutral' },
@@ -126,6 +127,9 @@ export function demoSnapshot(): Snapshot {
         { id: 3157, name: "Zhonya's Hourglass", price: 3250, affordable: false },
         { id: 3089, name: "Rabadon's Deathcap", price: 3600, affordable: false },
         { id: 3135, name: 'Void Staff', price: 3000, affordable: false },
+      ],
+      buyNow: [
+        { id: 1058, name: 'Needlessly Large Rod', count: 1, price: 1200 },
       ],
       hasBuild: true,
       skillMax: ['Q', 'W', 'E'],
@@ -147,7 +151,7 @@ export function demoSnapshot(): Snapshot {
   };
 }
 
-/** The demo snapshot for `?scene=` (champselect, swiftplay, postgame, postgame-bad); in game otherwise. */
+/** The demo snapshot for `?scene=` (champselect, swiftplay, postgame, postgame-bad, early-back); in game otherwise. */
 export function demoScene(scene: string | null): Snapshot {
   const snap = demoSnapshot();
   const away = { loading: null, overlay: null };
@@ -159,6 +163,30 @@ export function demoScene(scene: string | null): Snapshot {
     case 'postgame':
     case 'postgame-bad':
       return { ...snap, ...away, status: { ...snap.status, phase: 'EndOfGame' }, rec: null, postGame: demoPostGame(scene === 'postgame-bad') };
+    case 'early-back':
+      // Back at level 3 with 530 gold: no Pickaxe or Noonquiver yet, so the overlay says what does fit.
+      return {
+        ...snap,
+        overlay: {
+          ...snap.overlay!,
+          gameTime: 266,
+          gold: 530,
+          cs: 30,
+          nextItems: [
+            {
+              id: 6673, name: 'Immortal Shieldbow', price: 3000, affordable: false,
+              components: [
+                { id: 1037, name: 'Pickaxe', price: 875, affordable: false },
+                { id: 6670, name: 'Noonquiver', price: 1300, affordable: false },
+              ],
+            },
+            { id: 3006, name: "Berserker's Greaves", price: 1100, affordable: false },
+          ],
+          buyNow: [
+            { id: 1036, name: 'Long Sword', count: 1, price: 350 },
+          ],
+        },
+      };
     default:
       return snap;
   }
@@ -460,6 +488,9 @@ export function demoConfig(): Config {
     showTimers: true,
     showLaneDiff: true,
     showSituational: true,
+    showTeamDiff: true,
+    showCs: true,
+    showBuyNow: true,
     abilityKeys: { q: 'Q', w: 'W', e: 'E', r: 'R' },
     scoutInChampSelect: true,
     scoutOnLoading: true,
@@ -468,6 +499,8 @@ export function demoConfig(): Config {
     overlayEnabled: true,
     overlayX: null,
     overlayY: null,
+    overlayBottom: null,
+    overlayGrowUp: false,
     overlayOpacity: 0.9,
     overlayWidth: 340,
     overlayScale: 1,

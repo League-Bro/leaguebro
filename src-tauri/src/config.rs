@@ -77,8 +77,14 @@ pub struct Config {
     pub show_timers: bool,
     /// Show your item value against your lane opponent's in the overlay.
     pub show_lane_diff: bool,
+    /// Show your team's item value against the enemy team's in the overlay.
+    pub show_team_diff: bool,
     /// Show the top situational item for this game in the overlay.
     pub show_situational: bool,
+    /// Show your CS per minute in the overlay's top line.
+    pub show_cs: bool,
+    /// Show what your current gold buys toward the build in the overlay.
+    pub show_buy_now: bool,
     pub ability_keys: AbilityKeys,
     pub scout_in_champ_select: bool,
     pub scout_on_loading: bool,
@@ -91,6 +97,13 @@ pub struct Config {
     /// Overlay position in physical pixels; None = top-right corner.
     pub overlay_x: Option<i32>,
     pub overlay_y: Option<i32>,
+    /// The overlay's bottom edge (physical pixels) when its position was
+    /// saved, so an overlay that grows upward comes back with its bottom in
+    /// the same place whatever its height.
+    pub overlay_bottom: Option<i32>,
+    /// Grow upward as rows come and go (bottom edge stays put), for an
+    /// overlay at the bottom of the screen. Off: it grows downward.
+    pub overlay_grow_up: bool,
     pub overlay_opacity: f64,
     /// Overlay width in CSS pixels; its height follows the content.
     pub overlay_width: f64,
@@ -122,7 +135,10 @@ impl Default for Config {
             show_skill_hint: true,
             show_timers: true,
             show_lane_diff: true,
+            show_team_diff: true,
             show_situational: true,
+            show_cs: true,
+            show_buy_now: true,
             ability_keys: AbilityKeys::default(),
             scout_in_champ_select: true,
             scout_on_loading: true,
@@ -131,6 +147,8 @@ impl Default for Config {
             overlay_enabled: true,
             overlay_x: None,
             overlay_y: None,
+            overlay_bottom: None,
+            overlay_grow_up: false,
             overlay_opacity: 0.9,
             overlay_width: 340.0,
             overlay_scale: 1.0,
@@ -180,7 +198,7 @@ mod tests {
         assert_eq!(c.ability_keys.q, "Q");
         assert!(c.favorite_champions.is_empty());
         // Overlay parts added later default to shown.
-        assert!(c.show_timers && c.show_lane_diff);
+        assert!(c.show_timers && c.show_lane_diff && c.show_team_diff && c.show_cs && c.show_buy_now);
         assert!(c.share_usage_stats);
     }
 
