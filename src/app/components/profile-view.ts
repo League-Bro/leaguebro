@@ -53,7 +53,7 @@ const REGIONS = [
       <section class="card head">
         <div class="me">
         @if (icon(p.iconId); as url) { <img class="avatar" [src]="url" alt="" /> } @else { <div class="avatar"></div> }
-        <div class="who">
+        <div class="who" [title]="p.name">
           <h2>{{ p.name }}</h2>
           <div class="muted small">Level {{ p.level }}</div>
           @if (p.source === 'opgg') {
@@ -77,17 +77,26 @@ const REGIONS = [
                   <div class="tier-none">Unranked</div>
                 }
               </div>
-              @if (r.line) { <rl-lp-graph [points]="r.history" /> }
             </div>
           }
         </div>
+        <div class="side">
+          @for (r of ranked(p); track r.label) {
+            <div class="graph">
+              @if (ranked(p).length > 1) { <div class="faint cap">{{ r.label }}</div> }
+              <rl-lp-graph [points]="r.history" />
+            </div>
+          }
         <div class="actions">
           @if (p.source === 'opgg') {
             <button class="ghost" [disabled]="renewing() || loading()" title="Has OP.GG fetch your latest games and rank from Riot (once every 2 minutes)" (click)="renew(p.updatedAt)">
               {{ renewing() ? 'Updating…' : 'Update on OP.GG' }}
             </button>
           }
-          <button class="ghost" [disabled]="loading() || renewing()" (click)="load()">{{ loading() ? 'Refreshing…' : 'Refresh' }}</button>
+          <button class="ghost icon-btn" [class.spin]="loading()" [disabled]="loading() || renewing()" [title]="loading() ? 'Refreshing…' : 'Refresh'" [attr.aria-label]="loading() ? 'Refreshing' : 'Refresh'" (click)="load()">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+          </button>
+        </div>
         </div>
       </section>
       @if (p.error) { <p class="loss small note">Some data didn't load: {{ p.error }}</p> }
@@ -283,13 +292,28 @@ const REGIONS = [
   `,
   styles: `
     .empty { max-width: 560px; margin: 40px auto; text-align: center; }
-    /* You on the left, your ranks centered, buttons on the right. */
-    .head { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 20px; }
-    .me { display: flex; align-items: center; gap: 16px; min-width: 0; }
-    .head .actions { justify-self: end; }
+    /* You on the left, your ranks centered, LP graphs and buttons on the right.
+       When space runs short a long name is cut with "…" rather than running
+       under the ranks; on a narrow window the ranks drop to their own row. */
+    .head {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
+      grid-template-areas: 'me ranks side'; align-items: center; gap: 20px;
+    }
+    .me { grid-area: me; display: flex; align-items: center; gap: 16px; min-width: 0; }
+    .avatar { flex: none; }
+    .who h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .head .ranks { grid-area: ranks; justify-content: center; }
+    .side { grid-area: side; display: flex; align-items: center; justify-content: flex-end; gap: 18px; }
+    .graph { display: flex; flex-direction: column; gap: 2px; }
+    .icon-btn { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border-radius: 50%; }
+    .icon-btn.spin svg { animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
     @media (max-width: 1100px) {
-      .head { grid-template-columns: 1fr auto; }
-      .head .ranks { grid-column: 1 / -1; grid-row: 2; justify-content: center; }
+      .head { grid-template-columns: 1fr auto; grid-template-areas: 'me side' 'ranks ranks'; row-gap: 14px; }
+    }
+    @media (max-width: 760px) {
+      .head { grid-template-columns: 1fr; grid-template-areas: 'me' 'ranks' 'side'; }
+      .side { justify-content: center; flex-wrap: wrap; }
     }
     .avatar { width: 64px; height: 64px; border-radius: 50%; border: 2px solid var(--accent); background: var(--bg-sunken); box-shadow: 0 0 22px var(--accent-glow); }
     .who { min-width: 0; }
@@ -354,7 +378,7 @@ const REGIONS = [
     }
     .match:hover { border-color: var(--line-strong); }
     .match.static { cursor: default; }
-    .actions { display: flex; gap: 8px; }
+    .actions { display: flex; align-items: center; gap: 8px; }
     .riot-form { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 14px 0 6px; }
     .riot-form input { flex: 1 1 180px; max-width: 240px; }
     .center { justify-content: center; gap: 8px; }
@@ -581,6 +605,10 @@ export class ProfileView {
       { label: 'Solo/Duo', line: p.solo, history: p.lpHistory?.solo ?? [] },
       { label: 'Flex', line: p.flex, history: p.lpHistory?.flex ?? [] },
     ];
+  }
+  /** Ranked queues, which get an LP graph. */
+  ranked(p: MyProfile) {
+    return this.ranks(p).filter((r) => r.line);
   }
   pct = winPct;
   ratio = kdaRatio;
