@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { RiftService } from '../core/rift.service';
 import { assetUrl } from '../core/assets';
 import { Guide } from '../core/models';
+import { Loader } from './loader';
 
 const DIFFICULTY = ['', 'Easy', 'Moderate', 'Hard'];
 const DAMAGE = { AD: 'Physical damage (AD)', AP: 'Magic damage (AP)', BOTH: 'Mixed damage (AD + AP)' } as Record<string, string>;
@@ -11,6 +12,7 @@ const KEY_LABELS: Record<string, string> = { P: 'Passive', Q: 'Q', W: 'W', E: 'E
 @Component({
   selector: 'rl-guide',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [Loader],
   template: `
     @if (guide(); as g) {
       <section class="card overview">
@@ -94,7 +96,7 @@ const KEY_LABELS: Record<string, string> = { P: 'Passive', Q: 'Q', W: 'W', E: 'E
     } @else if (error()) {
       <section class="card"><p class="muted small">Couldn't load the guide: {{ error() }}</p></section>
     } @else {
-      <section class="card"><p class="faint small">Loading the guide…</p></section>
+      <section class="card"><rl-loader [block]="true" class="faint small">Loading the guide…</rl-loader></section>
     }
   `,
   styles: `

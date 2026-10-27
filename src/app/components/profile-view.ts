@@ -6,6 +6,7 @@ import { LpPoint, MatchLine, MyProfile, PostGame, RankLine } from '../core/model
 import { PostGameView } from './post-game';
 import { ItemTip } from './item-tip';
 import { LpGraph } from './lp-graph';
+import { Loader } from './loader';
 
 const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as const;
 
@@ -20,7 +21,7 @@ const REGIONS = [
 @Component({
   selector: 'rl-profile',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe, NgTemplateOutlet, PostGameView, ItemTip, LpGraph],
+  imports: [DecimalPipe, NgTemplateOutlet, PostGameView, ItemTip, LpGraph, Loader],
   template: `
     @if (setup()) {
       <section class="card empty">
@@ -39,7 +40,7 @@ const REGIONS = [
     } @else if (waiting() && !profile()) {
       <section class="card empty"><p class="muted">Waiting for the League client to finish starting…</p></section>
     } @else if (loading() && !profile()) {
-      <section class="card empty"><p class="muted">Loading your profile from {{ rift.status().connected ? 'the League client' : 'OP.GG' }}…</p></section>
+      <section class="card empty"><rl-loader [size]="44" [block]="true" class="muted">Loading your profile from {{ rift.status().connected ? 'the League client' : 'OP.GG' }}…</rl-loader></section>
     } @else if (loadError(); as e) {
       <section class="card empty">
         <h2>Couldn't load your profile</h2>
@@ -93,8 +94,12 @@ const REGIONS = [
               {{ renewing() ? 'Updating…' : 'Update on OP.GG' }}
             </button>
           }
-          <button class="ghost icon-btn" [class.spin]="loading()" [disabled]="loading() || renewing()" [title]="loading() ? 'Refreshing…' : 'Refresh'" [attr.aria-label]="loading() ? 'Refreshing' : 'Refresh'" (click)="load()">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+          <button class="ghost icon-btn" [disabled]="loading() || renewing()" [title]="loading() ? 'Refreshing…' : 'Refresh'" [attr.aria-label]="loading() ? 'Refreshing' : 'Refresh'" (click)="load()">
+            @if (loading()) {
+              <rl-loader [size]="20" />
+            } @else {
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            }
           </button>
         </div>
         </div>
@@ -280,7 +285,7 @@ const REGIONS = [
               } @else if (detailError(); as e) {
                 <p class="loss small">{{ e }}</p>
               } @else {
-                <p class="muted small">Loading the full scoreboard…</p>
+                <rl-loader [block]="true" class="muted small">Loading the full scoreboard…</rl-loader>
               }
             </div>
           }
@@ -306,7 +311,6 @@ const REGIONS = [
     .side { grid-area: side; display: flex; align-items: center; justify-content: flex-end; gap: 18px; }
     .graph { display: flex; flex-direction: column; gap: 2px; }
     .icon-btn { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border-radius: 50%; }
-    .icon-btn.spin svg { animation: spin 0.9s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (max-width: 1100px) {
       .head { grid-template-columns: 1fr auto; grid-template-areas: 'me side' 'ranks ranks'; row-gap: 14px; }

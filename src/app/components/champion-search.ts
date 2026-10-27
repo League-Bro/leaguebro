@@ -3,6 +3,7 @@ import { RiftService } from '../core/rift.service';
 import { championIcon } from '../core/assets';
 import { ChampInfo } from '../core/models';
 import { MOD_KEY } from '../core/platform';
+import { Loader } from './loader';
 
 const MAX_RESULTS = 8;
 
@@ -18,6 +19,7 @@ function norm(s: string): string {
 @Component({
   selector: 'rl-champion-search',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [Loader],
   template: `
     <div class="backdrop" (mousedown)="closed.emit()"></div>
     <div class="box card" role="dialog" aria-label="Find a champion">
@@ -41,7 +43,11 @@ function norm(s: string): string {
             <button class="ghost mini" (click)="$event.stopPropagation(); pick(c, 'guide')">Guide</button>
           </div>
         } @empty {
-          <p class="faint none">{{ rift.statics() ? 'No champion matches "' + query() + '".' : 'Loading champions…' }}</p>
+          @if (rift.statics()) {
+            <p class="faint none">No champion matches "{{ query() }}".</p>
+          } @else {
+            <rl-loader [block]="true" class="faint">Loading champions…</rl-loader>
+          }
         }
       </div>
       <div class="foot faint"><kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> build · <kbd>Shift+Enter</kbd> guide · <kbd>{{ modKey }}K</kbd> from any tab</div>

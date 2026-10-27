@@ -2,16 +2,16 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 import { UpdateService } from '../core/update.service';
 
 /**
- * The update screens: a popup when a new version comes out while the app runs,
- * and a full-window splash (the app icon's face glowing and swirling) while an
- * update downloads and installs.
+ * The startup and update screens: a full-window splash (the app icon's face
+ * glowing and swirling) every time the app starts and while an update downloads
+ * and installs, and a popup when a new version comes out while the app runs.
  */
 @Component({
   selector: 'rl-update-splash',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (updates.showSplash()) {
-      <div class="update-splash" role="status" aria-live="polite">
+      <div class="update-splash" role="status" aria-live="polite" animate.leave="leaving">
         <div class="stage">
           <div class="halo"></div>
           <div class="ring one"></div>
@@ -49,8 +49,13 @@ import { UpdateService } from '../core/update.service';
             />
           </svg>
         </div>
-        <h1>Updating League Bro</h1>
-        <p class="what">to version {{ version() }}</p>
+        @if (updating()) {
+          <h1>Updating League Bro</h1>
+          <p class="what">to version {{ version() }}</p>
+        } @else {
+          <h1>League Bro</h1>
+          <p class="what">{{ updates.version() ? 'v' + updates.version() : '' }}</p>
+        }
         <div class="bar" [class.indeterminate]="percent() === null">
           <span [style.width.%]="percent() ?? 100"></span>
         </div>
@@ -82,6 +87,8 @@ import { UpdateService } from '../core/update.service';
         var(--bg);
       animation: fade-in 0.35s ease-out;
     }
+    .update-splash.leaving { animation: fade-out 0.4s ease-in forwards; }
+    .update-splash.leaving .stage { transition: transform 0.4s ease-in; transform: scale(1.12); }
     .stage { position: relative; width: 300px; height: 300px; display: grid; place-items: center; margin-bottom: 18px; }
     .face {
       position: relative; width: 168px; height: 168px; border-radius: 36px;
@@ -176,10 +183,8 @@ import { UpdateService } from '../core/update.service';
     @keyframes drip { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.18); } }
     @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
     @keyframes fade-in { from { opacity: 0; } }
+    @keyframes fade-out { to { opacity: 0; } }
     @keyframes pop { from { opacity: 0; transform: scale(0.96); } }
-    @media (prefers-reduced-motion: reduce) {
-      .update-splash *, .prompt { animation-duration: 0s !important; animation-iteration-count: 1 !important; }
-    }
   `,
 })
 export class UpdateSplash {
@@ -189,6 +194,8 @@ export class UpdateSplash {
     const s = this.updates.state();
     return 'version' in s ? s.version : '';
   });
+  /** Downloading or installing, rather than the startup splash. */
+  protected readonly updating = computed(() => ['downloading', 'installing'].includes(this.updates.state().kind));
   protected readonly percent = computed(() => {
     const s = this.updates.state();
     return s.kind === 'downloading' ? s.percent : s.kind === 'installing' ? 100 : null;
@@ -196,6 +203,7 @@ export class UpdateSplash {
   protected readonly step = computed(() => {
     const s = this.updates.state();
     if (s.kind === 'installing') return 'Installing. League Bro restarts by itself in a moment.';
+    if (s.kind !== 'downloading') return this.updates.currentVersion() ? 'Checking for updates…' : 'Starting…';
     return s.kind === 'downloading' && s.percent !== null ? `Downloading… ${s.percent}%` : 'Downloading…';
   });
 }

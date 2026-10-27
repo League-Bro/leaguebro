@@ -722,6 +722,8 @@ struct Engine {
     scout_round: Arc<AtomicU64>,
     loading_game_id: Option<i64>,
     overlay_shown: bool,
+    /// Live game API reads that failed in a row while in game.
+    live_misses: u32,
     pending_post_game: Option<PendingPostGame>,
     last_window_check: Option<Instant>,
     /// Last try at loading static data from CommunityDragon (client closed).
@@ -754,6 +756,9 @@ const POST_GAME_GIVE_UP: Duration = Duration::from_secs(180);
 const WEB_STATICS_RETRY: Duration = Duration::from_secs(60);
 /// The live game API answers in milliseconds when it's up.
 const LIVE_TIMEOUT: Duration = Duration::from_secs(2);
+/// Failed live API reads (a second apart) before the overlay is put away: the
+/// game closed (a disconnect, waiting on Reconnect) or froze.
+const LIVE_MISSES_HIDE: u32 = 3;
 /// The gameflow phase, read every tick. A slower answer skips the tick
 /// (the client is busy, e.g. starting a game) instead of holding up the loop.
 const PHASE_TIMEOUT: Duration = Duration::from_secs(3);
@@ -987,7 +992,8 @@ impl Engine {
         self.set_status(true, phase, summoner, "").await;
         // League Bro's shop files show for every champion: clear the last build when a
         // new champ select starts, and leftovers (a crash) when first connecting outside a game.
-        if phase == "ChampSelect" || (prev.is_empty() && !in_game(phase)) {
+        // Not after a client restart mid-game, which also starts with an empty phase.
+        if phase == "ChampSelect" || (prev.is_empty() && !in_game(phase) && self.loading_game_id.is_none()) {
             let configured = self.state().config().install_dir;
             if let Some(dir) = itemsets::install_dir(lcu, configured.as_deref()).await {
                 let _ = itemsets::remove_own_global(&dir);
@@ -998,6 +1004,10 @@ impl Engine {
         } else if prev.is_empty() && matches!(phase, "PreEndOfGame" | "EndOfGame") {
             // Started (or reconnected) on the post-game screen.
             self.loading_game_id = None;
+            self.end_game(lcu).await;
+        } else if prev.is_empty() && !in_game(phase) && self.loading_game_id.is_some() && !self.live_api_up().await {
+            // The client restarted (often during a disconnect) and the game ended
+            // before it came back: still look for that game's summary.
             self.end_game(lcu).await;
         }
         if phase == "ChampSelect" {
@@ -1203,8 +1213,19 @@ impl Engine {
                 Ok(v) => v,
                 Err(_) => return,
             },
-            _ => return, // game still loading
+            _ => {
+                // Still loading, or the game closed. A disconnect leaves the client
+                // on Reconnect with no game window, so don't leave the last numbers
+                // on top of everything; the game is kept, and the overlay comes back
+                // on the first good read after reconnecting.
+                self.live_misses = self.live_misses.saturating_add(1);
+                if self.live_misses >= LIVE_MISSES_HIDE && self.overlay_shown {
+                    self.put_overlay_away().await;
+                }
+                return;
+            }
         };
+        self.live_misses = 0;
         let cfg = self.state().config();
         let mut fetch_rec: Option<(i64, String, String)> = None;
         let state = {
@@ -1394,6 +1415,20 @@ impl Engine {
             let _ = self.app.emit("situational", Some(next.clone()));
         }
         Some(next)
+    }
+
+    /// Whether the game is running (its live API answers).
+    async fn live_api_up(&self) -> bool {
+        matches!(self.live_http.get(live::LIVE_URL).timeout(LIVE_TIMEOUT).send().await, Ok(r) if r.status().is_success())
+    }
+
+    /// Hides the overlay window but keeps the game's state (Live tab, gold graph, lane pick).
+    async fn put_overlay_away(&mut self) {
+        let preview = self.state().shared.lock().await.overlay_preview;
+        if !preview {
+            set_overlay_visible(&self.app, false);
+        }
+        self.overlay_shown = false;
     }
 
     async fn hide_overlay(&mut self) {
@@ -1816,6 +1851,7 @@ pub async fn run(app: AppHandle) {
         scout_round: Arc::new(AtomicU64::new(0)),
         loading_game_id: None,
         overlay_shown: false,
+        live_misses: 0,
         pending_post_game: None,
         last_window_check: None,
         last_web_statics: None,

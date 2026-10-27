@@ -17,6 +17,8 @@ const POLL_MS = 5 * 60 * 1000;
 const LAUNCH_SETTLE_MS = 3000;
 /** The update splash stays up at least this long, so a fast download doesn't just flash it. */
 const SPLASH_MIN_MS = 1800;
+/** The startup splash never holds the app back longer than this, even if GitHub is slow. */
+const BOOT_MAX_MS = 5000;
 /** League phases an install must never interrupt. */
 const BUSY_PHASES = new Set(['ChampSelect', 'GameStart', 'InProgress', 'Reconnect']);
 
@@ -55,8 +57,10 @@ export class UpdateService {
   /** "A new version is out" popup; held back during champ select and games. */
   private readonly promptOpen = signal(false);
   readonly showPrompt = computed(() => this.promptOpen() && this.state().kind === 'available' && !this.leagueBusy());
-  /** The full-window splash, shown while an update downloads and installs. */
-  readonly showSplash = computed(() => ['downloading', 'installing'].includes(this.state().kind));
+  /** The startup splash, shown on launch while the update check runs. */
+  readonly booting = signal(false);
+  /** The full-window splash: on launch, and while an update downloads and installs. */
+  readonly showSplash = computed(() => this.booting() || ['downloading', 'installing'].includes(this.state().kind));
 
   private pending: Update | null = null;
   /** The newest version the user has been told about, so each one pops up once. */
@@ -71,12 +75,14 @@ export class UpdateService {
       this.demoPreview();
       return;
     }
+    this.booting.set(true);
     // Read from the built app (tauri.conf.json), so a version bump shows up on its own.
     this.version.set(await getVersion());
     // `npm run tauri dev` runs your working copy; installing a release over
     // it would be confusing, so dev builds never update themselves.
     if (isDevMode()) {
       this.lastResult.set('Updates are off while running with npm run tauri dev.');
+      sleep(SPLASH_MIN_MS).then(() => this.booting.set(false));
       return;
     }
     this.currentVersion.set(this.version());
@@ -84,16 +90,25 @@ export class UpdateService {
     setInterval(() => this.check(), POLL_MS);
   }
 
-  /** On launch: install a newer build straight away, unless League is mid-game. */
+  /**
+   * On launch, behind the startup splash: install a newer build straight away,
+   * unless League is mid-game; otherwise the splash fades into the app.
+   */
   private async launchUpdate(): Promise<void> {
     this.launching = true;
+    const minShown = sleep(SPLASH_MIN_MS);
     const settled = sleep(LAUNCH_SETTLE_MS);
-    await this.check();
-    await settled;
+    await Promise.race([this.check(), sleep(BOOT_MAX_MS)]);
+    await minShown;
+    if (this.state().kind === 'available') await settled;
     this.launching = false;
-    if (this.state().kind !== 'available') return;
-    if (this.leagueBusy()) this.promptOpen.set(true);
-    else await this.install();
+    if (this.state().kind === 'available' && !this.leagueBusy()) {
+      // install() switches the splash over to download progress.
+      this.install();
+    } else if (this.state().kind === 'available') {
+      this.promptOpen.set(true);
+    }
+    this.booting.set(false);
   }
 
   async check(manual = false): Promise<void> {
@@ -161,11 +176,14 @@ export class UpdateService {
     this.state.set({ kind: 'idle' });
   }
 
-  /** Browser preview: `?update=prompt` shows the popup, `?update=splash` the update splash. */
+  /** Browser preview: `?update=boot` the startup splash, `?update=prompt` the popup, `?update=splash` the update splash. */
   private demoPreview(): void {
     const mode = new URLSearchParams(location.search).get('update');
     const version = '0.1.22';
-    if (mode === 'prompt') {
+    if (mode === 'boot') {
+      this.booting.set(true);
+      sleep(2500).then(() => this.booting.set(false));
+    } else if (mode === 'prompt') {
       this.state.set({ kind: 'available', version, notes: '' });
       this.promptOpen.set(true);
     } else if (mode === 'splash') {

@@ -2,11 +2,12 @@ import { ChangeDetectionStrategy, Component, computed, inject, input } from '@an
 import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { championIcon, formatTier, positionLabel, rankCrest, tierClass, winPct } from '../core/assets';
+import { Loader } from './loader';
 
 @Component({
   selector: 'rl-player',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe],
+  imports: [DecimalPipe, Loader],
   template: `
     <div class="player" [class.me]="isMe()" [class.enemy]="side() === 'enemy'">
       <div class="who">
@@ -72,7 +73,7 @@ import { championIcon, formatTier, positionLabel, rankCrest, tierClass, winPct }
           }
         </div>
       } @else if (puuid()) {
-        <div class="loading muted">Looking up…</div>
+        <rl-loader [size]="22" class="loading muted">Looking up…</rl-loader>
       } @else if (!isMe()) {
         <div class="loading faint">{{ hiddenNote() }}</div>
       }

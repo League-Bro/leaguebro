@@ -6,6 +6,7 @@ import { ItemSet, MIN_GAMES, RecChoice, RecState, Recommendation, RuneRec } from
 import { SituationalCard } from './situational-card';
 import { ItemTip } from './item-tip';
 import { buildWhy, rolesLabel } from '../core/why';
+import { Loader } from './loader';
 
 /** One of OP.GG's options in a pick list: icons, a name, and its win and play rates. */
 interface ChoiceRow {
@@ -22,7 +23,7 @@ interface ChoiceRow {
 @Component({
   selector: 'rl-rec-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe, NgTemplateOutlet, SituationalCard, ItemTip],
+  imports: [DecimalPipe, NgTemplateOutlet, SituationalCard, ItemTip, Loader],
   template: `
     @if (rift.config()?.recSource === 'opgg' && state(); as s) {
       <section class="card rec">
@@ -46,6 +47,7 @@ interface ChoiceRow {
         @if (s.loading) {
           <!-- Same layout as the loaded card, so nothing jumps when the data arrives. -->
           <div class="layout skeleton" role="status" [attr.aria-label]="'Looking up ' + rift.champName(s.championId) + ' on OP.GG'">
+            <rl-loader class="over" [size]="48" />
             <section class="panel">
               <header><h4>Runes</h4></header>
               <div class="rune-main">
@@ -341,6 +343,8 @@ interface ChoiceRow {
 
     /* Layout: runes | spells + skills, then items across the card. Titled panels with room between them. */
     .layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+    .layout.skeleton { position: relative; }
+    .skeleton .over { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); z-index: 1; }
     .stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
     .panel {
       display: flex; flex-direction: column; gap: 14px; min-width: 0;

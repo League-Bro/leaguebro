@@ -3,12 +3,13 @@ import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { championIcon } from '../core/assets';
 import { MIN_GAMES } from '../core/models';
+import { Loader } from './loader';
 
 /** Your lane opponent and how the matchup goes: OP.GG's numbers and tip, plus your own games. */
 @Component({
   selector: 'rl-matchup',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe],
+  imports: [DecimalPipe, Loader],
   template: `
     @if (rift.config()?.recSource === 'opgg' && state(); as m) {
       <section class="card matchup">
@@ -51,7 +52,7 @@ import { MIN_GAMES } from '../core/models';
           </div>
 
           @if (m.loading) {
-            <p class="muted small" role="status">Looking up the matchup on OP.GG…</p>
+            <rl-loader [size]="22" class="muted small">Looking up the matchup on OP.GG…</rl-loader>
           } @else if (m.matchup; as x) {
             <div class="facts">
               @if (x.games > 0) {

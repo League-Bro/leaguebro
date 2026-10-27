@@ -3,6 +3,7 @@ import { DatePipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { assetUrl, championIcon } from '../core/assets';
 import { PatchEntry, PatchInfo, PatchNotes, PatchSection, PatchVerdict } from '../core/models';
+import { Loader } from './loader';
 
 type Filter = 'all' | 'buff' | 'nerf' | 'adjusted' | 'new';
 
@@ -18,7 +19,7 @@ const VERDICT_LABELS: Record<string, string> = {
 @Component({
   selector: 'rl-patch',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe],
+  imports: [DatePipe, Loader],
   template: `
     <div class="top">
       <div>
@@ -44,7 +45,7 @@ const VERDICT_LABELS: Record<string, string> = {
       <div class="card"><p class="loss small">Couldn't load patch notes: {{ error() }}</p>
         <button (click)="reload()">Try again</button></div>
     } @else if (loading()) {
-      <p class="muted">Loading patch notes…</p>
+      <rl-loader [size]="44" [block]="true" class="muted">Loading patch notes…</rl-loader>
     } @else if (notes(); as n) {
       <div class="tiles">
         @for (t of tiles(); track t.id) {

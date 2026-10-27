@@ -3,6 +3,7 @@ import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { POSITION_LABELS, championIcon, rankCrest } from '../core/assets';
 import { TierEntry, TierSource } from '../core/models';
+import { Loader } from './loader';
 
 type Lane = 'top' | 'jungle' | 'middle' | 'bottom' | 'utility';
 type SortKey = 'tier' | 'name' | 'winRate' | 'pickRate' | 'banRate' | 'games';
@@ -86,7 +87,7 @@ const prefs = signal({
   selector: 'rl-champion-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '(document:click)': 'closeRankMenu($event)' },
-  imports: [DecimalPipe],
+  imports: [DecimalPipe, Loader],
   template: `
     <div class="top">
       <div>
@@ -154,7 +155,11 @@ const prefs = signal({
             <span>{{ c.name }}</span>
           </button>
         } @empty {
-          <p class="muted">{{ rift.statics() ? 'No champion matches.' : 'Loading champions…' }}</p>
+          @if (rift.statics()) {
+            <p class="muted">No champion matches.</p>
+          } @else {
+            <rl-loader [block]="true" class="muted">Loading champions…</rl-loader>
+          }
         }
       </div>
     } @else {
@@ -232,11 +237,19 @@ const prefs = signal({
                 </span>
               }
             } @else {
-              <span class="c-none faint small">{{ loading() ? 'Loading stats…' : 'Not enough games for these filters' }}</span>
+              @if (loading()) {
+                <rl-loader [size]="20" class="c-none faint small">Loading stats…</rl-loader>
+              } @else {
+                <span class="c-none faint small">Not enough games for these filters</span>
+              }
             }
           </div>
         } @empty {
-          <p class="muted empty">{{ emptyText() }}</p>
+          @if (statsLoading()) {
+            <rl-loader [size]="44" [block]="true" class="muted">Loading champion stats…</rl-loader>
+          } @else {
+            <p class="muted empty">{{ emptyText() }}</p>
+          }
         }
       </div>
     }
@@ -506,8 +519,10 @@ export class ChampionList {
     return m?.source === 'lolalytics' && !!m.games && min != null && m.games < min;
   });
 
+  /** First load of the stats, with nothing to show yet. */
+  protected readonly statsLoading = computed(() => this.loading() && !this.statRows().length);
+
   protected readonly emptyText = computed(() => {
-    if (this.loading() && !this.statRows().length) return 'Loading champion stats…';
     if (this.p().favoritesOnly && !this.query()) return 'No favorites here yet. Star a champion to pin it to this filter.';
     if (this.query()) return 'No champion matches.';
     return 'Too few games at this rank to rate champions in this lane. Try a wider rank filter.';
