@@ -1,8 +1,8 @@
-import { Injectable, isDevMode, signal } from '@angular/core';
+import { Injectable, computed, inject, isDevMode, signal } from '@angular/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { check, Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
-import { inTauri } from './rift.service';
+import { RiftService, inTauri } from './rift.service';
 
 export type UpdateState =
   | { kind: 'idle' }
@@ -11,15 +11,31 @@ export type UpdateState =
   | { kind: 'installing'; version: string }
   | { kind: 'error'; message: string };
 
-const RECHECK_MS = 6 * 60 * 60 * 1000;
+/** GitHub can't push to installed copies, so a running app looks for a new release this often. */
+const POLL_MS = 5 * 60 * 1000;
+/** On launch, give the engine a moment to say whether League is in champ select or a game. */
+const LAUNCH_SETTLE_MS = 3000;
+/** The update splash stays up at least this long, so a fast download doesn't just flash it. */
+const SPLASH_MIN_MS = 1800;
+/** League phases an install must never interrupt. */
+const BUSY_PHASES = new Set(['ChampSelect', 'GameStart', 'InProgress', 'Reconnect']);
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
- * Checks GitHub Releases for a newer signed build. Nothing installs on its
- * own: the main window shows a banner and you choose when to update, so an
- * update never interrupts a game.
+ * Keeps League Bro up to date from GitHub Releases (latest.json).
+ *
+ * - When the app starts and a newer build is out, it installs right away behind
+ *   the update splash and restarts.
+ * - While it runs, it checks every few minutes and pops up a prompt when a new
+ *   release lands.
+ * Neither happens during champ select or a game: the prompt waits until the
+ * game ends, and a launch during a game asks instead of installing.
  */
 @Injectable({ providedIn: 'root' })
 export class UpdateService {
+  private readonly rift = inject(RiftService);
+
   readonly state = signal<UpdateState>({ kind: 'idle' });
   /** The running app's version, also in dev builds. Shown in the header. */
   readonly version = signal('');
@@ -28,12 +44,33 @@ export class UpdateService {
   readonly checking = signal(false);
   readonly lastResult = signal<string>('');
 
+  /** League is in champ select or a game, so updates wait. */
+  readonly leagueBusy = computed(
+    () =>
+      BUSY_PHASES.has(this.rift.status().phase) ||
+      !!this.rift.champSelect() ||
+      !!this.rift.loading() ||
+      !!this.rift.overlay(),
+  );
+  /** "A new version is out" popup; held back during champ select and games. */
+  private readonly promptOpen = signal(false);
+  readonly showPrompt = computed(() => this.promptOpen() && this.state().kind === 'available' && !this.leagueBusy());
+  /** The full-window splash, shown while an update downloads and installs. */
+  readonly showSplash = computed(() => ['downloading', 'installing'].includes(this.state().kind));
+
   private pending: Update | null = null;
+  /** The newest version the user has been told about, so each one pops up once. */
+  private announced = '';
+  private launching = false;
   private started = false;
 
   async start(): Promise<void> {
-    if (this.started || !inTauri()) return;
+    if (this.started) return;
     this.started = true;
+    if (!inTauri()) {
+      this.demoPreview();
+      return;
+    }
     // Read from the built app (tauri.conf.json), so a version bump shows up on its own.
     this.version.set(await getVersion());
     // `npm run tauri dev` runs your working copy; installing a release over
@@ -43,9 +80,20 @@ export class UpdateService {
       return;
     }
     this.currentVersion.set(this.version());
-    // Wait a little so the check doesn't compete with connecting to League.
-    setTimeout(() => this.check(), 5000);
-    setInterval(() => this.check(), RECHECK_MS);
+    this.launchUpdate();
+    setInterval(() => this.check(), POLL_MS);
+  }
+
+  /** On launch: install a newer build straight away, unless League is mid-game. */
+  private async launchUpdate(): Promise<void> {
+    this.launching = true;
+    const settled = sleep(LAUNCH_SETTLE_MS);
+    await this.check();
+    await settled;
+    this.launching = false;
+    if (this.state().kind !== 'available') return;
+    if (this.leagueBusy()) this.promptOpen.set(true);
+    else await this.install();
   }
 
   async check(manual = false): Promise<void> {
@@ -59,6 +107,10 @@ export class UpdateService {
         this.pending = update;
         this.state.set({ kind: 'available', version: update.version, notes: update.body ?? '' });
         this.lastResult.set(`Version ${update.version} is available.`);
+        if (update.version !== this.announced) {
+          this.announced = update.version;
+          if (!this.launching) this.promptOpen.set(true);
+        }
       } else {
         this.lastResult.set(`You're on the latest version (${this.currentVersion()}).`);
       }
@@ -74,29 +126,55 @@ export class UpdateService {
   async install(): Promise<void> {
     const update = this.pending;
     if (!update) return;
+    this.promptOpen.set(false);
+    const minShown = sleep(SPLASH_MIN_MS);
     let total = 0;
     let done = 0;
     this.state.set({ kind: 'downloading', version: update.version, percent: null });
     try {
-      await update.downloadAndInstall((event) => {
+      await update.download((event) => {
         if (event.event === 'Started') {
           total = event.data.contentLength ?? 0;
         } else if (event.event === 'Progress') {
           done += event.data.chunkLength;
           const percent = total ? Math.min(100, Math.round((100 * done) / total)) : null;
           this.state.set({ kind: 'downloading', version: update.version, percent });
-        } else if (event.event === 'Finished') {
-          this.state.set({ kind: 'installing', version: update.version });
         }
       });
-      // On Windows the installer closes the app itself; this covers the rest.
+      await minShown;
+      this.state.set({ kind: 'installing', version: update.version });
+      // On Windows the installer closes the app and opens the new one itself; this covers the rest.
+      await update.install();
       await relaunch();
     } catch (e) {
       this.state.set({ kind: 'error', message: String(e) });
     }
   }
 
+  /** "Later": close the popup; the banner stays so you can still update from it. */
+  later(): void {
+    this.promptOpen.set(false);
+  }
+
   dismiss(): void {
+    this.promptOpen.set(false);
     this.state.set({ kind: 'idle' });
+  }
+
+  /** Browser preview: `?update=prompt` shows the popup, `?update=splash` the update splash. */
+  private demoPreview(): void {
+    const mode = new URLSearchParams(location.search).get('update');
+    const version = '0.1.22';
+    if (mode === 'prompt') {
+      this.state.set({ kind: 'available', version, notes: '' });
+      this.promptOpen.set(true);
+    } else if (mode === 'splash') {
+      let percent = 0;
+      const timer = setInterval(() => {
+        percent = Math.min(100, percent + 3);
+        this.state.set(percent < 100 ? { kind: 'downloading', version, percent } : { kind: 'installing', version });
+        if (percent >= 100) clearInterval(timer);
+      }, 120);
+    }
   }
 }

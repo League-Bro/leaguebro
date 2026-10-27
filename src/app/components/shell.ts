@@ -10,6 +10,7 @@ import { ProfileView } from './profile-view';
 import { FeedbackView } from './feedback-view';
 import { ItemTipPopup } from './item-tip';
 import { ChampionSearch } from './champion-search';
+import { UpdateSplash } from './update-splash';
 
 /** 'profile' isn't in the tab bar; the brand and your name open it. */
 type Tab = 'live' | 'champions' | 'patch' | 'settings' | 'feedback' | 'profile';
@@ -37,7 +38,7 @@ const PHASE_LABELS: Record<string, string> = {
 @Component({
   selector: 'rl-shell',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LiveView, ChampionsView, PatchView, SettingsView, FeedbackView, ProfileView, ItemTipPopup, ChampionSearch],
+  imports: [LiveView, ChampionsView, PatchView, SettingsView, FeedbackView, ProfileView, ItemTipPopup, ChampionSearch, UpdateSplash],
   template: `
     <header>
       <button class="brand" [class.active]="tab() === 'profile'" title="Your profile and match history" (click)="go('profile')">
@@ -82,15 +83,6 @@ const PHASE_LABELS: Record<string, string> = {
           <button class="ghost" (click)="updates.dismiss()">Later</button>
         </div>
       }
-      @case ('downloading') {
-        <div class="update-bar">
-          Downloading {{ $any(updates.state()).version }}…
-          @if ($any(updates.state()).percent !== null) { {{ $any(updates.state()).percent }}% }
-        </div>
-      }
-      @case ('installing') {
-        <div class="update-bar">Installing {{ $any(updates.state()).version }}. League Bro will restart in a moment.</div>
-      }
       @case ('error') {
         <div class="update-bar bad">
           <span>Update failed: {{ $any(updates.state()).message }}</span>
@@ -112,6 +104,7 @@ const PHASE_LABELS: Record<string, string> = {
       }
     </main>
     <rl-item-tip />
+    <rl-update-splash />
     @if (search(); as s) {
       <rl-champion-search [initial]="s.text" (closed)="search.set(null)" />
     }
