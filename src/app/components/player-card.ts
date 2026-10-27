@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
-import { championIcon, formatTier, positionLabel, tierClass, winPct } from '../core/assets';
+import { championIcon, formatTier, positionLabel, rankCrest, tierClass, winPct } from '../core/assets';
 
 @Component({
   selector: 'rl-player',
@@ -28,17 +28,21 @@ import { championIcon, formatTier, positionLabel, tierClass, winPct } from '../c
       </div>
 
       @if (profile(); as p) {
-        <div class="rank">
-          @if (p.solo; as r) {
-            <span [class]="tierCls(r.tier)">{{ tier(r.tier, r.division) }}</span>
-            <span class="muted mono">{{ r.lp }} LP</span>
-            <span class="faint mono">{{ r.wins }}W {{ r.losses }}L · {{ wr(r.wins, r.losses) }}%</span>
-          } @else if (p.flex; as r) {
-            <span [class]="tierCls(r.tier)">{{ tier(r.tier, r.division) }}</span>
-            <span class="faint">Flex</span>
-          } @else {
-            <span class="tier-none">Unranked</span>
-          }
+        <div class="rank-cell">
+          @let shown = p.solo ?? p.flex;
+          <img class="crest" [class.unranked]="!shown" [src]="crest(shown?.tier)" [alt]="shown ? tier(shown.tier, shown.division) : 'Unranked'" />
+          <div class="rank">
+            @if (p.solo; as r) {
+              <span [class]="tierCls(r.tier)">{{ tier(r.tier, r.division) }}</span>
+              <span class="muted mono">{{ r.lp }} LP</span>
+              <span class="faint mono">{{ r.wins }}W {{ r.losses }}L · {{ wr(r.wins, r.losses) }}%</span>
+            } @else if (p.flex; as r) {
+              <span [class]="tierCls(r.tier)">{{ tier(r.tier, r.division) }}</span>
+              <span class="faint">Flex</span>
+            } @else {
+              <span class="tier-none">Unranked</span>
+            }
+          </div>
         </div>
         <div class="form">
           @if (p.recentGames > 0) {
@@ -93,6 +97,9 @@ import { championIcon, formatTier, positionLabel, tierClass, winPct } from '../c
     .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .sub { font-size: 12.5px; }
     .you { font-size: 10px; font-weight: 700; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 0 6px; margin-left: 6px; vertical-align: 2px; }
+    .rank-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .crest { width: 36px; height: 36px; object-fit: contain; flex: none; }
+    .crest.unranked { opacity: 0.45; }
     .rank, .form { display: flex; flex-direction: column; font-size: 13px; gap: 1px; }
     .rank span:first-child { font-weight: 600; }
     .strip { display: flex; gap: 2px; margin-top: 3px; }
@@ -135,5 +142,6 @@ export class PlayerCard {
   protected icon = championIcon;
   protected tierCls = tierClass;
   protected tier = formatTier;
+  protected crest = rankCrest;
   protected wr = (w: number, l: number) => winPct(w, w + l);
 }
