@@ -270,7 +270,13 @@ async fn fill_opponents(lcu: &Lcu, puuid: &str, matches: &mut [MatchLine]) -> us
             _ => failed += 1,
         }
     }
-    let cache = OPPONENTS.lock().unwrap();
+    let mut cache = OPPONENTS.lock().unwrap();
+    // Only games still in the client's history are kept; the client holds just
+    // a few dozen, so this stops the cache growing with every game played.
+    // An empty history (it failed to load) keeps everything.
+    if !matches.is_empty() {
+        cache.retain(|(p, id), _| p == puuid && matches.iter().any(|m| m.game_id == *id));
+    }
     for m in matches {
         if let Some(o) = cache.get(&(puuid.to_string(), m.game_id)) {
             m.lane_opponent = o.lane;

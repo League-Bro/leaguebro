@@ -126,6 +126,7 @@ export class RiftService {
       listen<ChampSelectView | null>('champ-select', (e) => this.champSelect.set(e.payload)),
       listen<LoadingView | null>('loading', (e) => this.loading.set(e.payload)),
       listen<Profile>('scout', (e) => this.profiles.update((p) => ({ ...p, [e.payload.puuid]: e.payload }))),
+      listen('scout-cleared', () => this.profiles.set({})),
       listen<ImportEvent>('rune-import', (e) => this.lastImport.set(e.payload)),
       listen<SwiftplaySlot[]>('swiftplay', (e) => this.swiftplay.set(e.payload)),
       listen<OverlayState | null>('overlay', (e) => this.overlay.set(e.payload)),

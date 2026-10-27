@@ -1,7 +1,7 @@
 //! Helpers shared by every module: reading loosely shaped JSON (the League
 //! client, the live game, OP.GG…) and fetching JSON from the web.
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use serde_json::Value;
 use std::time::Duration;
 
@@ -68,16 +68,36 @@ pub fn web_client(timeout_secs: u64) -> reqwest::Client {
         .expect("http client")
 }
 
+/// The most a web answer may be. The biggest real ones (CommunityDragon's
+/// items.json, a patch notes page) are a few MB; this stops a broken or
+/// hostile server from filling memory.
+const MAX_BODY: usize = 32 * 1024 * 1024;
+
+/// Reads a web answer, up to `MAX_BODY`; `what` names the site in errors.
+pub async fn read_body(mut resp: reqwest::Response, what: &str) -> Result<Vec<u8>> {
+    let too_big = || anyhow!("{what}'s answer is too big");
+    if resp.content_length().is_some_and(|n| n > MAX_BODY as u64) {
+        return Err(too_big());
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = resp.chunk().await.with_context(|| format!("couldn't read {what}'s answer"))? {
+        if body.len() + chunk.len() > MAX_BODY {
+            return Err(too_big());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
 /// Sends a GET and reads the JSON answer; `what` names the site in errors.
 pub async fn get_json(req: reqwest::RequestBuilder, what: &str) -> Result<Value> {
-    req.send()
+    let resp = req
+        .send()
         .await
         .with_context(|| format!("couldn't reach {what}"))?
         .error_for_status()
-        .with_context(|| format!("{what} refused the request"))?
-        .json()
-        .await
-        .with_context(|| format!("couldn't read {what}'s answer"))
+        .with_context(|| format!("{what} refused the request"))?;
+    serde_json::from_slice(&read_body(resp, what).await?).with_context(|| format!("couldn't read {what}'s answer"))
 }
 
 /// Whether a request failed by timing out (the other end is slow, not gone).

@@ -23,7 +23,7 @@
 //! (`expires_at`): a day at a time for the week after each patch's notes come
 //! out, then a week at a time, and always when the next notes are due.
 
-use crate::util::{flag, float, get_json, int, ints, list, text, web_client, CDRAGON_GAME_DATA};
+use crate::util::{flag, float, get_json, int, ints, list, read_body, text, web_client, CDRAGON_GAME_DATA};
 use anyhow::{anyhow, bail, Context, Result};
 use crate::cache::{now_secs, CacheUsage, DiskCache, Generation};
 use crate::lcu::Lcu;
@@ -798,7 +798,26 @@ impl OpGg {
         Fut: std::future::Future<Output = Result<T>>,
     {
         let lookup = self.lookups.lock().await.entry(key.clone()).or_default().clone();
-        let _lookup = lookup.lock().await;
+        let result = {
+            let _held = lookup.lock().await;
+            self.cached_locked(answers, key.clone(), fetch, keep).await
+        };
+        // Forget the key's lock once no other caller holds it (the map's copy
+        // and this one are the last), so the map doesn't keep every key looked up.
+        let mut lookups = self.lookups.lock().await;
+        if Arc::strong_count(&lookup) == 2 {
+            lookups.remove(&key);
+        }
+        result
+    }
+
+    /// `cached`, with the key's lookup lock held.
+    async fn cached_locked<T, F, Fut>(&self, answers: &Answers<T>, key: String, fetch: F, keep: impl Fn(&T) -> bool) -> Result<T>
+    where
+        T: Clone + Serialize + serde::de::DeserializeOwned,
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<T>>,
+    {
         let file = rec_file(&key);
         let now = now_secs();
         let generation = self.generation.current();
@@ -849,11 +868,10 @@ impl OpGg {
         let resp = req.send().await.context("couldn't reach OP.GG")?;
         let status = resp.status();
         let sid = resp.headers().get("mcp-session-id").and_then(|v| v.to_str().ok()).map(str::to_string);
-        let text = resp.text().await.unwrap_or_default();
         if !status.is_success() {
             bail!("OP.GG returned {status}");
         }
-        Ok((sid, text))
+        Ok((sid, String::from_utf8_lossy(&read_body(resp, "OP.GG").await?).into_owned()))
     }
 
     async fn ensure_session(&self) -> Result<Option<String>> {

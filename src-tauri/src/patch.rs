@@ -28,7 +28,7 @@
 //!
 //! Nothing is fetched until the Patch Notes tab asks for it.
 
-use crate::util::{text, web_client};
+use crate::util::{read_body, text, web_client};
 use anyhow::{anyhow, bail, Context, Result};
 use scraper::{CaseSensitivity, ElementRef, Html, Selector};
 use crate::cache::{now_secs, CacheUsage, DiskCache, Generation};
@@ -684,7 +684,7 @@ impl PatchNotesClient {
         if !status.is_success() {
             bail!("leagueoflegends.com returned {status}");
         }
-        Ok(resp.text().await?)
+        Ok(String::from_utf8_lossy(&read_body(resp, "leagueoflegends.com").await?).into_owned())
     }
 
     pub async fn list(&self) -> Result<Vec<PatchInfo>> {

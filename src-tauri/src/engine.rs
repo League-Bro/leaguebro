@@ -16,7 +16,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition};
@@ -715,7 +715,11 @@ struct Engine {
     shop_items: Option<Arc<HashMap<i64, live::ShopItem>>>,
     /// Swiftplay lobby slots (champion, position) already imported.
     last_slot_keys: Vec<(i64, String)>,
+    /// Players scouted (or being scouted) since the last clear.
     requested: HashSet<String>,
+    /// Bumped by each clear, under the `shared` lock, so a lookup that started
+    /// before it doesn't put its old profile back.
+    scout_round: Arc<AtomicU64>,
     loading_game_id: Option<i64>,
     overlay_shown: bool,
     pending_post_game: Option<PendingPostGame>,
@@ -1028,11 +1032,33 @@ impl Engine {
         let app = self.app.clone();
         let lcu = lcu.clone();
         let puuid = puuid.to_string();
+        let (rounds, round) = (self.scout_round.clone(), self.scout_round.load(Ordering::Acquire));
         tauri::async_runtime::spawn(async move {
             let profile = scout::lookup(&lcu, &puuid).await;
-            app.state::<AppState>().shared.lock().await.profiles.insert(puuid, profile.clone());
+            let state = app.state::<AppState>();
+            let mut sh = state.shared.lock().await;
+            if rounds.load(Ordering::Acquire) != round {
+                return;
+            }
+            sh.profiles.insert(puuid, profile.clone());
+            drop(sh);
             let _ = app.emit("scout", profile);
         });
+    }
+
+    /// Forgets every scouted player, here and in the UI, so ranks refresh next game.
+    async fn clear_scouted(&mut self) {
+        if self.requested.is_empty() {
+            return;
+        }
+        self.requested.clear();
+        {
+            let state = self.state();
+            let mut sh = state.shared.lock().await;
+            self.scout_round.fetch_add(1, Ordering::AcqRel);
+            sh.profiles.clear();
+        }
+        let _ = self.app.emit("scout-cleared", ());
     }
 
     async fn champ_select(&mut self, lcu: &Lcu) {
@@ -1781,6 +1807,7 @@ pub async fn run(app: AppHandle) {
         shop_items: None,
         last_slot_keys: Vec::new(),
         requested: HashSet::new(),
+        scout_round: Arc::new(AtomicU64::new(0)),
         loading_game_id: None,
         overlay_shown: false,
         pending_post_game: None,
@@ -1797,10 +1824,9 @@ pub async fn run(app: AppHandle) {
         every_second.tick().await;
         engine.tick().await;
         // Profiles are only cached for the current session of the app; clear
-        // the request list between games so ranks refresh.
+        // them between games so ranks refresh.
         if engine.phase == "EndOfGame" || engine.phase == "Lobby" {
-            engine.requested.clear();
-            app.state::<AppState>().shared.lock().await.profiles.clear();
+            engine.clear_scouted().await;
         }
     }
 }
