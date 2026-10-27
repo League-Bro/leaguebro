@@ -219,6 +219,9 @@ pub struct RuneRec {
     pub win_rate: f64,
     /// Share of the champion's games that used this page (0–1).
     pub pick_rate: f64,
+    /// Made by the player in the rune editor: imported as is, without OP.GG's numbers.
+    #[serde(default)]
+    pub custom: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -300,6 +303,20 @@ pub struct RecChoice {
     /// (the indexes then pick from the matchup's options). Champ select only.
     #[serde(default)]
     pub matchup: bool,
+    /// A rune page the player put together in the rune editor; replaces the
+    /// picked page (`runes`) when set.
+    #[serde(default)]
+    pub custom: Option<CustomRunes>,
+}
+
+/// A rune page from the rune editor, in the client's order: keystone, three
+/// primary runes, two secondary runes, three stat shards.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomRunes {
+    pub primary_style_id: i64,
+    pub sub_style_id: i64,
+    pub perk_ids: [i64; 9],
 }
 
 /// The recommendation with the picked options in place of the top ones, so
@@ -310,6 +327,15 @@ pub fn with_choice(rec: &Recommendation, choice: &RecChoice) -> Recommendation {
     let mut r = rec.clone();
     if let Some(runes) = rec.rune_options.get(choice.runes) {
         r.runes = Some(runes.clone());
+    }
+    if let Some(c) = choice.custom {
+        r.runes = Some(RuneRec {
+            primary_style_id: c.primary_style_id,
+            sub_style_id: c.sub_style_id,
+            perk_ids: c.perk_ids.to_vec(),
+            custom: true,
+            ..Default::default()
+        });
     }
     if let Some(s) = rec.spell_options.get(choice.spells) {
         r.spells = s.ids.clone();
@@ -411,6 +437,7 @@ fn rune_rec(r: &Value) -> Option<RuneRec> {
         win_rate: win_rate(r),
         pick_rate: pick_rate(r),
         perk_ids: primary.into_iter().chain(secondary).chain(shards).collect(),
+        custom: false,
     })
 }
 
@@ -1336,7 +1363,7 @@ mod tests {
         assert_eq!(with_choice(&r, &RecChoice::default()), r);
 
         // Picking Teleport, the Rabadon's core and Ionian boots flows into spells and the build.
-        let picked = with_choice(&r, &RecChoice { runes: 1, spells: 1, core: 1, boots: 1, matchup: false });
+        let picked = with_choice(&r, &RecChoice { runes: 1, spells: 1, core: 1, boots: 1, matchup: false, custom: None });
         assert_eq!(picked.spells, vec![4, 12]);
         assert_eq!(picked.spell_stats.as_ref().unwrap().games, 3639);
         assert_eq!(picked.runes.as_ref(), Some(&r.rune_options[1]));
@@ -1348,6 +1375,12 @@ mod tests {
 
         // An out-of-range pick keeps the top option.
         assert_eq!(with_choice(&r, &RecChoice { spells: 9, ..Default::default() }).spells, vec![4, 14]);
+        // A page from the rune editor replaces the picked one.
+        let custom = CustomRunes { primary_style_id: 8000, sub_style_id: 8400, perk_ids: [8010, 9111, 9104, 8299, 8444, 8451, 5005, 5008, 5001] };
+        let mine = with_choice(&r, &RecChoice { runes: 1, custom: Some(custom), ..Default::default() }).runes.unwrap();
+        assert!(mine.custom);
+        assert_eq!((mine.primary_style_id, mine.sub_style_id), (8000, 8400));
+        assert_eq!(mine.perk_ids, custom.perk_ids.to_vec());
     }
 
     #[test]

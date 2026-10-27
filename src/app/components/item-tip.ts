@@ -1,21 +1,26 @@
 // Item tooltip: hovering (or focusing) anything with `[rlItemTip]="id"` shows the
 // item's full card, like the in-game shop: cost, stats, passives/actives and what
-// it's built from. One <rl-item-tip /> in the shell draws it for the whole app.
+// it's built from. With `tipKind` it shows a rune, rune tree or summoner spell
+// instead, like the client's rune page. One <rl-item-tip /> in the shell draws it
+// for the whole app.
 import { ChangeDetectionStrategy, Component, Directive, ElementRef, Injectable, OnDestroy, afterRenderEffect, computed, inject, input, signal, viewChild } from '@angular/core';
 import { RiftService } from '../core/rift.service';
+import { assetUrl } from '../core/assets';
 
 /** Moving between neighbouring icons within this keeps the card open and just swaps its contents. */
 const HIDE_DELAY_MS = 80;
 
+export type TipKind = 'item' | 'rune' | 'tree' | 'spell';
+
 @Injectable({ providedIn: 'root' })
 export class ItemTipState {
-  readonly current = signal<{ id: number; anchor: HTMLElement } | null>(null);
+  readonly current = signal<{ id: number; anchor: HTMLElement; kind: TipKind } | null>(null);
   private hideTimer = 0;
 
-  show(id: number, anchor: HTMLElement): void {
+  show(id: number, anchor: HTMLElement, kind: TipKind = 'item'): void {
     clearTimeout(this.hideTimer);
     const c = this.current();
-    if (c?.id !== id || c.anchor !== anchor) this.current.set({ id, anchor });
+    if (c?.id !== id || c.anchor !== anchor || c.kind !== kind) this.current.set({ id, anchor, kind });
   }
   hide(anchor: HTMLElement, now = false): void {
     if (this.current()?.anchor !== anchor) return;
@@ -31,9 +36,10 @@ export class ItemTipState {
 @Directive({ selector: '[rlItemTip]' })
 export class ItemTip implements OnDestroy {
   readonly rlItemTip = input.required<number>();
+  readonly tipKind = input<TipKind>('item');
   private readonly el = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
   private readonly tip = inject(ItemTipState);
-  private readonly show = () => this.rlItemTip() > 0 && this.tip.show(this.rlItemTip(), this.el);
+  private readonly show = () => this.rlItemTip() > 0 && this.tip.show(this.rlItemTip(), this.el, this.tipKind());
   private readonly hide = () => this.tip.hide(this.el);
 
   constructor() {
@@ -84,6 +90,17 @@ export class ItemTip implements OnDestroy {
           </div>
         }
       </div>
+    } @else if (perk(); as p) {
+      <div class="tip fit" #box role="tooltip">
+        <header>
+          @if (p.icon) { <img class="round" [class.tree]="p.kind === 'tree'" [src]="p.icon" alt="" (error)="rift.hideImg($event)" /> }
+          <div>
+            <div class="name">{{ p.name }}</div>
+            @if (p.sub) { <div class="sub">{{ p.sub }}</div> }
+          </div>
+        </header>
+        @if (p.text) { <div class="ptext">{{ p.text }}</div> }
+      </div>
     }
   `,
   styles: `
@@ -108,6 +125,11 @@ export class ItemTip implements OnDestroy {
     .etext { color: var(--text-dim); white-space: pre-line; }
     .from { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
     .from img { width: 22px; height: 22px; border-radius: 4px; }
+    .tip.fit { width: max-content; max-width: min(300px, calc(100vw - 16px)); }
+    header img.round { border-radius: 50%; background: var(--bg-sunken); }
+    header img.tree { padding: 5px; }
+    .sub { color: var(--gold); font-size: 11.5px; letter-spacing: 0.02em; }
+    .ptext { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--text-dim); white-space: pre-line; }
   `,
 })
 export class ItemTipPopup {
@@ -117,25 +139,59 @@ export class ItemTipPopup {
 
   protected readonly item = computed(() => {
     const c = this.state.current();
-    return c ? (this.rift.itemById().get(c.id) ?? null) : null;
+    return c?.kind === 'item' ? (this.rift.itemById().get(c.id) ?? null) : null;
+  });
+
+  /** Where each rune sits: its tree and row ("Domination", "keystone"); shards are in every tree. */
+  private readonly runePlace = computed(() => {
+    const at = new Map<number, { tree: string; kind: string }>();
+    for (const t of this.rift.statics()?.styles ?? []) {
+      for (const s of t.slots ?? []) for (const id of s.perks) if (!at.has(id)) at.set(id, { tree: t.name, kind: s.kind });
+    }
+    return at;
+  });
+
+  /** A rune, tree or spell card: icon, name, what it is, and the client's description. */
+  protected readonly perk = computed(() => {
+    const c = this.state.current();
+    if (!c || c.kind === 'item') return null;
+    const map = c.kind === 'rune' ? this.rift.perkById() : c.kind === 'tree' ? this.rift.styleById() : this.rift.spellById();
+    const p = map.get(c.id);
+    if (!p) return null;
+    let sub = c.kind === 'tree' ? 'Rune path' : c.kind === 'spell' ? 'Summoner spell' : p.tag;
+    if (c.kind === 'rune') {
+      const at = this.runePlace().get(p.id);
+      if (at?.kind === 'shard') sub = 'Stat shard';
+      else if (at) sub = [at.kind === 'keystone' ? `${at.tree} keystone` : at.tree, p.tag].filter(Boolean).join(' · ');
+    }
+    return { kind: c.kind, name: p.name, icon: assetUrl(p.iconPath), sub, text: p.longDesc || p.desc };
   });
   protected readonly from = computed(() =>
     (this.item()?.from ?? []).map((id) => ({ id, name: this.rift.itemName(id) || `Item ${id}` })),
   );
 
   constructor() {
-    // Below the hovered element, or above it when there's no room; kept on screen.
+    // Items: below the hovered element, or above it when there's no room. Runes, trees and
+    // spells sit in tight grids, so their card goes beside the icon (right, else left), like
+    // the client's rune page. Always kept on screen.
     // Measuring and moving are separate phases, so Angular batches the reads before
     // any writes and the page is laid out once per hover.
     const GAP = 8;
     afterRenderEffect({
       earlyRead: () => {
         const box = this.box()?.nativeElement;
-        const anchor = this.state.current()?.anchor;
+        const c = this.state.current();
+        const anchor = c?.anchor;
         if (!box || !anchor) return null;
         const a = anchor.getBoundingClientRect();
         const w = box.offsetWidth;
         const h = box.offsetHeight;
+        if (c.kind !== 'item') {
+          const right = a.right + GAP;
+          const x = right + w <= window.innerWidth - GAP ? right : Math.max(GAP, a.left - GAP - w);
+          const y = Math.min(Math.max(GAP, a.top + a.height / 2 - 24), window.innerHeight - h - GAP);
+          return { box, transform: `translate(${Math.round(x)}px, ${Math.round(y)}px)` };
+        }
         const left = Math.min(Math.max(GAP, a.left + a.width / 2 - w / 2), window.innerWidth - w - GAP);
         const below = a.bottom + GAP;
         const top = below + h <= window.innerHeight - GAP ? below : Math.max(GAP, a.top - GAP - h);

@@ -201,12 +201,16 @@ export class Shell implements OnInit {
     this.updates.start();
   }
 
-  /** What's on the Live tab right now: champ select, the game, or a post-game summary not yet closed. */
+  /**
+   * What's on the Live tab right now: champ select, the game, a post-game summary not yet closed,
+   * or a Swiftplay lobby (its champions' runes and builds are picked there).
+   */
   protected readonly liveActivity = computed(() => {
     if (this.rift.champSelect()) return 'Champ select';
     if (this.rift.loading()) return 'In game';
     const pg = this.rift.postGame();
-    return pg && pg.gameId !== this.rift.closedPostGame() ? 'Game summary' : null;
+    if (pg && pg.gameId !== this.rift.closedPostGame()) return 'Game summary';
+    return this.rift.swiftplay().length ? 'Swiftplay' : null;
   });
 
   /** Not in a lobby, queue or game, and nothing left on the Live tab (an open game summary counts). */
@@ -216,7 +220,7 @@ export class Shell implements OnInit {
   });
 
   constructor() {
-    // Champ select, the loading screen and the post-game summary each pull you to the Live tab once
+    // Champ select, the loading screen, the post-game summary and a Swiftplay lobby each pull you to the Live tab once
     // when they start (Back returns you); switching away afterwards is left alone.
     effect(() => {
       if (!this.liveActivity()) return;

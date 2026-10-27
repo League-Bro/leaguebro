@@ -275,7 +275,7 @@ type BoolKey =
           <p class="muted small">
             @if (updates.currentVersion()) { League Bro {{ updates.currentVersion() }} } @else { League Bro (dev build) }
           </p>
-          <p class="faint small">League Bro updates itself when it starts. While it runs, it checks every few minutes and asks before installing. It never updates during champ select or a game.</p>
+          <p class="faint small">League Bro updates itself when it starts. While it runs, it checks every minute (and when you come back to it) and asks before installing. It never updates during champ select or a game.</p>
           <div class="row">
             <button [disabled]="updates.checking() || !updates.currentVersion()" (click)="updates.check(true)">
               {{ updates.checking() ? 'Checking…' : 'Check for updates' }}

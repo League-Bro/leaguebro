@@ -133,7 +133,8 @@ pub struct ImportResult {
     pub replaced: Option<String>,
 }
 
-/// OP.GG's page (with enough games), else the client's recommended page.
+/// The player's own page from the rune editor, else OP.GG's page (with
+/// enough games), else the client's recommended page.
 pub async fn choose_page(
     lcu: &Lcu,
     champion_id: i64,
@@ -141,13 +142,14 @@ pub async fn choose_page(
     map_id: i64,
     rec: Option<&RuneRec>,
 ) -> Result<(RunePage, &'static str)> {
-    let from_rec = rec.filter(|r| r.games >= MIN_GAMES).map(|r| RunePage {
+    let from_rec = rec.filter(|r| r.custom || r.games >= MIN_GAMES).map(|r| RunePage {
         name: String::new(),
         primary_style_id: r.primary_style_id,
         sub_style_id: r.sub_style_id,
         selected_perk_ids: r.perk_ids.clone(),
     });
     Ok(match from_rec {
+        Some(p) if rec.is_some_and(|r| r.custom) => (p, "your runes"),
         Some(p) => (p, "OP.GG"),
         None => (recommended_page(lcu, champion_id, position, map_id).await?, "client recommendation"),
     })

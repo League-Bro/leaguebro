@@ -82,6 +82,23 @@ pub struct PerkInfo {
     pub desc: String,
     /// The client's short label for a rune, e.g. "Combo Damage".
     pub tag: String,
+    /// Runes only: the full description from the client's tooltip, plain text.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub long_desc: String,
+    /// Rune trees only: their rows, top to bottom (the rune editor).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub slots: Vec<RuneSlot>,
+    /// Rune trees only: the trees allowed as secondary with this one.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sub_styles: Vec<i64>,
+}
+
+/// A row of a rune tree: "keystone", "regular" or "shard", and its runes.
+#[derive(Debug, Clone, Serialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RuneSlot {
+    pub kind: String,
+    pub perks: Vec<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -501,14 +518,32 @@ fn build_statics(champs: &Value, items: &Value, perks: &Value, styles: &Value, s
         icon_path: text(p, "iconPath").into(),
         desc: plain_text(text(p, desc_key)),
         tag: text(p, "recommendationDescriptor").into(),
+        ..Default::default()
     };
     StaticData {
         champions,
         items,
-        perks: perks.as_array().into_iter().flatten().map(|p| perk(p, "shortDesc")).collect(),
-        styles: list(styles, "styles").iter().map(|p| perk(p, "tooltip")).collect(),
+        perks: perks.as_array().into_iter().flatten().map(|p| PerkInfo { long_desc: plain_text(text(p, "longDesc")), ..perk(p, "shortDesc") }).collect(),
+        styles: list(styles, "styles").iter().map(|p| PerkInfo { slots: rune_slots(p), sub_styles: ints(p, "allowedSubStyles"), ..perk(p, "tooltip") }).collect(),
         spells: spells.as_array().into_iter().flatten().map(|p| perk(p, "description")).collect(),
     }
+}
+
+/// A rune tree's rows from `perkstyles.json`: `slots[].type` is kKeyStone,
+/// kMixedRegularSplashable or kStatMod.
+fn rune_slots(style: &Value) -> Vec<RuneSlot> {
+    list(style, "slots")
+        .iter()
+        .filter_map(|s| {
+            let kind = match text(s, "type") {
+                "kKeyStone" => "keystone",
+                "kMixedRegularSplashable" => "regular",
+                "kStatMod" => "shard",
+                _ => return None,
+            };
+            Some(RuneSlot { kind: kind.into(), perks: ints(s, "perks") })
+        })
+        .collect()
 }
 
 /// Strips the client's tooltip markup (`<br>`, `<magicDamage>`, `@vars@`…) to plain text.
@@ -1153,6 +1188,14 @@ impl Engine {
     /// per position slot in the lobby, so the import goes into those slots.
     /// Other lobbies have no slots.
     async fn lobby(&mut self, lcu: &Lcu) {
+        // Other lobbies (custom games, ranked, ARAM) can still answer with the
+        // slots left over from your last Swiftplay lobby, so check the queue first.
+        let Ok(Some(lobby)) = lcu.get(LOBBY).await else { return };
+        if !is_swiftplay_lobby(&lobby) {
+            self.last_slot_keys.clear();
+            self.set_swiftplay(&[]).await;
+            return;
+        }
         let Ok(Some(slots)) = lcu.get(PLAYER_SLOTS).await else { return };
         let keys = slot_keys(&slots);
         self.set_swiftplay(&keys).await;
@@ -1542,6 +1585,14 @@ pub(crate) async fn publish_import(app: &AppHandle, champion_id: i64, result: Re
 }
 
 const PLAYER_SLOTS: &str = "/lol-lobby/v1/lobby/members/localMember/player-slots";
+const LOBBY: &str = "/lol-lobby/v2/lobby";
+
+/// Swiftplay (queue 480; 490 was its Quickplay test) picks champions in the lobby.
+fn is_swiftplay_lobby(lobby: &Value) -> bool {
+    let cfg = &lobby["gameConfig"];
+    !cfg["isCustom"].as_bool().unwrap_or(false)
+        && (text(cfg, "gameMode").eq_ignore_ascii_case("SWIFTPLAY") || matches!(int(cfg, "queueId"), 480 | 490))
+}
 
 /// (champion, position) per Swiftplay lobby slot, e.g. (267, "utility").
 fn slot_keys(slots: &Value) -> Vec<(i64, String)> {
@@ -1983,6 +2034,36 @@ mod tests {
         assert!(same_perks(a, r#"{"perkSubStyle":8400, "perkStyle":8200, "perkIds":[8214,8226]}"#));
         assert!(!same_perks(a, r#"{"perkIds":[8112,8226],"perkStyle":8200,"perkSubStyle":8400}"#));
         assert!(!same_perks(a, ""));
+    }
+
+    #[test]
+    fn rune_tree_rows() {
+        let style = json!({"id": 8000, "allowedSubStyles": [8100, 8200], "slots": [
+            {"type": "kKeyStone", "perks": [8005, 8008, 8021, 8010]},
+            {"type": "kMixedRegularSplashable", "perks": [9101, 9111, 8009]},
+            {"type": "kStatMod", "perks": [5008, 5005, 5007]}
+        ]});
+        let rows = rune_slots(&style);
+        assert_eq!(rows.iter().map(|r| r.kind.as_str()).collect::<Vec<_>>(), ["keystone", "regular", "shard"]);
+        assert_eq!(rows[0].perks, vec![8005, 8008, 8021, 8010]);
+    }
+
+    #[test]
+    fn runes_keep_their_long_description() {
+        let perks = json!([{"id": 8112, "name": "Electrocute", "shortDesc": "Burst damage.",
+            "longDesc": "Hitting a champion deals bonus <b>adaptive damage</b>.<br><br>Cooldown: 25s"}]);
+        let s = build_statics(&json!([]), &json!([]), &perks, &Value::Null, &Value::Null);
+        assert_eq!(s.perks[0].desc, "Burst damage.");
+        assert_eq!(s.perks[0].long_desc, "Hitting a champion deals bonus adaptive damage.\nCooldown: 25s");
+    }
+
+    #[test]
+    fn only_swiftplay_lobbies_have_slots() {
+        assert!(is_swiftplay_lobby(&json!({"gameConfig": {"gameMode": "SWIFTPLAY", "queueId": 480, "isCustom": false}})));
+        assert!(is_swiftplay_lobby(&json!({"gameConfig": {"gameMode": "CLASSIC", "queueId": 480}})));
+        assert!(!is_swiftplay_lobby(&json!({"gameConfig": {"gameMode": "CLASSIC", "queueId": -1, "isCustom": true}})));
+        assert!(!is_swiftplay_lobby(&json!({"gameConfig": {"gameMode": "CLASSIC", "queueId": 420}})));
+        assert!(!is_swiftplay_lobby(&Value::Null));
     }
 
     #[test]

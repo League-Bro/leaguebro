@@ -465,7 +465,8 @@ export function demoStatic(): StaticData {
       demoItem(2003, 'Health Potion', 50, '2003_Class_T1_HealthPotion.png', [], 'Click to consume: restore health over 15 seconds.', ['Consumable', 'HealthRegen', 'Active']),
     ],
     perks: [
-      [8112, 'Electrocute', 'Domination/Electrocute/Electrocute.png', 'Hitting a champion with 3 separate attacks or abilities in 3s deals bonus adaptive damage.', 'Combo Damage'],
+      [8112, 'Electrocute', 'Domination/Electrocute/Electrocute.png', 'Hitting a champion with 3 separate attacks or abilities in 3s deals bonus adaptive damage.', 'Combo Damage',
+        'Hitting a champion with 3 separate attacks or abilities within 3s deals bonus adaptive damage.\nDamage: 30 - 220 (+0.1 bonus AD, +0.05 AP)\nCooldown: 25 - 20s'],
       [8139, 'Taste of Blood', 'Domination/TasteOfBlood/GreenTerror_TasteOfBlood.png', 'Heal when you damage an enemy champion.', 'Healing'],
       [8140, 'Grisly Mementos', 'Domination/GrislyMementos/GrislyMementos.png', 'Gain Ability Haste for each champion takedown.', 'Ability Haste'],
       [8106, 'Ultimate Hunter', 'Domination/UltimateHunter/UltimateHunter.png', 'Your ultimate gains haste for each unique champion takedown.', 'Ultimate Cooldown'],
@@ -479,7 +480,8 @@ export function demoStatic(): StaticData {
       [5005, 'Attack Speed', 'StatMods/StatModsAttackSpeedIcon.png', '+10% Attack Speed', ''],
       [5008, 'Adaptive Force', 'StatMods/StatModsAdaptiveForceIcon.png', '+9 Adaptive Force', ''],
       [5001, 'Health Scaling', 'StatMods/StatModsHealthPlusIcon.png', '+10-180 Health (based on level)', ''],
-    ].map(([id, name, path, desc, tag]) => ({
+    ].map(([id, name, path, desc, tag, long]) => ({
+      longDesc: long as string | undefined,
       id: id as number, name: name as string, iconPath: `/lol-game-data/assets/v1/perk-images/${(path as string).startsWith('StatMods/') ? '' : 'Styles/'}${path}`, desc: desc as string, tag: tag as string,
     })),
     spells: [
@@ -488,11 +490,25 @@ export function demoStatic(): StaticData {
       { id: 3, name: 'Exhaust', iconPath: '/lol-game-data/assets/DATA/Spells/Icons2D/Summoner_exhaust.png', desc: 'Slows an enemy champion and reduces their damage dealt.', tag: '' },
       { id: 14, name: 'Ignite', iconPath: '/lol-game-data/assets/DATA/Spells/Icons2D/SummonerIgnite.png', desc: 'Ignites a target enemy champion, dealing true damage over 5 seconds and reducing healing.', tag: '' },
     ],
-    styles: [
-      { id: 8000, name: 'Precision', iconPath: '/lol-game-data/assets/v1/perk-images/Styles/7201_Precision.png', desc: '', tag: '' },
-      { id: 8100, name: 'Domination', iconPath: '/lol-game-data/assets/v1/perk-images/Styles/7200_Domination.png', desc: '', tag: '' },
-      { id: 8200, name: 'Sorcery', iconPath: '/lol-game-data/assets/v1/perk-images/Styles/7202_Sorcery.png', desc: '', tag: '' },
-    ],
+    styles: (
+      [
+        [8000, 'Precision', '7201_Precision.png', [[8005, 8008, 8021, 8010], [9101, 9111, 8009], [9104, 9105, 9103], [8014, 8017, 8299]]],
+        [8100, 'Domination', '7200_Domination.png', [[8112, 8128, 9923], [8126, 8139, 8143], [8137, 8140, 8141], [8135, 8105, 8106]]],
+        [8200, 'Sorcery', '7202_Sorcery.png', [[8214, 8229, 8230], [8224, 8226, 8275], [8210, 8234, 8233], [8237, 8232, 8236]]],
+        [8400, 'Resolve', '7204_Resolve.png', [[8437, 8439, 8465], [8446, 8463, 8401], [8429, 8444, 8473], [8451, 8453, 8242]]],
+        [8300, 'Inspiration', '7203_Whimsy.png', [[8351, 8360, 8369], [8306, 8304, 8321], [8313, 8352, 8345], [8347, 8410, 8316]]],
+      ] as [number, string, string, number[][]][]
+    ).map(([id, name, icon, rows]) => ({
+      id, name, iconPath: `/lol-game-data/assets/v1/perk-images/Styles/${icon}`, desc: '', tag: '',
+      // The shard rows are the same in every tree.
+      slots: [
+        ...rows.map((perks, i) => ({ kind: i ? ('regular' as const) : ('keystone' as const), perks })),
+        { kind: 'shard' as const, perks: [5008, 5005, 5007] },
+        { kind: 'shard' as const, perks: [5008, 5010, 5001] },
+        { kind: 'shard' as const, perks: [5011, 5013, 5001] },
+      ],
+      subStyles: [8000, 8100, 8200, 8300, 8400].filter((s) => s !== id),
+    })),
   };
 }
 
@@ -666,7 +682,10 @@ function demoRecBase(): Recommendation {
 
 /** The browser demo's stand-in for the Rust `with_choice`: the picked options in place. */
 export function demoWithChoice(rec: Recommendation, c: RecChoice): Recommendation {
-  const runes = rec.runeOptions[c.runes] ?? rec.runes;
+  const picked = rec.runeOptions[c.runes] ?? rec.runes;
+  const runes = c.custom
+    ? { ...(picked as RuneRec), ...c.custom, keystoneName: '', primaryName: '', secondaryName: '', perkNames: [], games: 0, winRate: 0, pickRate: 0, custom: true }
+    : picked;
   const sp = rec.spellOptions[c.spells];
   const core = rec.coreOptions[c.core] ?? rec.core;
   const boots = rec.bootsOptions[c.boots] ?? rec.boots;

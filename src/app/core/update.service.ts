@@ -12,7 +12,9 @@ export type UpdateState =
   | { kind: 'error'; message: string };
 
 /** GitHub can't push to installed copies, so a running app looks for a new release this often. */
-const POLL_MS = 5 * 60 * 1000;
+const POLL_MS = 60 * 1000;
+/** Coming back to the app checks too, unless the last check was this recent. */
+const FOCUS_RECHECK_MS = 20 * 1000;
 /** On launch, give the engine a moment to say whether League is in champ select or a game. */
 const LAUNCH_SETTLE_MS = 3000;
 /** The update splash stays up at least this long, so a fast download doesn't just flash it. */
@@ -62,6 +64,7 @@ export class UpdateService {
   /** The newest version the user has been told about, so each one pops up once. */
   private announced = '';
   private launching = false;
+  private lastCheck = 0;
   private started = false;
 
   async start(): Promise<void> {
@@ -83,7 +86,15 @@ export class UpdateService {
     }
     this.currentVersion.set(this.version());
     this.launchUpdate();
-    setInterval(() => this.check(), POLL_MS);
+    setInterval(() => this.poll(), POLL_MS);
+    window.addEventListener('focus', () => {
+      if (Date.now() - this.lastCheck > FOCUS_RECHECK_MS) this.poll();
+    });
+  }
+
+  /** Background check; skipped during champ select and games, so nothing touches the network mid-game. */
+  private poll(): void {
+    if (!this.leagueBusy()) this.check();
   }
 
   /**
@@ -135,6 +146,7 @@ export class UpdateService {
     const busy = this.state().kind;
     if (busy === 'downloading' || busy === 'installing') return;
     this.checking.set(true);
+    this.lastCheck = Date.now();
     try {
       const update = await check({ timeout: 30_000 });
       if (update) {

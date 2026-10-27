@@ -223,7 +223,7 @@ export function buildWhy(
         what: p?.desc ?? '',
         stats: [],
         reasons,
-        data: i === 0 ? statsLine(r, 'This page is used', `${champName}${lane}`) : '',
+        data: i === 0 ? (r.custom ? 'Your own page, from the rune editor.' : statsLine(r, 'This page is used', `${champName}${lane}`)) : '',
       });
     });
     const secondaryRunes = r.perkIds.slice(4, 6).map((id, i) => perks.get(id)?.name ?? r.perkNames[i + 4]).filter(Boolean);

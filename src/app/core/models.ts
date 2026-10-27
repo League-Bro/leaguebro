@@ -252,6 +252,8 @@ export interface RuneRec {
   winRate: number;
   /** Share of the champion's games that used this page (0–1). */
   pickRate: number;
+  /** Made in the rune editor: no OP.GG numbers. */
+  custom?: boolean;
 }
 
 export interface ItemSet {
@@ -315,6 +317,15 @@ export interface RecChoice {
   boots: number;
   /** Use OP.GG's build against the lane opponent (champ select only). */
   matchup?: boolean;
+  /** A page put together in the rune editor; replaces the picked one (`runes`). */
+  custom?: CustomRunes | null;
+}
+
+/** A rune page from the rune editor: keystone, 3 primary, 2 secondary, 3 shards. */
+export interface CustomRunes {
+  primaryStyleId: number;
+  subStyleId: number;
+  perkIds: number[];
 }
 
 /** OP.GG's lane guide for a matchup. Sides are "you", "them", "even" or "". */
@@ -583,6 +594,17 @@ export interface PerkInfo {
   desc: string;
   /** The client's short label for a rune, e.g. "Combo Damage". */
   tag: string;
+  /** Runes only: the full description, as in the client's rune tooltip. */
+  longDesc?: string;
+  /** Rune trees only: their rows, top to bottom. */
+  slots?: RuneSlot[];
+  /** Rune trees only: the trees allowed as secondary. */
+  subStyles?: number[];
+}
+
+export interface RuneSlot {
+  kind: 'keystone' | 'regular' | 'shard';
+  perks: number[];
 }
 
 export interface StaticData {

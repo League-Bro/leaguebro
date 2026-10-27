@@ -2,11 +2,12 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, output, si
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { assetUrl, championIcon } from '../core/assets';
-import { ItemSet, MIN_GAMES, RecChoice, RecState, Recommendation, RuneRec } from '../core/models';
+import { CustomRunes, ItemSet, MIN_GAMES, RecChoice, RecState, Recommendation, RuneRec } from '../core/models';
 import { SituationalCard } from './situational-card';
-import { ItemTip } from './item-tip';
+import { ItemTip, TipKind } from './item-tip';
 import { buildWhy, rolesLabel } from '../core/why';
 import { Loader } from './loader';
+import { RuneEditor } from './rune-editor';
 
 /** One of OP.GG's options in a pick list: icons, a name, and its win and play rates. */
 /** Rune tree names for when the client's data isn't loaded (the website API sends no names). */
@@ -16,8 +17,9 @@ interface ChoiceRow {
   o: { games: number; winRate: number; pickRate: number };
   label: string;
   icons: string[];
-  /** For item options: the item behind each icon, for its hover card. */
-  items?: number[];
+  /** The item, rune, tree or spell behind each icon, for its hover card. */
+  tips?: number[];
+  tipKind?: TipKind;
   tip: string;
   round?: boolean;
   /** Index into the option list when the rows are a filtered part of it (rune pages of one keystone). */
@@ -28,7 +30,7 @@ interface ChoiceRow {
 @Component({
   selector: 'rl-rec-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe, NgTemplateOutlet, SituationalCard, ItemTip, Loader],
+  imports: [DecimalPipe, NgTemplateOutlet, SituationalCard, ItemTip, Loader, RuneEditor],
   template: `
     @if (rift.config()?.recSource === 'opgg' && state(); as s) {
       <section class="card rec">
@@ -38,7 +40,7 @@ interface ChoiceRow {
           @if (s.rec; as r) {
             <span class="faint small">
               OP.GG · {{ r.games | number }} games
-              @if (r.runes; as ru) { · {{ ru.winRate * 100 | number: '1.0-1' }}% win }
+              @if (r.runes; as ru) { @if (!ru.custom) { · {{ ru.winRate * 100 | number: '1.0-1' }}% win } }
             </span>
             <button class="ghost why-toggle" [class.on]="showWhy()" (click)="toggleWhy()">
               {{ showWhy() ? 'Hide why' : 'Why these picks?' }}
@@ -166,13 +168,17 @@ interface ChoiceRow {
               <div class="cols">
             @if (r.runes; as ru) {
               <div class="part">
-                <header><h4>Runes</h4></header>
+                <header>
+                  <h4>Runes</h4>
+                  <span class="muted small">{{ perkLabel(ru.perkIds[0], ru.keystoneName) }} · {{ styleName(ru.primaryStyleId, ru.primaryName) }} + {{ styleName(ru.subStyleId, ru.secondaryName) }}</span>
+                  @if (ru.custom) { <span class="faint small">· your own page</span> }
+                </header>
                 @if (keystones(); as keys) {
                   <!-- The most played keystones; each one's secondary trees are listed under the page. -->
                   <div class="keystones" role="radiogroup" aria-label="Keystones">
                     @for (k of keys; track k.id) {
                       <button class="ks" role="radio" [attr.aria-checked]="k.on" [class.on]="k.on" [disabled]="pickBusy()"
-                        [title]="k.label" (click)="!k.on && pick('runes', k.i)">
+                        [rlItemTip]="k.id" tipKind="rune" (click)="!k.on && pick('runes', k.i)">
                         @if (k.icon) { <img [src]="k.icon" alt="" (error)="rift.hideImg($event)" /> }
                         <span class="ks-text">
                           <span class="ks-name">{{ k.label }}</span>
@@ -182,13 +188,10 @@ interface ChoiceRow {
                     }
                   </div>
                 }
-                <div class="rune-main">
-                  @if (perkIcon(ru.perkIds[0]); as url) { <img class="keystone" [src]="url" [title]="perkName(ru.perkIds[0])" alt="" (error)="rift.hideImg($event)" /> }
-                  <div>
-                    <div class="keystone-name">{{ perkLabel(ru.perkIds[0], ru.keystoneName) }}</div>
-                    <div class="muted small">{{ styleName(ru.primaryStyleId, ru.primaryName) }} + {{ styleName(ru.subStyleId, ru.secondaryName) }}</div>
-                  </div>
-                </div>
+                <!-- The whole page, picked runes lit; any click is set in the client right away. -->
+                @if (hasTrees()) {
+                  <rl-rune-editor [page]="ru" [disabled]="pickBusy()" (change)="pickCustom($event)" />
+                } @else {
                 <div class="trees">
                   <div class="tree">
                     <div class="sub">{{ styleName(ru.primaryStyleId, ru.primaryName) }}</div>
@@ -205,15 +208,18 @@ interface ChoiceRow {
                       <div class="sub">Shards</div>
                       <div class="shards">
                         @for (id of ru.perkIds.slice(6); track $index) {
-                          @if (perkIcon(id); as url) { <img [src]="url" [title]="perkName(id)" alt="" (error)="rift.hideImg($event)" /> }
+                          @if (perkIcon(id); as url) { <img [src]="url" [rlItemTip]="id" tipKind="rune" [alt]="perkName(id)" (error)="rift.hideImg($event)" /> }
                         }
                       </div>
                     }
                   </div>
                 </div>
-                @if (runePages(); as rows) {
+                }
+                @if (ru.custom) {
+                  <button class="ghost reset-runes" [disabled]="pickBusy()" (click)="resetRunes()">Back to OP.GG's page</button>
+                } @else if (runePages(); as rows) {
                   <div class="divider"></div>
-                  <ng-container *ngTemplateOutlet="choices; context: { $implicit: rows, kind: 'runes', head: keystones() ? 'Secondary tree' : 'Rune pages', sel: s.choice.runes }" />
+                  <ng-container *ngTemplateOutlet="choices; context: { $implicit: rows, kind: 'runes', head: keystones() ? 'Secondary tree' : 'Rune pages', sel: s.choice.custom ? -1 : s.choice.runes }" />
                 }
               </div>
             }
@@ -227,7 +233,7 @@ interface ChoiceRow {
                   } @else {
                     <div class="spells">
                       @for (id of r.spells; track $index) {
-                        @if (spellIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+                        @if (spellIcon(id); as url) { <img [src]="url" alt="" [rlItemTip]="id" tipKind="spell" (error)="rift.hideImg($event)" /> }
                         <span>{{ spellName(id) }}</span>
                       }
                     </div>
@@ -316,7 +322,7 @@ interface ChoiceRow {
     }
 
     <ng-template #runeRow let-id let-ru="ru" let-i="i">
-      <div class="rune" [title]="perkName(id)">
+      <div class="rune" [rlItemTip]="id" tipKind="rune">
         @if (perkIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
         <span>{{ perkLabel(id, ru.perkNames[i] ?? '') }}</span>
       </div>
@@ -328,10 +334,10 @@ interface ChoiceRow {
         <div class="choices-head" aria-hidden="true"><span>{{ head }}</span><span>Win</span><span>Played</span></div>
         @for (p of rows; track $index) {
           <button class="choice" role="radio" [attr.aria-checked]="sel === (p.i ?? $index)" [class.on]="sel === (p.i ?? $index)"
-            [disabled]="pickBusy()" [attr.title]="p.items ? null : p.tip" (click)="pick(kind, p.i ?? $index)">
+            [disabled]="pickBusy()" [attr.title]="p.tips ? null : p.tip" (click)="pick(kind, p.i ?? $index)">
             <span class="choice-what">
-              @for (u of p.icons; track $index) { <img [class.round]="p.round" [src]="u" alt="" [rlItemTip]="p.items?.[$index] ?? 0" (error)="rift.hideImg($event)" /> }
-              <span class="choice-name" [attr.title]="p.items ? p.tip : null">{{ p.label }}</span>
+              @for (u of p.icons; track $index) { <img [class.round]="p.round" [src]="u" alt="" [rlItemTip]="p.tips?.[$index] ?? 0" [tipKind]="p.tipKind ?? 'item'" (error)="rift.hideImg($event)" /> }
+              <span class="choice-name" [attr.title]="p.tips ? p.tip : null">{{ p.label }}</span>
             </span>
             <span class="num">{{ pct(p.o.winRate) }}</span>
             <span class="num faint">{{ pct(p.o.pickRate) }}</span>
@@ -384,6 +390,7 @@ interface ChoiceRow {
     /* No situational items to show: no empty grid row either. */
     rl-situational:empty { display: none; }
     .panel header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .reset-runes { margin-top: 10px; padding: 3px 10px; font-size: 12.5px; color: var(--accent); }
     .panel h4 { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
     .hint { font-size: 12px; color: var(--text-faint); }
     .sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
@@ -576,8 +583,26 @@ export class RecCard {
   /** Picks another option. In champ select it's imported right away. */
   async pick(kind: keyof RecChoice, index: number): Promise<void> {
     const s = this.state();
-    if (!s?.rec || this.pickBusy() || s.choice[kind] === index) return;
-    await this.apply({ ...s.choice, [kind]: index });
+    // A rune page pick also drops an edited page, even on the same option.
+    const dropsCustom = kind === 'runes' && !!s?.choice.custom;
+    if (!s?.rec || this.pickBusy() || (s.choice[kind] === index && !dropsCustom)) return;
+    await this.apply({ ...s.choice, [kind]: index, ...(kind === 'runes' ? { custom: null } : {}) });
+  }
+
+  /** Rune trees with their rows loaded (from the client's data), for the rune editor. */
+  protected readonly hasTrees = computed(() => !!this.rift.statics()?.styles.some((st) => st.slots?.length));
+
+  /** A page from the rune editor: set like any other pick. */
+  async pickCustom(custom: CustomRunes): Promise<void> {
+    const s = this.state();
+    if (!s?.rec || this.pickBusy()) return;
+    await this.apply({ ...s.choice, custom });
+  }
+
+  async resetRunes(): Promise<void> {
+    const s = this.state();
+    if (!s?.rec || this.pickBusy() || !s.choice.custom) return;
+    await this.apply({ ...s.choice, custom: null });
   }
 
   /** OP.GG's build against your lane opponent, when it has enough games (champ select only). */
@@ -633,12 +658,13 @@ export class RecCard {
   protected readonly keystones = computed(() => {
     const opts = this.state()?.rec?.runeOptions ?? [];
     const picked = this.pickedPage()?.perkIds[0];
+    const custom = !!this.state()?.choice.custom;
     const out: { id: number; label: string; icon: string; games: number; winRate: number; i: number; on: boolean }[] = [];
     opts.forEach((o, i) => {
       const id = o.perkIds[0];
       let k = out.find((x) => x.id === id);
       if (!k) {
-        k = { id, label: this.perkLabel(id, o.keystoneName), icon: this.perkIcon(id), games: 0, winRate: 0, i, on: id === picked };
+        k = { id, label: this.perkLabel(id, o.keystoneName), icon: this.perkIcon(id), games: 0, winRate: 0, i, on: !custom && id === picked };
         out.push(k);
       }
       k.winRate = (k.winRate * k.games + o.winRate * o.games) / Math.max(1, k.games + o.games);
@@ -660,15 +686,19 @@ export class RecCard {
       const twin = opts.slice(0, i).find((p) => p.perkIds[0] === o.perkIds[0] && p.subStyleId === o.subStyleId);
       let label = this.styleName(o.subStyleId, o.secondaryName);
       let icons = [assetUrl(this.rift.styleById().get(o.subStyleId)?.iconPath)];
+      let hover: Pick<ChoiceRow, 'tips' | 'tipKind'> = { tips: [o.subStyleId], tipKind: 'tree' };
       if (twin) {
         const minor = (r: RuneRec) => r.perkIds.slice(1, 6);
         const swapped = minor(o).filter((p) => !minor(twin).includes(p));
         label = swapped.map((p) => this.perkLabel(p, o.perkNames[o.perkIds.indexOf(p)] ?? '')).filter(Boolean).join(' + ') || 'Other runes';
         icons = [this.perkIcon(swapped[0] ?? o.perkIds[0])];
+        hover = { tips: [swapped[0] ?? o.perkIds[0]], tipKind: 'rune' };
       }
-      return [{ o, label, icons: icons.filter(Boolean), round: true, i, tip: this.optTip(o, this.runeOptionNames(o)) } satisfies ChoiceRow];
+      if (!icons[0]) return [{ o, label, icons: [], round: true, i, tip: this.optTip(o, this.runeOptionNames(o)) } satisfies ChoiceRow];
+      return [{ o, label, icons, ...hover, round: true, i, tip: this.optTip(o, this.runeOptionNames(o)) } satisfies ChoiceRow];
     });
-    return rows.length > 1 ? rows : null;
+    // With keystone chips the list stays even with one tree, so it doesn't vanish on a less played keystone.
+    return rows.length > 1 || (rows.length && this.keystones()) ? rows : null;
   });
 
   protected readonly spellRows = computed(() => {
@@ -676,7 +706,8 @@ export class RecCard {
     if (opts.length < 2) return null;
     return opts.map((o) => {
       const label = o.ids.map((id) => this.spellName(id)).join(' + ');
-      return { o, label, icons: o.ids.map((id) => this.spellIcon(id)).filter(Boolean), tip: this.optTip(o, label) } satisfies ChoiceRow;
+      const withIcon = o.ids.filter((id) => this.spellIcon(id));
+      return { o, label, icons: withIcon.map((id) => this.spellIcon(id)), tips: withIcon, tipKind: 'spell', tip: this.optTip(o, label) } satisfies ChoiceRow;
     });
   });
 
@@ -689,7 +720,7 @@ export class RecCard {
       const names = o.ids.map((id, i) => this.itemName(id, o, i));
       const withIcon = o.ids.map((id) => ({ id, url: this.rift.itemIcon(id) })).filter((x) => x.url);
       return {
-        o, label: names.join(' · '), icons: withIcon.map((x) => x.url), items: withIcon.map((x) => x.id), tip: this.optTip(o, names.join(' + ')),
+        o, label: names.join(' · '), icons: withIcon.map((x) => x.url), tips: withIcon.map((x) => x.id), tip: this.optTip(o, names.join(' + ')),
       };
     });
   }
