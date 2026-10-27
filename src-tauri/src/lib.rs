@@ -12,6 +12,7 @@ mod live;
 mod matchup;
 mod situational;
 mod patch;
+mod picks;
 mod postgame;
 mod profile;
 mod runes;
@@ -228,6 +229,12 @@ async fn choose_swiftplay_option(
 #[tauri::command]
 async fn choose_lane_opponent(app: AppHandle, champion_id: i64) {
     matchup::choose_opponent(&app, champion_id).await
+}
+
+/// Champions to consider before you lock in (None outside champ select or once locked).
+#[tauri::command]
+async fn get_pick_suggestions(app: AppHandle) -> Option<picks::PickSuggestions> {
+    picks::current(&app).await
 }
 
 /// A looked-up recommendation with picks in place (the Champions tab, which doesn't import).
@@ -449,6 +456,7 @@ pub fn run() {
                 lp: lp_history::LpStore::new(app.path().app_data_dir().ok()),
                 overlay_input: std::sync::Mutex::new(engine::OverlayInput { passthrough: true, ..Default::default() }),
             });
+            app.manage(picks::Picks::default());
             if let Some(overlay) = app.get_webview_window("overlay") {
                 let _ = overlay.set_ignore_cursor_events(true);
                 // macOS puts a full-screen game in its own Space; this lets the
@@ -483,6 +491,7 @@ pub fn run() {
             lookup_rec,
             choose_rec_option,
             choose_lane_opponent,
+            get_pick_suggestions,
             rec_with_choice,
             global_item_sets,
             move_global_item_sets,

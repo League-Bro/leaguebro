@@ -4,6 +4,7 @@
 import {
   CacheInfo,
   ChampSelectView,
+  PickSuggestions,
   ChampStat,
   Guide,
   GuideAbility,
@@ -42,6 +43,7 @@ const champs: [number, string][] = [
   [238, 'Zed'], [254, 'Vi'], [157, 'Yasuo'], [99, 'Lux'], [145, "Kai'Sa"],
   [516, 'Ornn'], [89, 'Leona'], [555, 'Pyke'], [1, 'Annie'], [84, 'Akali'],
   [7, 'LeBlanc'], [91, 'Talon'], [134, 'Syndra'],
+  [90, 'Malzahar'], [127, 'Lissandra'], [711, 'Vex'], [3, 'Galio'], [10, 'Kayle'], [80, 'Pantheon'], [61, 'Orianna'],
 ];
 
 function profile(puuid: string, tier: string, div: string, lp: number, w: number, l: number, main: number[]): Profile {
@@ -161,11 +163,19 @@ export function demoSnapshot(): Snapshot {
   };
 }
 
-/** The demo snapshot for `?scene=` (champselect, swiftplay, postgame, postgame-bad, early-back); in game otherwise. */
+/** The demo snapshot for `?scene=` (champselect, pick, swiftplay, postgame, postgame-bad, early-back); in game otherwise. */
 export function demoScene(scene: string | null): Snapshot {
   const snap = demoSnapshot();
   const away = { loading: null, overlay: null };
   switch (scene) {
+    case 'pick': {
+      // Still picking: the pick suggestions show at the top.
+      const cs = demoChampSelect();
+      const allies = cs.allies.map((p) => (p.isMe ? { ...p, championId: 0, pickIntent: 103 } : p));
+      return { ...snap, ...away, status: { ...snap.status, phase: 'ChampSelect' }, rec: null, lastImport: null,
+        champSelect: { ...cs, locked: false, myChampionId: 103, allies, enemies: cs.enemies.map((e, i) => (i === 2 ? { ...e, championId: 254 } : e)) },
+        situational: demoSituational(false) };
+    }
     case 'champselect':
       return { ...snap, ...away, status: { ...snap.status, phase: 'ChampSelect' }, champSelect: demoChampSelect(), situational: demoSituational(false) };
     case 'swiftplay':
@@ -859,4 +869,29 @@ export function demoGoldHistory(now: number): GoldPoint[] {
   for (let t = 0; t < now; t += 15) points.push({ t, lead: Math.round(lead(t)) });
   points.push({ t: now, lead: -1250 });
   return points;
+}
+
+/** Picks against Zed mid, as `picks.rs` sends them (numbers made up, shaped like OP.GG's). */
+export function demoPickSuggestions(): PickSuggestions {
+  const pick = (championId: number, vsGames: number, vsWinRate: number, winRate: number, tier: string, masteryPoints = 0, masteryLevel = 0) =>
+    ({ championId, vsGames, vsWinRate, winRate, tier, masteryPoints, masteryLevel, score: (vsWinRate * vsGames + 100 * winRate) / (vsGames + 100) });
+  return {
+    position: 'middle',
+    opponentId: 238,
+    guessed: true,
+    loading: false,
+    error: null,
+    picks: [
+      pick(90, 1840, 0.559, 0.521, '1'),
+      pick(127, 1210, 0.551, 0.508, '2', 18400, 4),
+      pick(711, 2330, 0.546, 0.517, '1'),
+      pick(3, 980, 0.548, 0.503, '3'),
+      pick(10, 610, 0.552, 0.514, '2'),
+      pick(1, 1420, 0.538, 0.512, '2', 6200, 2),
+      pick(80, 720, 0.536, 0.498, '3'),
+      pick(103, 3120, 0.529, 0.511, '2', 214000, 7),
+      pick(134, 1650, 0.524, 0.503, '3', 48700, 5),
+      pick(61, 2010, 0.512, 0.497, '4', 15300, 4),
+    ],
+  };
 }

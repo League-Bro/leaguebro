@@ -6,13 +6,14 @@ import { MatchupCard } from './matchup-card';
 import { PostGameView } from './post-game';
 import { FullscreenHint } from './fullscreen-hint';
 import { TeamDamage } from './team-damage';
+import { PickSuggest } from './pick-suggest';
 import { championIcon, clock, positionLabel } from '../core/assets';
 import { ImportEvent, RecChoice, RecState, SwiftplaySlot } from '../core/models';
 
 @Component({
   selector: 'rl-live',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [PlayerCard, RecCard, MatchupCard, PostGameView, FullscreenHint, TeamDamage],
+  imports: [PlayerCard, RecCard, MatchupCard, PostGameView, FullscreenHint, TeamDamage, PickSuggest],
   template: `
     @if (rift.fullscreenHint()) {
       <rl-fullscreen-hint class="top-hint" />
@@ -29,6 +30,8 @@ import { ImportEvent, RecChoice, RecState, SwiftplaySlot } from '../core/models'
         </div>
       </div>
     } @else if (rift.champSelect(); as cs) {
+      <!-- Before you lock in: who to pick against your lane opponent. -->
+      <rl-pick-suggest />
       <section class="hero card">
         @if (rift.champSplash(cs.myChampionId); as splash) {
           <div class="splash"><img [src]="splash" alt="" /></div>

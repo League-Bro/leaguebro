@@ -1071,6 +1071,7 @@ impl Engine {
         }
         if prev == "ChampSelect" && phase != "ChampSelect" {
             self.state().shared.lock().await.champ_select = None;
+            crate::picks::clear(&self.app).await;
             let _ = self.app.emit("champ-select", Option::<ChampSelectView>::None);
         }
         if !matches!(phase, "InProgress" | "Reconnect") {
@@ -1129,6 +1130,7 @@ impl Engine {
         if changed {
             let _ = self.app.emit("champ-select", Some(view.clone()));
         }
+        crate::picks::update(&self.app, &view).await;
         if cfg.scout_in_champ_select {
             for p in view.allies.iter().filter(|p| p.visible && !p.is_me) {
                 if let Some(id) = &p.puuid {

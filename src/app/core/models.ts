@@ -816,3 +816,30 @@ export interface GuideAbility {
   video: string | null;
   poster: string | null;
 }
+
+/** Champions to consider before you lock in (`picks.rs`). */
+export interface PickSuggestions {
+  /** The client's lane name ("middle"). */
+  position: string;
+  /** Your lane opponent; 0 = not picked yet, so the picks are the lane's strongest. */
+  opponentId: number;
+  guessed: boolean;
+  loading: boolean;
+  error: string | null;
+  /** Best first. */
+  picks: SuggestedPick[];
+}
+
+export interface SuggestedPick {
+  championId: number;
+  /** Against the opponent in this lane (0 games without an opponent). */
+  vsGames: number;
+  vsWinRate: number;
+  /** In this lane overall (OP.GG Emerald+), 0.523 = 52.3 %. */
+  winRate: number;
+  /** OP.GG's tier label ("OP", "1" … "5"). */
+  tier: string;
+  masteryPoints: number;
+  masteryLevel: number;
+  score: number;
+}
