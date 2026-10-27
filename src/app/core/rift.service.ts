@@ -30,7 +30,7 @@ import {
   TierSource,
   MIN_GAMES,
 } from './models';
-import { assetUrl, championSplash, positionLabel } from './assets';
+import { POSITION_LABELS, assetUrl, championSplash, positionLabel } from './assets';
 import {
   demoCacheInfo,
   demoConfig,
@@ -77,12 +77,8 @@ export class RiftService {
   readonly championsGame = signal<'league' | 'classic'>('league');
   /** The Champions tab's view of the picked champion. */
   readonly championsView = signal<'build' | 'guide'>('build');
-  /** Tier List tab selection, kept across tab switches. */
-  readonly tierPick = signal<{ source: TierSource; position: string; rank: string }>({
-    source: 'lolalytics',
-    position: 'middle',
-    rank: 'emerald_plus',
-  });
+  /** A page link asks the shell to open this tab (the shell clears it and remembers where you were for Back). */
+  readonly navTo = signal<'champions' | null>(null);
   readonly overlayPreview = signal(false);
   readonly overlayLocked = signal(false);
   readonly config = signal<Config | null>(null);
@@ -316,6 +312,51 @@ export class RiftService {
   /** One lane's tier list. Position: top|jungle|middle|bottom|utility; rank is a filter like "emerald_plus" for either source. */
   getTierList(source: TierSource, position: string, rank: string): Promise<TierList> {
     return this.call('get_tier_list', { source, position, rank }, () => demoTierList(source, position, rank), 250);
+  }
+
+  /**
+   * Opens a champion on the Champions tab from anywhere (the quick search, the Profile, patch notes):
+   * its build in `position`, else the lane it's played most in, or its guide.
+   */
+  async showChampion(
+    championId: number,
+    opts: { position?: string; view?: 'build' | 'guide'; mode?: 'ranked' | 'aram' } = {},
+  ): Promise<void> {
+    const view = opts.view ?? 'build';
+    const prev = this.championsPick();
+    let position = opts.position ?? (prev?.championId === championId ? prev.position : null);
+    // The guide doesn't depend on the lane, so it doesn't wait for one.
+    if (!position && view === 'build') position = await this.mainLane(championId);
+    const classic = this.statics()?.champions.find((c) => c.id === championId)?.classic ?? false;
+    this.championsGame.set(classic ? 'classic' : 'league');
+    this.championsView.set(view);
+    this.championsPick.set({ championId, position: position ?? prev?.position ?? 'middle', mode: opts.mode ?? prev?.mode ?? 'ranked' });
+    this.navTo.set('champions');
+  }
+
+  private mainLanes: Promise<Map<number, string>> | null = null;
+
+  /** The lane a champion is played most in, from OP.GG's tier lists (one request fills all five; kept for the session). */
+  async mainLane(championId: number): Promise<string | null> {
+    this.mainLanes ??= Promise.all(Object.keys(POSITION_LABELS).map((l) => this.getTierList('opgg', l, 'emerald_plus'))).then(
+      (lists) => {
+        const best = new Map<number, { lane: string; games: number }>();
+        for (const list of lists) {
+          for (const e of list.entries) {
+            const b = best.get(e.championId);
+            if (e.championId && (!b || e.games > b.games)) best.set(e.championId, { lane: list.position, games: e.games });
+          }
+        }
+        return new Map([...best].map(([id, b]) => [id, b.lane]));
+      },
+    );
+    try {
+      return (await this.mainLanes).get(championId) ?? null;
+    } catch {
+      // Offline or OP.GG changed: try again next time.
+      this.mainLanes = null;
+      return null;
+    }
   }
 
   private demoGlobal: GlobalSets = { found: ['Blitz: Bruiser Sylas', 'Blitz: AP Sylas'], moved: [] };

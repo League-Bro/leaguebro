@@ -19,14 +19,31 @@ const LANE_ICONS: Record<Lane | 'all', string> = {
   utility: 'M12 4l7 3v4.5c0 4-3 7-7 8.5-4-1.5-7-4.5-7-8.5V7z',
 };
 
-/** The broad rank filters (the Tier List tab has every rank). Same ids as tierlist.rs `RANKS`. */
+/**
+ * Rank filters, the same for both sources (tierlist.rs `RANKS`). Below
+ * `newPatchGames` the patch is too new for stable stats: about a quarter of a
+ * normal week's Lolalytics games for that filter (October 2026: Emerald+
+ * ~12.5M a week, Master+ ~2.2M; single ranks scaled from the same day's
+ * counts). OP.GG counts games differently, so the warning only uses
+ * Lolalytics' numbers. Listed in rank order, each "+" right after its rank.
+ */
 const RANKS = [
-  { id: 'all', label: 'All ranks' },
-  { id: 'gold_plus', label: 'Gold+' },
-  { id: 'platinum_plus', label: 'Platinum+' },
-  { id: 'emerald_plus', label: 'Emerald+' },
-  { id: 'diamond_plus', label: 'Diamond+' },
-  { id: 'master_plus', label: 'Master+' },
+  { id: 'all', label: 'All ranks', newPatchGames: 11_600_000 },
+  { id: 'iron', label: 'Iron', newPatchGames: 400_000 },
+  { id: 'bronze', label: 'Bronze', newPatchGames: 1_300_000 },
+  { id: 'silver', label: 'Silver', newPatchGames: 2_000_000 },
+  { id: 'gold', label: 'Gold', newPatchGames: 2_500_000 },
+  { id: 'gold_plus', label: 'Gold+', newPatchGames: 7_900_000 },
+  { id: 'platinum', label: 'Platinum', newPatchGames: 2_400_000 },
+  { id: 'platinum_plus', label: 'Platinum+', newPatchGames: 5_400_000 },
+  { id: 'emerald', label: 'Emerald', newPatchGames: 1_750_000 },
+  { id: 'emerald_plus', label: 'Emerald+', newPatchGames: 3_000_000 },
+  { id: 'diamond', label: 'Diamond', newPatchGames: 775_000 },
+  { id: 'diamond_plus', label: 'Diamond+', newPatchGames: 1_300_000 },
+  { id: 'master', label: 'Master', newPatchGames: 525_000 },
+  { id: 'master_plus', label: 'Master+', newPatchGames: 500_000 },
+  { id: 'grandmaster', label: 'Grandmaster', newPatchGames: 35_000 },
+  { id: 'challenger', label: 'Challenger', newPatchGames: 11_000 },
 ];
 
 const SOURCES: { id: TierSource; label: string }[] = [
@@ -62,7 +79,7 @@ const prefs = signal({
 
 /**
  * The Champions tab's start page: every champion with this patch's ranked
- * stats from the Tier List's sources (win, pick and ban rate per lane), plus
+ * stats from Lolalytics or OP.GG (tier, win, pick and ban rate per lane), plus
  * a few highlights. Clicking a champion opens its build.
  */
 @Component({
@@ -86,7 +103,7 @@ const prefs = signal({
     <div class="controls">
       <div class="search">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
-        <input type="text" placeholder="Search champions…" [value]="query()" (input)="query.set($any($event.target).value)" />
+        <input type="text" placeholder="Search champions…" title="Enter opens the top champion" [value]="query()" (input)="query.set($any($event.target).value)" (keydown.enter)="openFirst()" />
       </div>
       @if (game() === 'league') {
         <div class="seg lanes" role="tablist" aria-label="Lane">
@@ -162,6 +179,9 @@ const prefs = signal({
       @if (error(); as e) {
         <div class="card err"><span class="loss small">Couldn't load champion stats: {{ e }}</span>
           <button (click)="reload()">Try again</button></div>
+      }
+      @if (newPatch()) {
+        <p class="note small">The patch is only a few days old, so these stats are based on fewer games than usual and will shift as more are played.</p>
       }
 
       <div class="table card" role="table" [class.stale]="loading()" [class.moves]="hasMoves()">
@@ -243,9 +263,11 @@ const prefs = signal({
     .rank-btn { display: flex; align-items: center; gap: 8px; padding: 5px 12px 5px 8px; background: var(--bg-sunken); }
     .rank-btn img, .rank-menu img { width: 22px; height: 22px; flex: none; }
     .caret { color: var(--text-faint); font-size: 11px; }
+    .note { margin: 0; color: var(--gold); background: var(--gold-soft); border-radius: var(--radius-sm); padding: 8px 12px; }
     .rank-menu {
       position: absolute; top: calc(100% + 6px); left: 0; z-index: 10; min-width: 100%;
       display: flex; flex-direction: column; gap: 1px; padding: 5px;
+      max-height: 420px; overflow: auto;
       background: var(--bg-raised); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); box-shadow: var(--shadow);
     }
     .rank-menu button { display: flex; align-items: center; gap: 9px; text-align: left; white-space: nowrap; border: none; border-radius: 8px; background: none; padding: 5px 12px 5px 7px; }
@@ -376,7 +398,7 @@ export class ChampionList {
 
   /** Loaded lanes for the current source and rank. */
   private readonly lanes = signal<{ lane: Lane; entries: TierEntry[] }[]>([]);
-  private readonly meta = signal<{ patch: string | null; games: number; fetchedAt: number } | null>(null);
+  private readonly meta = signal<{ source: TierSource; rank: string; patch: string | null; games: number; fetchedAt: number } | null>(null);
   protected readonly loading = signal(false);
   protected readonly error = signal<string | null>(null);
   private seq = 0;
@@ -477,6 +499,13 @@ export class ChampionList {
     return parts.join(' · ');
   });
 
+  /** A Lolalytics list with too few games for this rank yet: the patch just came out. */
+  protected readonly newPatch = computed(() => {
+    const m = this.meta();
+    const min = RANKS.find((r) => r.id === m?.rank)?.newPatchGames;
+    return m?.source === 'lolalytics' && !!m.games && min != null && m.games < min;
+  });
+
   protected readonly emptyText = computed(() => {
     if (this.loading() && !this.statRows().length) return 'Loading champion stats…';
     if (this.p().favoritesOnly && !this.query()) return 'No favorites here yet. Star a champion to pin it to this filter.';
@@ -537,6 +566,8 @@ export class ChampionList {
     this.meta.set(
       lists.length
         ? {
+            source,
+            rank,
             patch: lists[0].patch,
             // Every lane list counts the same games, so this is not a sum.
             games: lists[0].gamesAnalysed ?? 0,
@@ -546,6 +577,18 @@ export class ChampionList {
     );
     if (failed) this.error.set(lists.length ? `some lanes are missing (${failed.reason})` : String(failed.reason));
     this.loading.set(false);
+  }
+
+  /** Enter in the search box: the top champion in the list. */
+  protected openFirst(): void {
+    if (!this.query().trim()) return;
+    if (this.game() === 'classic') {
+      const c = this.classicChamps()[0];
+      if (c) this.open.emit({ championId: c.id, position: 'middle' });
+    } else {
+      const r = this.rows()[0];
+      if (r) this.openRow(r);
+    }
   }
 
   openRow(r: Row): void {

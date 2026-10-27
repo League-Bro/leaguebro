@@ -25,7 +25,7 @@ import { ImportEvent } from '../core/models';
         <p class="faint">These work without the client:</p>
         <div class="row links">
           <button (click)="open.emit('champions')">Champion builds</button>
-          <button (click)="open.emit('tiers')">Tier list</button>
+          <button (click)="open.emit('patch')">Patch notes</button>
           <button (click)="open.emit('profile')">Your profile</button>
         </div>
       </div>
@@ -189,7 +189,7 @@ import { ImportEvent } from '../core/models';
         <p class="faint">In the meantime:</p>
         <div class="row links">
           <button (click)="open.emit('champions')">Champion builds</button>
-          <button (click)="open.emit('tiers')">Tier list</button>
+          <button (click)="open.emit('patch')">Patch notes</button>
           <button (click)="open.emit('profile')">Your profile</button>
         </div>
       </div>
@@ -229,7 +229,7 @@ import { ImportEvent } from '../core/models';
 export class LiveView {
   protected readonly rift = inject(RiftService);
   /** Asks the shell to switch tabs (the shortcut buttons on the "Waiting for League" and idle cards). */
-  readonly open = output<'champions' | 'tiers' | 'profile'>();
+  readonly open = output<'champions' | 'patch' | 'profile'>();
   protected readonly busy = signal(false);
   protected readonly manualMsg = signal<string | null>(null);
 

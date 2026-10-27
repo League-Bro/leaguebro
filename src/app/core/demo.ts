@@ -744,6 +744,8 @@ const LOLA_LABELS = ['S+', 'S', 'S-', 'A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C
 export function demoTierList(source: TierSource, position: string, rank: string): TierList {
   const lane = TIER_LANES[position] ?? TIER_LANES['middle'];
   const opgg = source === 'opgg';
+  // Each lane's numbers are a little different, so the Champions tab's All view doesn't repeat itself.
+  const j = Math.max(0, Object.keys(TIER_LANES).indexOf(position));
   const entries: TierEntry[] = lane.map(([championId, name], i) => {
     const step = opgg ? Math.min(4, Math.floor(i / 3)) : Math.min(14, i);
     // OP.GG's top pick is in its "OP" tier, as in real lists.
@@ -755,10 +757,10 @@ export function demoTierList(source: TierSource, position: string, rank: string)
       label,
       rank: i + 1,
       rankChange: opgg ? ((i * 7) % 5) - 2 : null,
-      winRate: (opgg ? 52.6 : 53.4) - i * 0.37,
-      pickRate: 9.5 - i * 0.5,
-      banRate: (i * 13) % 17,
-      games: (opgg ? 9800 : 98000) - i * (opgg ? 450 : 4500),
+      winRate: (opgg ? 52.6 : 53.4) - i * 0.37 - j * 0.23 + ((i * 5 + j * 3) % 7) * 0.04,
+      pickRate: 9.5 - i * 0.5 - j * 0.55 + ((i + j * 2) % 3) * 0.2,
+      banRate: ((i * 13 + j * 7) % 17) + j * 0.4 + 0.3,
+      games: (opgg ? 9800 : 98000) - i * (opgg ? 450 : 4500) - j * (opgg ? 310 : 3100),
     };
   });
   return {

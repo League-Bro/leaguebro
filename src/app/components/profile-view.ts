@@ -141,13 +141,13 @@ const REGIONS = [
           <section class="card stack">
             <h3>Champions</h3>
             @for (c of ins.champions.slice(0, 6); track c.championId) {
-              <div class="crow">
+              <button class="crow" [title]="rift.champName(c.championId) + ': open the build'" (click)="openBuild(c.championId)">
                 <img class="champ-icon sm" [src]="champIcon(c.championId)" alt="" />
                 <span class="grow">{{ rift.champName(c.championId) }}</span>
                 <span class="mono faint">{{ c.games }} {{ c.games === 1 ? 'game' : 'games' }}</span>
                 <span class="mono wr" [class.win]="pct(c.wins, c.games) >= 55" [class.loss]="pct(c.wins, c.games) < 45">{{ pct(c.wins, c.games) }}%</span>
                 <span class="mono muted kda">{{ ratio(c.kills, c.deaths, c.assists) }} KDA</span>
-              </div>
+              </button>
             }
           </section>
           @if (mode() === 'all') {
@@ -196,13 +196,13 @@ const REGIONS = [
       }
 
       <ng-template #vsRow let-c>
-        <div class="crow">
+        <button class="crow" [title]="'How to play against ' + rift.champName(c.championId)" (click)="rift.showChampion(c.championId, { view: 'guide' })">
           <img class="champ-icon sm" [src]="champIcon(c.championId)" alt="" />
           <span class="grow">{{ rift.champName(c.championId) }}</span>
           <span class="mono faint">{{ c.wins }}W {{ c.games - c.wins }}L</span>
           <span class="mono wr loss">{{ pct(c.wins, c.games) }}%</span>
           <span class="mono muted kda">{{ ratio(c.kills, c.deaths, c.assists) }} KDA</span>
-        </div>
+        </button>
       </ng-template>
 
       <div class="row history-head">
@@ -339,8 +339,8 @@ const REGIONS = [
     /* Same header height with or without tabs, so rows line up across cards. */
     .card.stack > h3 { min-height: 26px; display: flex; align-items: center; }
     .crow, .qrow { display: flex; align-items: center; gap: 10px; font-size: 13px; }
-    .qrow { width: 100%; padding: 2px 0; background: none; border: none; border-radius: 6px; color: var(--text); text-align: left; }
-    .qrow:hover:not(:disabled) { background: var(--bg-hover); }
+    .crow, .qrow { width: 100%; padding: 2px 0; background: none; border: none; border-radius: 6px; color: var(--text); text-align: left; font-weight: 400; }
+    .crow:hover:not(:disabled), .qrow:hover:not(:disabled) { background: var(--bg-hover); }
     .foot { margin-top: auto; padding-top: 6px; }
     .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 26px; }
     .seg.mini { padding: 2px; }
@@ -590,6 +590,11 @@ export class ProfileView {
       },
       { injector: this.injector },
     );
+  }
+
+  /** A champion's build on the Champions tab: ARAM's while you're looking at your ARAM games, else ranked. */
+  openBuild(championId: number): void {
+    void this.rift.showChampion(championId, { mode: this.mode() === 450 ? 'aram' : 'ranked' });
   }
 
   pick(mode: number | 'all'): void {

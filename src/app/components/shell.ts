@@ -7,12 +7,18 @@ import { ChampionsView } from './champions-view';
 import { SettingsView } from './settings-view';
 import { PatchView } from './patch-view';
 import { ProfileView } from './profile-view';
-import { TierListView } from './tierlist-view';
 import { FeedbackView } from './feedback-view';
 import { ItemTipPopup } from './item-tip';
+import { ChampionSearch } from './champion-search';
 
 /** 'profile' isn't in the tab bar; the brand and your name open it. */
-type Tab = 'live' | 'champions' | 'tiers' | 'patch' | 'settings' | 'feedback' | 'profile';
+type Tab = 'live' | 'champions' | 'patch' | 'settings' | 'feedback' | 'profile';
+
+/** A key press aimed at a text field, which typing-to-search must leave alone. */
+function isTyping(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+}
 
 const PHASE_LABELS: Record<string, string> = {
   None: 'In client',
@@ -31,7 +37,7 @@ const PHASE_LABELS: Record<string, string> = {
 @Component({
   selector: 'rl-shell',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LiveView, ChampionsView, TierListView, PatchView, SettingsView, FeedbackView, ProfileView, ItemTipPopup],
+  imports: [LiveView, ChampionsView, PatchView, SettingsView, FeedbackView, ProfileView, ItemTipPopup, ChampionSearch],
   template: `
     <header>
       <button class="brand" [class.active]="tab() === 'profile'" title="Your profile and match history" (click)="go('profile')">
@@ -49,6 +55,11 @@ const PHASE_LABELS: Record<string, string> = {
         }
       </nav>
       <div class="spacer"></div>
+      <button class="find" [title]="'Find a champion (' + modKey + 'K, or just start typing)'" (click)="openSearch('')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+        <span>Find a champion</span>
+        <kbd>{{ modKey }}K</kbd>
+      </button>
       <div class="status" [class.on]="rift.status().connected">
         <span class="dot"></span>
         <span>{{ statusText() }}</span>
@@ -94,7 +105,6 @@ const PHASE_LABELS: Record<string, string> = {
       @switch (tab()) {
         @case ('live') { <rl-live (open)="go($event)" /> }
         @case ('champions') { <rl-champions /> }
-        @case ('tiers') { <rl-tierlist (openChampion)="openChampion($event)" /> }
         @case ('patch') { <rl-patch /> }
         @case ('settings') { <rl-settings /> }
         @case ('feedback') { <rl-feedback /> }
@@ -102,6 +112,9 @@ const PHASE_LABELS: Record<string, string> = {
       }
     </main>
     <rl-item-tip />
+    @if (search(); as s) {
+      <rl-champion-search [initial]="s.text" (closed)="search.set(null)" />
+    }
   `,
   host: {
     '(document:keydown.alt.arrowleft)': 'back()',
@@ -148,6 +161,15 @@ const PHASE_LABELS: Record<string, string> = {
       border: none; border-left: 1px solid var(--line-strong); border-radius: 0; background: none;
     }
     .status .who:hover:not(:disabled) { color: var(--accent-2); background: none; border-color: var(--line-strong); }
+    .find {
+      display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-radius: 999px;
+      color: var(--text-faint); background: var(--bg-sunken); border: 1px solid var(--line); font-weight: 400;
+    }
+    .find:hover:not(:disabled) { color: var(--text); border-color: var(--line-strong); }
+    .find svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+    .find kbd { font: 500 11px var(--mono); color: var(--text-dim); border: 1px solid var(--line-strong); border-radius: 5px; padding: 0 5px; }
+    @media (max-width: 1180px) { .find span { display: none; } }
+    @media (max-width: 980px) { .find kbd { display: none; } .find { padding: 7px; } }
     .version { color: var(--text-faint); font: 500 12px var(--mono); margin-left: -12px; }
     .demo-bar { background: var(--gold-soft); color: var(--gold); font-size: 12.5px; padding: 6px 20px; }
     .demo-bar code { font-family: var(--mono); }
@@ -175,7 +197,6 @@ export class Shell implements OnInit {
   protected readonly tabs: { id: Tab; label: string }[] = [
     { id: 'live', label: 'Live' },
     { id: 'champions', label: 'Champions' },
-    { id: 'tiers', label: 'Tier List' },
     { id: 'patch', label: 'Patch Notes' },
     { id: 'settings', label: 'Settings' },
     { id: 'feedback', label: 'Feedback' },
@@ -204,13 +225,44 @@ export class Shell implements OnInit {
         this.tab.set('live');
       });
     });
+    // Links between pages (rift.showChampion): open the tab, and Back returns to this one.
+    effect(() => {
+      const to = this.rift.navTo();
+      if (!to) return;
+      untracked(() => {
+        this.rift.navTo.set(null);
+        const t = this.tab();
+        if (t !== to) {
+          this.backTo.set(t);
+          this.tab.set(to);
+        }
+      });
+    });
   }
 
   protected readonly modKey = MOD_KEY;
 
-  /** Ctrl+1…6 (Cmd+1…6 on a Mac) switch tabs. */
+  /** The champion search, with what was typed to open it. */
+  protected readonly search = signal<{ text: string } | null>(null);
+
+  protected openSearch(text: string): void {
+    this.search.set({ text });
+  }
+
+  /** Ctrl+1…5 (Cmd+1…5 on a Mac) switch tabs; Ctrl+K, or typing a letter outside a text field, finds a champion. */
   protected tabKey(e: KeyboardEvent): void {
+    if (this.search()) return;
     const mod = IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+    if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      this.openSearch('');
+      return;
+    }
+    if (!mod && !e.ctrlKey && !e.metaKey && !e.altKey && /^[a-z]$/i.test(e.key) && !isTyping(e.target)) {
+      e.preventDefault();
+      this.openSearch(e.key);
+      return;
+    }
     if (!mod || e.altKey || e.shiftKey) return;
     const t = this.tabs[Number(e.key) - 1];
     if (!t) return;
@@ -226,14 +278,20 @@ export class Shell implements OnInit {
     this.tab.set(t);
   }
 
+  /** Back to where a link came from, else from a champion's page to the champion list. */
   protected back(): void {
     const b = this.backTo();
     if (b) this.go(b);
+    else if (this.tab() === 'champions') this.rift.championsPick.set(null);
+  }
+
+  private canGoBack(): boolean {
+    return !!this.backTo() || (this.tab() === 'champions' && !!this.rift.championsPick());
   }
 
   /** The mouse's back button (button 3) goes back too. */
   protected mouseBack(e: MouseEvent): void {
-    if (e.button === 3 && this.backTo()) {
+    if (e.button === 3 && this.canGoBack()) {
       e.preventDefault();
       this.back();
     }
@@ -241,15 +299,6 @@ export class Shell implements OnInit {
 
   protected label(t: Tab): string {
     return t === 'profile' ? 'Profile' : (this.tabs.find((x) => x.id === t)?.label ?? t);
-  }
-
-  /** From the Tier List: show that champion's ranked build for the lane. */
-  protected openChampion(e: { championId: number; position: string }): void {
-    this.rift.championsGame.set('league');
-    this.rift.championsView.set('build');
-    this.rift.championsPick.set({ championId: e.championId, position: e.position, mode: 'ranked' });
-    this.backTo.set(this.tab());
-    this.tab.set('champions');
   }
 
   protected readonly statusText = computed(() => {

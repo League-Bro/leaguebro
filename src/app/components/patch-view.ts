@@ -80,8 +80,15 @@ const VERDICT_LABELS: Record<string, string> = {
             @for (e of s.entries; track $index) {
               <article class="entry" [class]="'entry v-' + (e.verdict || 'none')">
                 <header>
-                  @if (iconFor(s, e); as url) { <img class="icon" [src]="url" alt="" /> }
-                  <span class="name">{{ e.name }}</span>
+                  @if (champFor(s, e); as id) {
+                    <button class="champ-link" [title]="'Open the build for ' + e.name" (click)="rift.showChampion(id)">
+                      <img class="icon" [src]="iconFor(s, e)" alt="" />
+                      <span class="name">{{ e.name }}</span>
+                    </button>
+                  } @else {
+                    @if (iconFor(s, e); as url) { <img class="icon" [src]="url" alt="" /> }
+                    <span class="name">{{ e.name }}</span>
+                  }
                   <span class="spacer"></span>
                   @if (e.verdict) { <span class="badge" [class]="'badge ' + e.verdict">{{ verdictLabel(e.verdict) }}</span> }
                 </header>
@@ -149,6 +156,8 @@ const VERDICT_LABELS: Record<string, string> = {
     .entry.v-adjusted { border-left-color: var(--gold); }
     .entry.v-new { border-left-color: var(--ally); }
     .entry header { display: flex; align-items: center; gap: 9px; }
+    .champ-link { display: flex; align-items: center; gap: 9px; padding: 2px 8px 2px 2px; margin: -2px 0 -2px -2px; background: none; border: none; color: var(--text); }
+    .champ-link:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
     .icon { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--line-strong); object-fit: cover; }
     .name { font-weight: 600; }
     .badge { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 10px; }
@@ -175,7 +184,7 @@ const VERDICT_LABELS: Record<string, string> = {
   `,
 })
 export class PatchView implements OnInit {
-  private readonly rift = inject(RiftService);
+  protected readonly rift = inject(RiftService);
   protected readonly patches = signal<PatchInfo[]>([]);
   protected readonly selected = signal<PatchInfo | null>(null);
   protected readonly notes = signal<PatchNotes | null>(null);
@@ -192,7 +201,8 @@ export class PatchView implements OnInit {
 
   private readonly champIds = computed(() => {
     const m = new Map<string, number>();
-    for (const c of this.rift.statics()?.champions ?? []) m.set(norm(c.name), c.id);
+    // League Classic copies share the name; patch notes are about the normal champion.
+    for (const c of this.rift.statics()?.champions ?? []) if (!c.classic) m.set(norm(c.name), c.id);
     return m;
   });
   /** "Q - Sonic Wave" with the player's own key in place of Q. */
@@ -282,6 +292,11 @@ export class PatchView implements OnInit {
 
   verdictLabel(v: string): string {
     return VERDICT_LABELS[v] ?? v;
+  }
+
+  /** The champion an entry is about (0 for items, runes and the rest), for the link to its page. */
+  champFor(s: PatchSection, e: PatchEntry): number {
+    return s.kind === 'item' ? 0 : (this.champIds().get(norm(e.name)) ?? 0);
   }
 
   iconFor(s: PatchSection, e: PatchEntry): string {
