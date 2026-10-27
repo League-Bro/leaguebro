@@ -342,6 +342,8 @@ export interface MatchupState {
   opponentId: number;
   guessed: boolean;
   loading: boolean;
+  /** The numbers are in and OP.GG's lane tip is still loading. */
+  tipLoading: boolean;
   matchup: Matchup | null;
   error: string | null;
   /** Your recent games against them in lane. */

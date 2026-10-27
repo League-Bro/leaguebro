@@ -884,7 +884,9 @@ impl OpGg {
                               "params": {"name": name, "arguments": args}});
             match self.post(body, session.as_deref().filter(|s| !s.is_empty())).await {
                 Ok((_, text)) => return parse_rpc_text(&text),
-                Err(e) if attempt == 0 => {
+                // A timeout means OP.GG is slow, not that the session expired, and
+                // asking again would only double the wait before the fallback.
+                Err(e) if attempt == 0 && !crate::util::is_timeout(&e) => {
                     // The session may have expired; start a new one and retry once.
                     *self.session.lock().await = None;
                     eprintln!("OP.GG call failed ({e:#}); retrying with a new session");
@@ -926,19 +928,22 @@ impl OpGg {
         position: &str,
         game_mode: &str,
         lcu: Option<&Lcu>,
+        early: impl FnOnce(Matchup),
     ) -> Result<Matchup> {
         let pos = position_param(position, game_mode);
         if pos.is_empty() || !matches!(game_mode, "ranked" | "flex") {
             bail!("no lane to compare (this mode has no lanes, or you have no role)");
         }
         let key = format!("m:{champion_id}:{opponent_id}:{pos}:{game_mode}");
-        let fetch = || self.fetch_matchup(champion_id, alias, opponent_id, opponent_alias, pos, game_mode, lcu);
+        let fetch = || self.fetch_matchup(champion_id, alias, opponent_id, opponent_alias, pos, game_mode, lcu, early);
         // Without the tip (the slow MCP call failed), ask again next time.
         self.cached(&self.matchups, key, fetch, |m| m.tip.is_some()).await
     }
 
     /// The website API (quick) and the MCP guide (~3.5 s, the only source of
     /// the tip) at once. If the website fails, the guide has the numbers too.
+    /// `early` gets the website's numbers (no tip yet) as soon as they're in,
+    /// so the UI can show them while the guide is still out.
     #[allow(clippy::too_many_arguments)]
     async fn fetch_matchup(
         &self,
@@ -949,6 +954,7 @@ impl OpGg {
         pos: &str,
         game_mode: &str,
         lcu: Option<&Lcu>,
+        early: impl FnOnce(Matchup),
     ) -> Result<Matchup> {
         let guide_args = json!({
             "position": pos,
@@ -960,11 +966,20 @@ impl OpGg {
             let text = self.call_tool("lol_get_lane_matchup_guide", guide_args).await?;
             serde_json::from_str::<Value>(&text).context("couldn't read OP.GG's matchup guide")
         };
-        let (web, guide, opponent_damage) = tokio::join!(
-            self.fetch_web_raw(champion_id, pos, game_mode, Some(opponent_id), lcu),
-            guide,
-            self.damage_type(opponent_id, lcu),
-        );
+        let web = async {
+            let (web, opponent_damage) = tokio::join!(
+                self.fetch_web_raw(champion_id, pos, game_mode, Some(opponent_id), lcu),
+                self.damage_type(opponent_id, lcu),
+            );
+            if let Ok((main, builds, damage)) = &web {
+                if let Ok(mut m) = parse_matchup(main, builds, damage, None, champion_id, opponent_id, pos, game_mode) {
+                    m.opponent_damage_type = opponent_damage.clone();
+                    early(m);
+                }
+            }
+            (web, opponent_damage)
+        };
+        let ((web, opponent_damage), guide) = tokio::join!(web, guide);
         let guide = guide.map_err(|e| eprintln!("OP.GG matchup guide failed: {e:#}")).ok();
         let mut m = match web {
             Ok((main, builds, damage)) => {
@@ -1269,7 +1284,7 @@ mod tests {
         let op = OpGg::new(None);
         rt.block_on(async {
             let t = std::time::Instant::now();
-            let m = op.matchup(103, "Ahri", 238, "Zed", "middle", "ranked", None).await.unwrap();
+            let m = op.matchup(103, "Ahri", 238, "Zed", "middle", "ranked", None, |_| {}).await.unwrap();
             let rec = m.rec.as_ref().unwrap();
             println!("Ahri vs Zed in {} ms: {} games, {:.1}% win, page {} games, tip: {:?}",
                      t.elapsed().as_millis(), m.games, m.win_rate * 100.0, rec.games, m.tip);

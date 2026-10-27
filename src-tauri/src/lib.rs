@@ -160,7 +160,7 @@ async fn load_web_statics(app: &AppHandle, state: &State<'_, AppState>) {
 #[tauri::command]
 async fn get_match(state: State<'_, AppState>, game_id: i64, queue_name: String) -> Result<postgame::PostGame, String> {
     let lcu = state.shared.lock().await.lcu.clone().ok_or("Open the League client to see this game")?;
-    let me = lcu.get_req("/lol-summoner/v1/current-summoner").await.map_err(msg)?;
+    let me = lcu.summoner_ids().await.map_err(msg)?;
     let puuid = text(&me, "puuid");
     let game = lcu
         .get(&format!("/lol-match-history/v1/games/{game_id}"))

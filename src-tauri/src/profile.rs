@@ -362,7 +362,7 @@ pub fn insights<'a>(matches: impl IntoIterator<Item = &'a MatchLine>) -> Insight
 /// your lane opponent, remakes left out. Uses the same full-record fetches as
 /// the Profile page, kept for the session.
 pub async fn record_against(lcu: &Lcu, opponent_id: i64) -> anyhow::Result<ChampStat> {
-    let me = lcu.get_req("/lol-summoner/v1/current-summoner").await?;
+    let me = lcu.summoner_ids().await?;
     let puuid = text(&me, "puuid").to_string();
     let history = lcu
         .get_slow(&history_path(&puuid))
@@ -402,7 +402,9 @@ pub async fn load(lcu: &Lcu) -> anyhow::Result<MyProfile> {
         ..Default::default()
     };
     let mut errors = Vec::new();
-    match lcu.get(&format!("/lol-ranked/v1/ranked-stats/{puuid}")).await {
+    let (stats_path, history_path) = (format!("/lol-ranked/v1/ranked-stats/{puuid}"), history_path(&puuid));
+    let (stats, history) = tokio::join!(lcu.get(&stats_path), lcu.get_slow(&history_path));
+    match stats {
         Ok(Some(stats)) => {
             p.solo = scout::parse_rank(&stats, "RANKED_SOLO_5x5");
             p.flex = scout::parse_rank(&stats, "RANKED_FLEX_SR");
@@ -410,7 +412,7 @@ pub async fn load(lcu: &Lcu) -> anyhow::Result<MyProfile> {
         Ok(None) => {}
         Err(e) => errors.push(format!("rank: {e:#}")),
     }
-    match lcu.get_slow(&history_path(&puuid)).await {
+    match history {
         Ok(Some(h)) => p.matches = parse_matches(&h),
         Ok(None) => {}
         // `:#` adds the cause ("operation timed out") to "GET /lol-match-history/…".

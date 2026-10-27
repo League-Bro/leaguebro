@@ -415,12 +415,19 @@ pub fn parse_loading(session: &Value, my_puuid: &str) -> Option<LoadingView> {
 }
 
 async fn load_statics(lcu: &Lcu) -> anyhow::Result<StaticData> {
-    let champs = lcu.get_req("/lol-game-data/assets/v1/champion-summary.json").await?;
-    let items = lcu.get_req("/lol-game-data/assets/v1/items.json").await?;
-    let perks = lcu.get("/lol-game-data/assets/v1/perks.json").await.ok().flatten().unwrap_or(Value::Null);
-    let styles = lcu.get("/lol-game-data/assets/v1/perkstyles.json").await.ok().flatten().unwrap_or(Value::Null);
-    let spells = lcu.get("/lol-game-data/assets/v1/summoner-spells.json").await.ok().flatten().unwrap_or(Value::Null);
-    Ok(build_statics(&champs, &items, &perks, &styles, &spells))
+    let get = |file: &str| {
+        let path = format!("/lol-game-data/assets/v1/{file}");
+        async move { lcu.get(&path).await }
+    };
+    let (champs, items, perks, styles, spells) = tokio::join!(
+        lcu.get_req("/lol-game-data/assets/v1/champion-summary.json"),
+        lcu.get_req("/lol-game-data/assets/v1/items.json"),
+        get("perks.json"),
+        get("perkstyles.json"),
+        get("summoner-spells.json"),
+    );
+    let or_null = |v: anyhow::Result<Option<Value>>| v.ok().flatten().unwrap_or(Value::Null);
+    Ok(build_statics(&champs?, &items?, &or_null(perks), &or_null(styles), &or_null(spells)))
 }
 
 /// The same files from CommunityDragon's copy of the client's game data, for
@@ -704,6 +711,8 @@ struct Engine {
     last_matchup_key: Option<MatchupKey>,
     /// Upgraded boots seen in your inventory this game (see `live::Guidance::seen_boots`).
     seen_boots: Option<i64>,
+    /// The shop's items for the live tick, built from the static data once per game.
+    shop_items: Option<Arc<HashMap<i64, live::ShopItem>>>,
     /// Swiftplay lobby slots (champion, position) already imported.
     last_slot_keys: Vec<(i64, String)>,
     requested: HashSet<String>,
@@ -739,6 +748,11 @@ struct EnemySeen {
 const POST_GAME_RETRY: Duration = Duration::from_secs(3);
 const POST_GAME_GIVE_UP: Duration = Duration::from_secs(180);
 const WEB_STATICS_RETRY: Duration = Duration::from_secs(60);
+/// The live game API answers in milliseconds when it's up.
+const LIVE_TIMEOUT: Duration = Duration::from_secs(2);
+/// The gameflow phase, read every tick. A slower answer skips the tick
+/// (the client is busy, e.g. starting a game) instead of holding up the loop.
+const PHASE_TIMEOUT: Duration = Duration::from_secs(3);
 
 fn in_game(phase: &str) -> bool {
     matches!(phase, "GameStart" | "InProgress" | "Reconnect")
@@ -797,7 +811,7 @@ impl Engine {
             return;
         };
         let client = Lcu::new(&creds);
-        let me = match client.get_req("/lol-summoner/v1/current-summoner").await {
+        let me = match client.summoner_ids().await {
             Ok(v) => v,
             Err(_) => return, // client still starting up
         };
@@ -819,6 +833,7 @@ impl Engine {
         self.lcu = Some(client);
         self.phase.clear();
         self.last_window_check = None;
+        self.shop_items = None;
         self.set_status(true, "None", Some(summoner), "Connected to the League client").await;
     }
 
@@ -872,9 +887,11 @@ impl Engine {
             }
         }
         let lcu = self.lcu.clone().unwrap();
-        let phase = match lcu.get("/lol-gameflow/v1/gameflow-phase").await {
+        let phase = match lcu.get_within("/lol-gameflow/v1/gameflow-phase", PHASE_TIMEOUT).await {
             Ok(Some(Value::String(p))) => p,
             Ok(_) => "None".to_string(),
+            // Slow, not gone: try again next tick.
+            Err(e) if crate::util::is_timeout(&e) => return,
             Err(_) => {
                 self.disconnect().await;
                 return;
@@ -920,6 +937,7 @@ impl Engine {
         self.last_rec_key = None;
         self.last_matchup_key = None;
         self.seen_boots = None;
+        self.shop_items = None;
         let loading = {
             let state = self.state();
             let mut sh = state.shared.lock().await;
@@ -988,6 +1006,8 @@ impl Engine {
                 sh.map_id = int(&s, "/map/id");
                 sh.queue_id = int(&s, "/gameData/queue/id");
             }
+            let app = self.app.clone();
+            tauri::async_runtime::spawn(async move { matchup::prefetch(&app).await });
         }
         if prev == "Lobby" && phase != "Lobby" {
             self.set_swiftplay(Vec::new()).await;
@@ -1148,7 +1168,8 @@ impl Engine {
     }
 
     async fn live(&mut self) {
-        let data: Value = match self.live_http.get(live::LIVE_URL).send().await {
+        // A short timeout: the loop waits on this, and the live API can stall while the game loads.
+        let data: Value = match self.live_http.get(live::LIVE_URL).timeout(LIVE_TIMEOUT).send().await {
             Ok(r) if r.status().is_success() => match r.json().await {
                 Ok(v) => v,
                 Err(_) => return,
@@ -1160,16 +1181,23 @@ impl Engine {
         let state = {
             let state = self.state();
             let mut sh = state.shared.lock().await;
-            let items: HashMap<i64, live::ShopItem> = sh
-                .statics
-                .as_ref()
-                .map(|s| {
-                    s.items
-                        .iter()
-                        .map(|it| (it.id, live::ShopItem { name: it.name.clone(), price: it.price_total, from: it.from.clone() }))
-                        .collect()
-                })
-                .unwrap_or_default();
+            // Built once per game (cleared by `clear_game` and on connect), not every tick.
+            let items = match &self.shop_items {
+                Some(items) => items.clone(),
+                None => {
+                    let items: HashMap<i64, live::ShopItem> = sh
+                        .statics
+                        .as_ref()
+                        .map(|s| {
+                            s.items
+                                .iter()
+                                .map(|it| (it.id, live::ShopItem { name: it.name.clone(), price: it.price_total, from: it.from.clone() }))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    Arc::new(items)
+                }
+            };
             // Fall back to matching the live champion name if champ select was missed.
             if sh.my_champion_id == 0 {
                 let me = live::find_me(&data).and_then(|p| p.get("championName")).and_then(Value::as_str).unwrap_or("");
@@ -1228,6 +1256,9 @@ impl Engine {
         };
         let (mut state, enemies, items, seen_boots) = state;
         self.seen_boots = seen_boots;
+        if self.shop_items.is_none() && !items.is_empty() {
+            self.shop_items = Some(items.clone());
+        }
         let owned = live::my_items(&data, &items);
         if let Some(sit) = self.update_situational(enemies, owned, true).await {
             if cfg.show_situational {
@@ -1387,29 +1418,38 @@ pub async fn import_for(app: &AppHandle, champion_id: i64, position: &str) -> Re
     let lcu = lcu.ok_or("Not connected to the League client")?;
     let rec = ensure_rec(app, champion_id, position, None).await;
     let rune_rec = rec.as_ref().and_then(|r| r.runes.as_ref());
-    let result = runes::import(&lcu, &cfg, champion_id, &name, position, map_id, rune_rec)
-        .await
-        .map(|r| match r.replaced {
+    // Runes, spells and the shop build touch different parts of the client, so all at once.
+    let runes = async {
+        runes::import(&lcu, &cfg, champion_id, &name, position, map_id, rune_rec).await.map(|r| match r.replaced {
             Some(old) => format!("Set \"{}\" ({}) · all page slots were full, so it replaced \"{old}\"", r.page_name, r.source),
             None => format!("Set \"{}\" ({})", r.page_name, r.source),
         })
-        .map_err(msg)?;
-    let spells = match rec.as_ref().filter(|r| cfg.set_summoner_spells && r.games >= opgg::MIN_GAMES) {
-        Some(r) if r.spells.len() == 2 => match set_spells(app, &lcu, &r.spells).await {
-            Ok(names) => format!(" · {names}"),
-            Err(e) => format!(" · couldn't set spells: {e:#}"),
-        },
-        _ => String::new(),
     };
-    let items = match rec.as_ref().filter(|r| cfg.set_item_sets && r.games >= opgg::MIN_GAMES) {
-        Some(r) => match itemsets::apply(&lcu, r, &name, runes::position_label(position), map_id).await {
-            Ok(Some(_)) => " · build added to the shop".to_string(),
-            Ok(None) => String::new(),
-            Err(e) => format!(" · couldn't add the build to the shop: {e:#}"),
-        },
-        None => String::new(),
+    let spells = async {
+        match rec.as_ref().filter(|r| cfg.set_summoner_spells && r.games >= opgg::MIN_GAMES) {
+            Some(r) if r.spells.len() == 2 => match set_spells(app, &lcu, &r.spells).await {
+                Ok(names) => format!(" · {names}"),
+                Err(e) => format!(" · couldn't set spells: {e:#}"),
+            },
+            _ => String::new(),
+        }
     };
-    Ok(format!("{result}{spells}{items}"))
+    let items = async {
+        match rec.as_ref().filter(|r| cfg.set_item_sets && r.games >= opgg::MIN_GAMES) {
+            Some(r) => match itemsets::apply(&lcu, r, &name, runes::position_label(position), map_id).await {
+                Ok(Some(_)) => " · build added to the shop".to_string(),
+                Ok(None) => String::new(),
+                Err(e) => format!(" · couldn't add the build to the shop: {e:#}"),
+            },
+            None => String::new(),
+        }
+    };
+    let (result, spells, items) = tokio::join!(runes, spells, items);
+    match result {
+        Ok(r) => Ok(format!("{r}{spells}{items}")),
+        // The spells and shop build may still have gone in; say so with the error.
+        Err(e) => Err(format!("{}{spells}{items}", msg(e))),
+    }
 }
 
 pub(crate) async fn publish_import(app: &AppHandle, champion_id: i64, result: Result<String, String>) -> ImportEvent {
@@ -1441,12 +1481,27 @@ pub async fn import_slots(app: &AppHandle, lcu: &Lcu, wanted: Vec<(usize, i64, S
     let cfg = state.config();
     let mut events = Vec::new();
     let mut picks = Vec::new();
-    for (slot, champ, pos) in wanted {
-        let alias = state.shared.lock().await.opgg_alias(champ);
-        let rec = match alias.filter(|_| cfg.rec_source == "opgg") {
-            Some(alias) => state.opgg.recommend(champ, &alias, &pos, "ranked", Some(lcu)).await.ok(),
-            None => None,
-        };
+    // Every slot's OP.GG lookup at once.
+    let mut lookups = tokio::task::JoinSet::new();
+    for (n, (_, champ, pos)) in wanted.iter().cloned().enumerate() {
+        let (app, lcu, use_opgg) = (app.clone(), lcu.clone(), cfg.rec_source == "opgg");
+        lookups.spawn(async move {
+            let state = app.state::<AppState>();
+            let alias = state.shared.lock().await.opgg_alias(champ);
+            let rec = match alias.filter(|_| use_opgg) {
+                Some(alias) => state.opgg.recommend(champ, &alias, &pos, "ranked", Some(&lcu)).await.ok(),
+                None => None,
+            };
+            (n, rec)
+        });
+    }
+    let mut recs: Vec<Option<Recommendation>> = vec![None; wanted.len()];
+    while let Some(done) = lookups.join_next().await {
+        if let Ok((n, rec)) = done {
+            recs[n] = rec;
+        }
+    }
+    for ((slot, champ, pos), rec) in wanted.into_iter().zip(recs) {
         match runes::choose_page(lcu, champ, &pos, 11, rec.as_ref().and_then(|r| r.runes.as_ref())).await {
             Ok((mut page, source)) => {
                 let name = state.shared.lock().await.champion(champ).map(|c| c.name.clone()).unwrap_or_default();
@@ -1723,6 +1778,7 @@ pub async fn run(app: AppHandle) {
         last_rec_key: None,
         last_matchup_key: None,
         seen_boots: None,
+        shop_items: None,
         last_slot_keys: Vec::new(),
         requested: HashSet::new(),
         loading_game_id: None,
@@ -1734,7 +1790,11 @@ pub async fn run(app: AppHandle) {
         damage_lookup: Arc::new(AtomicBool::new(false)),
     };
     engine.set_status(false, "", None, "Waiting for the League client").await;
+    // A tick every second, however long the last one took (a slow tick isn't followed by a burst).
+    let mut every_second = tokio::time::interval(Duration::from_millis(1000));
+    every_second.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
+        every_second.tick().await;
         engine.tick().await;
         // Profiles are only cached for the current session of the app; clear
         // the request list between games so ranks refresh.
@@ -1742,7 +1802,6 @@ pub async fn run(app: AppHandle) {
             engine.requested.clear();
             app.state::<AppState>().shared.lock().await.profiles.clear();
         }
-        tokio::time::sleep(Duration::from_millis(1000)).await;
     }
 }
 

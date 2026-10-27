@@ -27,6 +27,8 @@ pub struct MatchupState {
     /// True when League Bro guessed the opponent; false when the player chose.
     pub guessed: bool,
     pub loading: bool,
+    /// OP.GG's numbers are in (`matchup`, no tip yet) and its lane tip is still loading.
+    pub tip_loading: bool,
     pub matchup: Option<Matchup>,
     pub error: Option<String>,
     /// Your recent games against them in lane (None until loaded, or if it failed).
@@ -112,6 +114,38 @@ pub async fn refresh(app: &AppHandle) {
     ensure(app, champ, &position, opponent, guessed).await;
 }
 
+/// At the start of a lane-mode champ select, loads what the lane matchup needs
+/// at lock-in (OP.GG's games per lane for the guess, your full game records
+/// for the record against them), so the card doesn't wait on it then.
+pub async fn prefetch(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    if state.config().rec_source != "opgg" {
+        return;
+    }
+    let (lane_mode, names, lcu) = {
+        let sh = state.shared.lock().await;
+        let mode = opgg::game_mode_for(sh.queue_id, sh.map());
+        let names: Vec<(i64, String)> = sh
+            .statics
+            .as_ref()
+            .map(|s| s.champions.iter().filter(|c| !c.classic).map(|c| (c.id, c.name.clone())).collect())
+            .unwrap_or_default();
+        (matches!(mode, Some("ranked" | "flex")), names, sh.lcu.clone())
+    };
+    if !lane_mode {
+        return;
+    }
+    let records = async {
+        if let Some(l) = lcu.as_ref() {
+            let _ = profile::record_against(l, 0).await;
+        }
+    };
+    let (lanes, _) = tokio::join!(state.tiers.lane_games(Some(names).filter(|n| !n.is_empty())), records);
+    if let Err(e) = lanes {
+        eprintln!("lane guess prefetch: {e:#}");
+    }
+}
+
 /// Loads (or clears, with opponent 0) the matchup for your champion and
 /// publishes it on the recommendation.
 async fn ensure(app: &AppHandle, champion_id: i64, position: &str, opponent_id: i64, guessed: bool) {
@@ -139,30 +173,62 @@ async fn ensure(app: &AppHandle, champion_id: i64, position: &str, opponent_id: 
         (sh.opgg_alias(champion_id), sh.opgg_alias(opponent_id), mode, sh.lcu.clone())
     };
     let (Some(alias), Some(opponent_alias)) = (alias, opponent_alias) else { return };
+    // OP.GG's answer and your own record are published as each one lands: the
+    // record can take much longer (match history plus a few dozen full game
+    // records right after the client starts), and the card shouldn't wait for it.
+    // The website's numbers come first (~0.3 s); OP.GG's tip follows with the full answer (~3.5 s).
+    let (early_tx, early_rx) = tokio::sync::oneshot::channel();
+    let early = async {
+        let Ok(x) = early_rx.await else { return }; // a saved answer, or the website failed
+        let mut sh = state.shared.lock().await;
+        if !current(&sh, opponent_id).is_some_and(|m| m.loading) {
+            return; // the full answer (or a newer lookup) got there first
+        }
+        set(app, &mut sh, champion_id, position, |m| {
+            m.loading = false;
+            m.tip_loading = true;
+            m.matchup = Some(x);
+        });
+    };
+    let opgg = async {
+        let send_early = move |m| {
+            let _ = early_tx.send(m);
+        };
+        let result = state
+            .opgg
+            .matchup(champion_id, &alias, opponent_id, &opponent_alias, position, game_mode, lcu.as_ref(), send_early)
+            .await;
+        let mut sh = state.shared.lock().await;
+        // The opponent changed while this was loading: the newer lookup owns it.
+        if !current(&sh, opponent_id).is_some_and(|m| m.loading || m.tip_loading) {
+            return;
+        }
+        set(app, &mut sh, champion_id, position, |m| {
+            m.loading = false;
+            m.tip_loading = false;
+            match result {
+                Ok(x) => m.matchup = Some(x),
+                Err(e) => m.error = Some(format!("{e:#}")),
+            }
+        });
+    };
     let record = async {
-        match lcu.as_ref() {
-            Some(l) => profile::record_against(l, opponent_id).await.map_err(|e| eprintln!("lane record: {e:#}")).ok(),
-            None => None,
+        let Some(l) = lcu.as_ref() else { return };
+        let Ok(record) = profile::record_against(l, opponent_id).await.map_err(|e| eprintln!("lane record: {e:#}")) else {
+            return;
+        };
+        let mut sh = state.shared.lock().await;
+        if current(&sh, opponent_id).is_some() {
+            // Shown with the matchup, so it's simply kept if that's still loading.
+            set(app, &mut sh, champion_id, position, |m| m.my_record = Some(record));
         }
     };
-    let (result, my_record) = tokio::join!(
-        state.opgg.matchup(champion_id, &alias, opponent_id, &opponent_alias, position, game_mode, lcu.as_ref()),
-        record,
-    );
-    let mut sh = state.shared.lock().await;
-    // The opponent changed while this was loading: the newer lookup owns it.
-    let still = sh.rec.as_ref().and_then(|r| r.matchup.as_ref()).is_some_and(|m| m.opponent_id == opponent_id && m.loading);
-    if !still {
-        return;
-    }
-    set(app, &mut sh, champion_id, position, |m| {
-        m.loading = false;
-        m.my_record = my_record;
-        match result {
-            Ok(x) => m.matchup = Some(x),
-            Err(e) => m.error = Some(format!("{e:#}")),
-        }
-    });
+    tokio::join!(opgg, early, record);
+}
+
+/// The matchup on the current recommendation, if it's still against `opponent_id`.
+fn current(sh: &crate::engine::Shared, opponent_id: i64) -> Option<&MatchupState> {
+    sh.rec.as_ref().and_then(|r| r.matchup.as_ref()).filter(|m| m.opponent_id == opponent_id)
 }
 
 /// Updates the matchup on the current recommendation and sends it to the UI.

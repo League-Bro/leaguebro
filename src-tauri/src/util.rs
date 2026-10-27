@@ -80,6 +80,11 @@ pub async fn get_json(req: reqwest::RequestBuilder, what: &str) -> Result<Value>
         .with_context(|| format!("couldn't read {what}'s answer"))
 }
 
+/// Whether a request failed by timing out (the other end is slow, not gone).
+pub fn is_timeout(e: &anyhow::Error) -> bool {
+    e.chain().any(|c| c.downcast_ref::<reqwest::Error>().is_some_and(reqwest::Error::is_timeout))
+}
+
 /// An error as the UI shows it, with its causes ("couldn't reach OP.GG: timed out").
 pub fn msg(e: anyhow::Error) -> String {
     format!("{e:#}")

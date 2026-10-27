@@ -9,6 +9,7 @@ use base64::Engine as _;
 use reqwest::{Client, Method, StatusCode};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,13 +57,20 @@ pub fn parse_cmdline(args: &[String]) -> (Option<Credentials>, Option<String>) {
 fn find_from_process() -> (Option<Credentials>, Option<String>) {
     use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
     let mut sys = System::new();
+    // Names first (cheap), then the command line of the client's processes
+    // only: reading every process's command line takes far longer.
+    sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
+    let pids: Vec<sysinfo::Pid> = sys.processes().values().filter(|p| is_client_ux(p)).map(|p| p.pid()).collect();
+    if pids.is_empty() {
+        return (None, None);
+    }
     sys.refresh_processes_specifics(
-        ProcessesToUpdate::All,
-        true,
+        ProcessesToUpdate::Some(&pids),
+        false,
         ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
     );
-    for p in sys.processes().values() {
-        if is_client_ux(p) {
+    for pid in pids {
+        if let Some(p) = sys.process(pid) {
             let args: Vec<String> = p.cmd().iter().map(|s| s.to_string_lossy().into_owned()).collect();
             let found = parse_cmdline(&args);
             if found.0.is_some() || found.1.is_some() {
@@ -143,6 +151,8 @@ pub struct Lcu {
     base: String,
     auth: String,
     http: Client,
+    /// `current-summoner`, kept for this connection by `summoner_ids`.
+    me: Arc<std::sync::Mutex<Option<Value>>>,
 }
 
 impl Lcu {
@@ -152,6 +162,7 @@ impl Lcu {
             base: format!("https://127.0.0.1:{}", creds.port),
             auth: format!("Basic {token}"),
             http: localhost_http_client(),
+            me: Arc::default(),
         }
     }
 
@@ -205,6 +216,24 @@ impl Lcu {
             }
             ok => ok,
         }
+    }
+
+    /// The logged-in player's `current-summoner`, read once per connection. Only
+    /// for its ids (`puuid`, `summonerId`): level and icon go stale.
+    pub async fn summoner_ids(&self) -> Result<Value> {
+        if let Some(me) = self.me.lock().unwrap().clone() {
+            return Ok(me);
+        }
+        let me = self.get_req("/lol-summoner/v1/current-summoner").await?;
+        if me.get("puuid").and_then(Value::as_str).is_some_and(|p| !p.is_empty()) {
+            *self.me.lock().unwrap() = Some(me.clone());
+        }
+        Ok(me)
+    }
+
+    /// GET with its own timeout in place of the 8 s default; None on 404.
+    pub async fn get_within(&self, path: &str, timeout: Duration) -> Result<Option<Value>> {
+        self.send_within(Method::GET, path, None, Some(timeout)).await
     }
 
     pub async fn get_req(&self, path: &str) -> Result<Value> {

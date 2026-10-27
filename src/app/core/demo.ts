@@ -617,13 +617,14 @@ export function demoMatchup(opponentId = 238, guessed = true): MatchupState {
     buildOrder: [3118, 3020, 4645, 3157, 3089, 3135],
   };
   if (opponentId !== 238) {
-    return { opponentId, guessed, loading: false, error: null, myRecord: { championId: opponentId, games: 0, wins: 0, kills: 0, deaths: 0, assists: 0 },
+    return { opponentId, guessed, loading: false, tipLoading: false, error: null, myRecord: { championId: opponentId, games: 0, wins: 0, kills: 0, deaths: 0, assists: 0 },
       matchup: { championId: 103, opponentId, position: 'mid', games: 214, winRate: 0.537, rec: null, tip: null, opponentDamageType: 'AD' } };
   }
   return {
     opponentId,
     guessed,
     loading: false,
+    tipLoading: false,
     error: null,
     myRecord: { championId: 238, games: 3, wins: 1, kills: 14, deaths: 13, assists: 9 },
     matchup: {

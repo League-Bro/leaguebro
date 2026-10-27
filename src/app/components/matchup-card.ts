@@ -99,6 +99,8 @@ import { MIN_GAMES } from '../core/models';
             </div>
             @if (x.tip?.text; as text) {
               <blockquote class="tip">{{ text }} <span class="faint">· OP.GG</span></blockquote>
+            } @else if (m.tipLoading) {
+              <p class="faint small" role="status">Getting OP.GG's lane tip…</p>
             }
             @if (!x.rec || x.rec.games < minGames) {
               <p class="faint small">Too few games for a build of its own against {{ rift.champName(m.opponentId) }}, so the build stays on all games.</p>

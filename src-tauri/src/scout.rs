@@ -123,10 +123,11 @@ pub fn summarize(puuid: &str, stats: Option<&Value>, games: Vec<GameLine>) -> Pr
 }
 
 pub async fn lookup(lcu: &Lcu, puuid: &str) -> Profile {
-    let stats = lcu.get(&format!("/lol-ranked/v1/ranked-stats/{puuid}")).await;
-    let history = lcu
-        .get(&format!("/lol-match-history/v1/products/lol/{puuid}/matches?begIndex=0&endIndex=19"))
-        .await;
+    let (stats_path, history_path) = (
+        format!("/lol-ranked/v1/ranked-stats/{puuid}"),
+        format!("/lol-match-history/v1/products/lol/{puuid}/matches?begIndex=0&endIndex=19"),
+    );
+    let (stats, history) = tokio::join!(lcu.get(&stats_path), lcu.get(&history_path));
     let mut errors = Vec::new();
     let stats = match stats {
         Ok(v) => v,

@@ -137,9 +137,14 @@ export class RiftService {
       listen<Config>('config', (e) => this.config.set(e.payload)),
       listen<StaticData>('static', (e) => this.statics.set(e.payload)),
     ]);
-    this.applySnapshot(await invoke<Snapshot>('get_snapshot'));
-    this.config.set(await invoke<Config>('get_config'));
-    this.statics.set((await invoke<StaticData | null>('get_static')) ?? null);
+    const [snapshot, config, statics] = await Promise.all([
+      invoke<Snapshot>('get_snapshot'),
+      invoke<Config>('get_config'),
+      invoke<StaticData | null>('get_static'),
+    ]);
+    this.applySnapshot(snapshot);
+    this.config.set(config);
+    this.statics.set(statics ?? null);
   }
 
   private applySnapshot(s: Snapshot): void {

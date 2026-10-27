@@ -141,7 +141,7 @@ pub async fn apply_many(lcu: &Lcu, recs: &[(&Recommendation, &str, &str)], map_i
         return Ok(Vec::new());
     }
     let titles = sets.iter().map(|s| s["title"].as_str().unwrap_or("").to_string()).collect();
-    let me = lcu.get_req("/lol-summoner/v1/current-summoner").await?;
+    let me = lcu.summoner_ids().await?;
     let summoner_id = me.get("summonerId").and_then(Value::as_i64).context("no summonerId")?;
     let path = format!("/lol-item-sets/v1/item-sets/{summoner_id}/sets");
     let existing = lcu.get(&path).await?.unwrap_or(Value::Null);
