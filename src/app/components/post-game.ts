@@ -3,6 +3,7 @@ import { RiftService } from '../core/rift.service';
 import { championIcon, clock, kdaRatio } from '../core/assets';
 import { PostGame, PostPlayer, PostTeam } from '../core/models';
 import { Roast, roasts } from '../core/roast';
+import { GoldGraph } from './gold-graph';
 import { ItemTip } from './item-tip';
 
 const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as const;
@@ -10,7 +11,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
 @Component({
   selector: 'rl-post-game',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ItemTip],
+  imports: [ItemTip, GoldGraph],
   template: `
     @let g = game();
     @if (me(); as m) {
@@ -130,6 +131,15 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
           </span>
         }
       </div>
+      @if (g.goldLead && g.goldLead.length > 1) {
+        <div class="chart wide">
+          <div class="chart-title lead-title">
+            Gold lead over time
+            <b class="mono" [class.win]="g.goldLead.at(-1)!.lead > 0" [class.loss]="g.goldLead.at(-1)!.lead < 0">{{ signedK(g.goldLead.at(-1)!.lead) }}</b>
+          </div>
+          <rl-gold-graph [points]="g.goldLead" label="Your team's gold lead over the game" />
+        </div>
+      }
       <div class="charts">
         @for (c of charts; track c.key) {
           <div class="chart">
@@ -198,6 +208,9 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
       display: flex; flex-direction: column; gap: 10px; padding: 14px 16px;
       background: var(--glass), var(--bg-raised); border: 1px solid var(--line); border-radius: 14px;
     }
+    .chart.wide { margin-bottom: 16px; --gg-up: var(--team-ally); --gg-down: var(--team-enemy); }
+    .lead-title { display: flex; justify-content: space-between; align-items: baseline; }
+    .lead-title b { font-size: 14px; letter-spacing: 0; text-transform: none; }
     .chart-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
     .split { display: flex; gap: 2px; height: 22px; font-size: 11.5px; }
     .half { display: flex; align-items: center; padding: 0 8px; min-width: 52px; color: #fff; }
@@ -435,6 +448,9 @@ export class PostGameView {
   }
   k(n: number): string {
     return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+  }
+  signedK(n: number): string {
+    return (n > 0 ? '+' : n < 0 ? '−' : '±') + this.k(Math.abs(n));
   }
   objectives(t: PostTeam): string {
     const n = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;

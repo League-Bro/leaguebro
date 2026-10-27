@@ -967,7 +967,10 @@ impl Engine {
         p.last_try = Some(Instant::now());
         let path = format!("/lol-match-history/v1/games/{}", p.game_id);
         let Ok(Some(game)) = lcu.get(&path).await else { return };
-        let Some(summary) = postgame::parse(&game, &self.my_puuid, &p.queue_name) else { return };
+        let Some(mut summary) = postgame::parse(&game, &self.my_puuid, &p.queue_name) else { return };
+        if let (Ok(Some(t)), Some(mine)) = (lcu.get(&postgame::timeline_path(p.game_id)).await, summary.teams.first().map(|t| t.team_id)) {
+            summary.gold_lead = postgame::gold_lead(&game, &t, mine);
+        }
         self.pending_post_game = None;
         self.state().shared.lock().await.post_game = Some(summary.clone());
         let _ = self.app.emit("post-game", Some(summary));

@@ -531,6 +531,8 @@ export interface PostGame {
   result: 'win' | 'loss' | 'remake';
   /** Your team first. */
   teams: PostTeam[];
+  /** Your team's gold lead each minute, from the client's timeline; empty when it had none. */
+  goldLead?: GoldPoint[];
 }
 
 export interface ChampInfo {

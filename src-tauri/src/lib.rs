@@ -162,12 +162,15 @@ async fn get_match(state: State<'_, AppState>, game_id: i64, queue_name: String)
     let lcu = state.shared.lock().await.lcu.clone().ok_or("Open the League client to see this game")?;
     let me = lcu.summoner_ids().await.map_err(msg)?;
     let puuid = text(&me, "puuid");
-    let game = lcu
-        .get(&format!("/lol-match-history/v1/games/{game_id}"))
-        .await
-        .map_err(msg)?
-        .ok_or("The League client doesn't have this game anymore")?;
-    postgame::parse(&game, puuid, &queue_name).ok_or_else(|| "Couldn't read this game".to_string())
+    let (path, timeline_path) = (format!("/lol-match-history/v1/games/{game_id}"), postgame::timeline_path(game_id));
+    let (game, timeline) = tokio::join!(lcu.get(&path), lcu.get(&timeline_path));
+    let game = game.map_err(msg)?.ok_or("The League client doesn't have this game anymore")?;
+    let mut summary = postgame::parse(&game, puuid, &queue_name).ok_or_else(|| "Couldn't read this game".to_string())?;
+    // The gold graph is a bonus: the scoreboard still shows without a timeline.
+    if let (Ok(Some(t)), Some(mine)) = (timeline, summary.teams.first().map(|t| t.team_id)) {
+        summary.gold_lead = postgame::gold_lead(&game, &t, mine);
+    }
+    Ok(summary)
 }
 
 /// League's install folder: from the client, else the one set in Settings.

@@ -1,8 +1,8 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { championSplit, damageTip, DamageSplit, teamSplit } from '../core/damage';
-import { clock } from '../core/assets';
+import { GoldGraph } from './gold-graph';
 
 /**
  * Your team vs the enemy team: a damage profile chart (AD / AP / true) and, in game,
@@ -11,7 +11,7 @@ import { clock } from '../core/assets';
 @Component({
   selector: 'rl-team-damage',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe],
+  imports: [DecimalPipe, GoldGraph],
   template: `
     @if (ours() || theirs()) {
       <section class="card tvt" [class.two]="!!gold()">
@@ -62,35 +62,7 @@ import { clock } from '../core/assets';
               <div class="spacer"></div>
               <b class="mono now" [class.win]="g.lead > 0" [class.loss]="g.lead < 0">{{ signed(g.lead) }}</b>
             </figcaption>
-            <div class="graph">
-              <div class="yaxis mono faint"><span>+{{ short(g.max) }}</span><span>0</span><span>−{{ short(g.max) }}</span></div>
-              <div class="area" (mousemove)="hover($event, g.points.length)" (mouseleave)="hoverIdx.set(null)">
-                <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Team gold lead over time">
-                  <defs>
-                    <clipPath id="tvt-up"><rect x="0" y="0" width="100" height="50" /></clipPath>
-                    <clipPath id="tvt-down"><rect x="0" y="50" width="100" height="50" /></clipPath>
-                  </defs>
-                  <line class="mid" x1="0" y1="50" x2="100" y2="50" />
-                  <path class="fill up" [attr.d]="g.area" clip-path="url(#tvt-up)" />
-                  <path class="fill down" [attr.d]="g.area" clip-path="url(#tvt-down)" />
-                  <path class="line up" [attr.d]="g.line" clip-path="url(#tvt-up)" />
-                  <path class="line down" [attr.d]="g.line" clip-path="url(#tvt-down)" />
-                </svg>
-                <span class="side-tag ahead faint">Ahead</span>
-                <span class="side-tag behind faint">Behind</span>
-                <span class="dot" [class.down]="g.lead < 0" [style.left.%]="g.points.at(-1)!.x" [style.top.%]="g.points.at(-1)!.y"></span>
-                @if (hoverIdx() !== null && g.points[hoverIdx()!]; as p) {
-                  <span class="cross" [style.left.%]="p.x"></span>
-                  <span class="dot hov" [class.down]="p.lead < 0" [style.left.%]="p.x" [style.top.%]="p.y"></span>
-                  <span class="tt" [style.left.%]="p.x" [class.flip]="p.x > 70">
-                    <span class="faint mono">{{ time(p.t) }}</span>
-                    <b class="mono">{{ signed(p.lead) }}</b>
-                  </span>
-                }
-              </div>
-              <div></div>
-              <div class="xaxis mono faint"><span>0:00</span><span>{{ time(g.end / 2) }}</span><span>{{ time(g.end) }}</span></div>
-            </div>
+            <rl-gold-graph [points]="g.raw" label="Team gold lead over time" />
             <div class="stats row">
               <span class="stat"><span class="faint">Team</span><span class="mono">{{ g.ours | number }}</span><span class="faint">vs</span><span class="mono">{{ g.theirs | number }}</span></span>
               @if (g.lane; as ln) {
@@ -137,25 +109,6 @@ import { clock } from '../core/assets';
     .tip b.enemy { color: var(--enemy); }
 
     .now { font-size: 18px; }
-    .graph { display: grid; grid-template-columns: 40px 1fr; column-gap: 8px; row-gap: 4px; }
-    .yaxis { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; font-size: 11px; height: 120px; }
-    .area { position: relative; height: 120px; cursor: crosshair; border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-    svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-    .mid { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
-    .fill.up { fill: rgba(78, 164, 255, 0.16); }
-    .fill.down { fill: rgba(255, 90, 78, 0.16); }
-    .line { fill: none; stroke-width: 2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-    .line.up { stroke: var(--ally); }
-    .line.down { stroke: var(--enemy); }
-    .side-tag { position: absolute; right: 6px; font-size: 11px; pointer-events: none; }
-    .ahead { top: 4px; }
-    .behind { bottom: 4px; }
-    .dot { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: var(--ally); box-shadow: 0 0 0 2px var(--bg-raised); pointer-events: none; }
-    .dot.down { background: var(--enemy); }
-    .cross { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line-strong); pointer-events: none; }
-    .tt { position: absolute; top: -6px; transform: translate(8px, -100%); display: flex; gap: 8px; padding: 4px 8px; border-radius: 8px; background: var(--bg-sunken); border: 1px solid var(--line-strong); font-size: 12px; white-space: nowrap; pointer-events: none; }
-    .tt.flip { transform: translate(calc(-100% - 8px), -100%); }
-    .xaxis { display: flex; justify-content: space-between; font-size: 11px; }
     .stat { display: inline-flex; gap: 5px; align-items: baseline; }
     .stats { gap: 18px; flex-wrap: wrap; font-size: 13px; margin-top: 10px; }
   `,
@@ -167,7 +120,6 @@ export class TeamDamage {
   readonly enemies = input.required<number[]>();
   /** Show the gold graph (in game only). */
   readonly showGold = input(false);
-  protected readonly hoverIdx = signal<number | null>(null);
 
   private readonly champs = computed(() => new Map((this.rift.statics()?.champions ?? []).map((c) => [c.id, c])));
   private split(ids: number[]): DamageSplit | null {
@@ -190,13 +142,7 @@ export class TeamDamage {
     const lead = o.team.ours - o.team.theirs;
     const raw = this.rift.goldHistory().slice();
     if (!raw.length || raw.at(-1)!.t < o.gameTime) raw.push({ t: o.gameTime, lead });
-    if (raw.length === 1) raw.unshift({ t: 0, lead: 0 });
-    const end = Math.max(raw.at(-1)!.t, 60);
-    const max = niceMax(Math.max(...raw.map((p) => Math.abs(p.lead))));
-    const points = raw.map((p) => ({ ...p, x: (p.t / end) * 100, y: 50 - (p.lead / max) * 50 }));
-    const line = points.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ');
-    const area = `${line} L${points.at(-1)!.x.toFixed(2)} 50 L${points[0].x.toFixed(2)} 50 Z`;
-    return { lead, ours: o.team.ours, theirs: o.team.theirs, lane: o.lane, end, max, points, line, area };
+    return { lead, ours: o.team.ours, theirs: o.team.theirs, lane: o.lane, raw };
   });
 
   protected segments(s: DamageSplit) {
@@ -207,30 +153,8 @@ export class TeamDamage {
     ].filter((x) => x.value > 0);
   }
 
-  protected hover(e: MouseEvent, count: number): void {
-    const g = this.gold();
-    const el = e.currentTarget as HTMLElement;
-    if (!g || !count) return;
-    const x = ((e.clientX - el.getBoundingClientRect().left) / el.clientWidth) * 100;
-    let best = 0;
-    g.points.forEach((p, i) => {
-      if (Math.abs(p.x - x) < Math.abs(g.points[best].x - x)) best = i;
-    });
-    this.hoverIdx.set(best);
-  }
-
   protected tip = damageTip;
-  protected time = clock;
   protected signed(n: number): string {
     return (n > 0 ? '+' : n < 0 ? '−' : '±') + Math.abs(n).toLocaleString('en-US');
   }
-  protected short(n: number): string {
-    return n >= 1000 ? `${+(n / 1000).toFixed(1)}k` : `${n}`;
-  }
-}
-
-/** A round top for the gold axis, at least 500. */
-function niceMax(v: number): number {
-  for (const step of [500, 1000, 2000, 2500, 5000, 7500, 10000, 15000, 20000]) if (v <= step) return step;
-  return Math.ceil(v / 10000) * 10000;
 }

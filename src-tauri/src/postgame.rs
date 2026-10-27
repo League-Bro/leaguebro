@@ -19,6 +19,16 @@ pub struct PostGame {
     pub result: String,
     /// Your team first.
     pub teams: Vec<PostTeam>,
+    /// Your team's gold lead each minute (see `gold_lead`); empty without a timeline.
+    pub gold_lead: Vec<GoldPoint>,
+}
+
+/// Your team's gold minus the other team's at a game time.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct GoldPoint {
+    /// Seconds.
+    pub t: i64,
+    pub lead: i64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -161,7 +171,47 @@ pub fn parse(game: &Value, my_puuid: &str, queue_name: &str) -> Option<PostGame>
         duration: int(game, "gameDuration"),
         result: (if completed { result(me) } else { "remake" }).to_string(),
         teams,
+        gold_lead: Vec::new(),
     })
+}
+
+/// The client's timeline for a game.
+pub fn timeline_path(game_id: i64) -> String {
+    format!("/lol-match-history/v1/game-timelines/{game_id}")
+}
+
+/// Your team's gold lead from the game's timeline (one frame a minute, each
+/// player's `totalGold`). `game` is the match-history record, for who's on which
+/// team. Empty when there's no other team or no frames.
+pub fn gold_lead(game: &Value, timeline: &Value, my_team: i64) -> Vec<GoldPoint> {
+    let teams: std::collections::HashMap<i64, i64> =
+        list(game, "participants").iter().map(|p| (int(p, "participantId"), int(p, "teamId"))).collect();
+    if !teams.values().any(|t| *t != my_team) {
+        return Vec::new();
+    }
+    list(timeline, "frames")
+        .iter()
+        .map(|f| {
+            // An object keyed by participant id ("1".."10"); accept a list too.
+            let frames: Vec<&Value> = match f.get("participantFrames") {
+                Some(Value::Object(m)) => m.values().collect(),
+                Some(Value::Array(a)) => a.iter().collect(),
+                _ => Vec::new(),
+            };
+            let lead = frames
+                .iter()
+                .map(|p| {
+                    let gold = int(p, "totalGold");
+                    match teams.get(&int(p, "participantId")) {
+                        Some(t) if *t == my_team => gold,
+                        Some(_) => -gold,
+                        None => 0,
+                    }
+                })
+                .sum();
+            GoldPoint { t: int(f, "timestamp") / 1000, lead }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -248,5 +298,20 @@ mod tests {
         assert_eq!(pg.result, "remake");
         assert_eq!(pg.teams.len(), 1);
         assert!(pg.teams[0].players[0].is_me);
+    }
+
+    #[test]
+    fn gold_lead_from_timeline() {
+        use serde_json::json;
+        let game = json!({ "participants": [
+            { "participantId": 1, "teamId": 100 }, { "participantId": 2, "teamId": 200 }
+        ]});
+        let timeline = json!({ "frames": [
+            { "timestamp": 0, "participantFrames": { "1": { "participantId": 1, "totalGold": 500 }, "2": { "participantId": 2, "totalGold": 500 } } },
+            { "timestamp": 60_030, "participantFrames": { "1": { "participantId": 1, "totalGold": 1200 }, "2": { "participantId": 2, "totalGold": 900 } } }
+        ]});
+        let lead = gold_lead(&game, &timeline, 200);
+        assert_eq!(lead, vec![GoldPoint { t: 0, lead: 0 }, GoldPoint { t: 60, lead: -300 }]);
+        assert!(gold_lead(&json!({ "participants": [{ "participantId": 1, "teamId": 100 }] }), &timeline, 100).is_empty());
     }
 }

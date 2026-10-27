@@ -354,6 +354,15 @@ function demoInsights(matches: MatchLine[]): Insights {
   };
 }
 
+/** A made-up per-minute gold lead for a finished game, ending on `final`. */
+function demoGoldLead(duration: number, final: number): GoldPoint[] {
+  const points: GoldPoint[] = [];
+  const lead = (t: number) => final * (t / duration) ** 1.6 - Math.sin((Math.PI * t) / (duration * 0.6)) * 1800 * Math.sign(final);
+  for (let t = 0; t < duration; t += 60) points.push({ t, lead: Math.round(lead(t)) });
+  points.push({ t: duration, lead: final });
+  return points;
+}
+
 /** The post-game summary demo: a good game, or with `bad`, one worth roasting. */
 export function demoPostGame(bad = false): PostGame {
   const lanes = ['top', 'jungle', 'mid', 'adc', 'support'] as const;
@@ -376,6 +385,7 @@ export function demoPostGame(bad = false): PostGame {
     gameMode: 'CLASSIC',
     duration: 1834,
     result: bad ? 'loss' : 'win',
+    goldLead: demoGoldLead(1834, bad ? -8900 : 8900),
     teams: [
       {
         teamId: 100, win: !bad, isMine: true, kills: mineKills, gold: 61200, dragons: 3, barons: 1, towers: 9,
