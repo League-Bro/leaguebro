@@ -368,11 +368,27 @@ export interface LaneDiff {
   championId?: number;
   mine: number;
   theirs: number;
+  /** Every enemy in scoreboard order (top to support), to compare against another lane. */
+  foes?: LaneFoe[];
+}
+
+export interface LaneFoe {
+  opponent: string;
+  championId?: number;
+  /** The live data's position: TOP, JUNGLE, MIDDLE, BOTTOM, UTILITY (or empty). */
+  position: string;
+  theirs: number;
 }
 
 export interface TeamDiff {
   ours: number;
   theirs: number;
+}
+
+/** Your team's item value minus the enemy team's at a game time (seconds). */
+export interface GoldPoint {
+  t: number;
+  lead: number;
 }
 
 export interface OverlayState {

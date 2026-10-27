@@ -13,6 +13,7 @@ import {
   ImportEvent,
   LoadingView,
   MyProfile,
+  GoldPoint,
   OverlayState,
   PatchInfo,
   PatchNotes,
@@ -44,9 +45,13 @@ import {
   demoRec,
   demoWithChoice,
   demoScene,
+  demoGoldHistory,
   demoStatic,
   demoTierList,
 } from './demo';
+
+/** Seconds between gold graph points. */
+const GOLD_STEP = 15;
 
 export function inTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -68,6 +73,8 @@ export class RiftService {
   /** Your Swiftplay lobby slots (empty outside a Swiftplay lobby). */
   readonly swiftplay = signal<SwiftplaySlot[]>([]);
   readonly overlay = signal<OverlayState | null>(null);
+  /** Your team's item value lead over this game, for the Live tab's gold graph. */
+  readonly goldHistory = signal<GoldPoint[]>([]);
   readonly rec = signal<RecState | null>(null);
   readonly postGame = signal<PostGame | null>(null);
   /** Game id of a summary the user closed. */
@@ -112,6 +119,7 @@ export class RiftService {
       const profile = params.get('profile');
       if (profile === 'opgg' || profile === 'setup') snap.status = { ...snap.status, connected: false, phase: '', summoner: null, message: 'Waiting for the League client' };
       this.applySnapshot(snap);
+      if (snap.overlay) this.goldHistory.set(demoGoldHistory(snap.overlay.gameTime));
       this.statics.set(demoStatic());
       this.config.set(profile === 'setup' ? { ...demoConfig(), riotId: null } : demoConfig());
       return;
@@ -125,7 +133,7 @@ export class RiftService {
       listen('scout-cleared', () => this.profiles.set({})),
       listen<ImportEvent>('rune-import', (e) => this.lastImport.set(e.payload)),
       listen<SwiftplaySlot[]>('swiftplay', (e) => this.swiftplay.set(e.payload)),
-      listen<OverlayState | null>('overlay', (e) => this.overlay.set(e.payload)),
+      listen<OverlayState | null>('overlay', (e) => this.setOverlay(e.payload)),
       listen<RecState | null>('recommendation', (e) => this.rec.set(e.payload)),
       listen<PostGame | null>('post-game', (e) => this.postGame.set(e.payload)),
       listen<SituationalState | null>('situational', (e) => this.situational.set(e.payload)),
@@ -144,13 +152,25 @@ export class RiftService {
     this.statics.set(statics ?? null);
   }
 
+  private setOverlay(o: OverlayState | null): void {
+    this.overlay.set(o);
+    if (!o?.team) return;
+    const point = { t: o.gameTime, lead: o.team.ours - o.team.theirs };
+    this.goldHistory.update((h) => {
+      const last = h.at(-1);
+      // The clock going back means a new game.
+      if (!last || point.t < last.t) return [point];
+      return point.t - last.t >= GOLD_STEP ? [...h, point] : h;
+    });
+  }
+
   private applySnapshot(s: Snapshot): void {
     this.status.set(s.status);
     this.champSelect.set(s.champSelect);
     this.loading.set(s.loading);
     this.lastImport.set(s.lastImport);
     this.swiftplay.set(s.swiftplay);
-    this.overlay.set(s.overlay);
+    this.setOverlay(s.overlay);
     this.rec.set(s.rec);
     this.postGame.set(s.postGame);
     this.situational.set(s.situational);

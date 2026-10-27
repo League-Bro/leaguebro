@@ -134,23 +134,49 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
         @for (c of charts; track c.key) {
           <div class="chart">
             <div class="chart-title">{{ c.title }}</div>
-            @for (t of g.teams; track t.teamId) {
-              <div class="group" [class.ally]="t.isMine" [class.enemy]="!t.isMine">
-                @for (p of t.players; track $index) {
-                  <div class="bar-row" [class.me]="p.isMe" [title]="tip(c.key, p, t)">
-                    <img class="bar-icon" [src]="icon(p.championId)" alt="" />
-                    <span class="bar-name">
-                      {{ p.name ?? rift.champName(p.championId) }}
-                      @if (p.isMe) { <span class="you">You</span> }
-                    </span>
-                    <span class="gtrack">
-                      <span class="gbar" [style.width]="barWidth(c.key, p)"></span>
-                      <span class="gval mono">{{ k(p[c.key]) }}</span>
-                    </span>
-                  </div>
+            @if (g.teams.length > 1) {
+              <!-- The two team totals as one split bar, so who won the stat reads at a glance. -->
+              <div class="split" [title]="splitTip(c.key)">
+                @for (t of g.teams; track t.teamId) {
+                  <span class="half" [class.ally]="t.isMine" [class.enemy]="!t.isMine" [style.flex-grow]="total(c.key, t) || 1">
+                    <b class="mono">{{ k(total(c.key, t)) }}</b>
+                  </span>
                 }
               </div>
             }
+            <div class="plot">
+              @for (t of g.teams; track t.teamId) {
+                <div class="group" [class.ally]="t.isMine" [class.enemy]="!t.isMine">
+                  <div class="group-head">
+                    <span>{{ t.isMine ? 'Your team' : 'Enemy team' }}</span>
+                  </div>
+                  @for (p of t.players; track $index) {
+                    <div class="bar-row" [class.me]="p.isMe" [title]="tip(c.key, p, t)">
+                      <img class="bar-icon" [src]="icon(p.championId)" alt="" />
+                      <span class="bar-name">
+                        {{ p.name ?? rift.champName(p.championId) }}
+                        @if (p.isMe) { <span class="you">You</span> }
+                      </span>
+                      <span class="gtrack">
+                        @for (tk of ticks()[c.key]; track tk) {
+                          <i class="gl" [style.left]="at(c.key, tk)"></i>
+                        }
+                        <span class="gbar" [style.width]="barWidth(c.key, p)"></span>
+                        <span class="gval mono">{{ k(p[c.key]) }}<span class="share">{{ share(c.key, p, t) }}%</span></span>
+                      </span>
+                    </div>
+                  }
+                </div>
+              }
+              <div class="axis-row">
+                <span></span><span></span>
+                <span class="axis mono">
+                  @for (tk of ticks()[c.key]; track tk) {
+                    <span [style.left]="at(c.key, tk)">{{ tk >= 1000 ? tk / 1000 + 'k' : tk }}</span>
+                  }
+                </span>
+              </div>
+            </div>
           </div>
         }
       </div>
@@ -173,7 +199,23 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
       background: var(--glass), var(--bg-raised); border: 1px solid var(--line); border-radius: 14px;
     }
     .chart-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
+    .split { display: flex; gap: 2px; height: 22px; font-size: 11.5px; }
+    .half { display: flex; align-items: center; padding: 0 8px; min-width: 52px; color: #fff; }
+    .half:first-child { border-radius: 4px 0 0 4px; }
+    .half:last-child { border-radius: 0 4px 4px 0; justify-content: flex-end; }
+    .half.ally { background: var(--team-ally); }
+    .half.enemy { background: var(--team-enemy); }
+    .plot { display: flex; flex-direction: column; gap: 12px; }
     .group { display: flex; flex-direction: column; gap: 3px; }
+    .group-head { display: flex; justify-content: space-between; font-size: 11.5px; font-weight: 600; padding-bottom: 2px; }
+    .group.ally .group-head > span:first-child { color: var(--ally); }
+    .group.enemy .group-head > span:first-child { color: var(--enemy); }
+    .gl { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--line); pointer-events: none; }
+    .share { margin-left: 5px; color: var(--text-faint); }
+    .axis-row { display: grid; grid-template-columns: 18px minmax(90px, 128px) 1fr; gap: 8px; margin-top: -6px; }
+    .axis { position: relative; height: 14px; font-size: 10.5px; color: var(--text-faint); }
+    .axis span { position: absolute; transform: translateX(-50%); }
+    .axis span:first-child { transform: none; }
     .bar-row {
       display: grid; grid-template-columns: 18px minmax(90px, 128px) 1fr; align-items: center; gap: 8px;
       padding: 2px 4px; margin: 0 -4px; border-radius: 6px; font-size: 12.5px;
@@ -187,8 +229,8 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
       color: var(--text); background: var(--bg-hover); border-radius: 4px; padding: 0 4px;
     }
     /* One baseline on the left; the value sits just past each bar's tip. */
-    .gtrack { display: flex; align-items: center; gap: 6px; min-width: 0; border-left: 1px solid var(--line-strong); }
-    .gbar { display: block; height: 10px; border-radius: 0 4px 4px 0; flex: none; min-width: 2px; }
+    .gtrack { position: relative; display: flex; align-items: center; gap: 6px; min-width: 0; border-left: 1px solid var(--line-strong); }
+    .gbar { position: relative; display: block; height: 12px; border-radius: 0 4px 4px 0; flex: none; min-width: 2px; }
     .group.ally .gbar { background: var(--team-ally); }
     .group.enemy .gbar { background: var(--team-enemy); }
     .gval { font-size: 11.5px; color: var(--text-dim); flex: none; }
@@ -324,26 +366,49 @@ export class PostGameView {
     { key: 'gold', title: 'Gold earned', unit: 'gold' },
     { key: 'damage', title: 'Damage to champions', unit: 'damage' },
   ];
-  /** Largest value per chart; every bar in a chart shares one scale. */
+  /** Axis top per chart: the largest value rounded up to a tick; every bar in a chart shares one scale. */
   private readonly chartMax = computed(() => {
     const players = this.game().teams.flatMap((t) => t.players);
+    const top = (n: number) => Math.ceil(n / tickStep(n)) * tickStep(n);
     return {
-      gold: Math.max(1, ...players.map((p) => p.gold)),
-      damage: Math.max(1, ...players.map((p) => p.damage)),
+      gold: top(Math.max(1, ...players.map((p) => p.gold))),
+      damage: top(Math.max(1, ...players.map((p) => p.damage))),
     };
+  });
+  /** Gridline values per chart, from 0 to the axis top. */
+  protected readonly ticks = computed(() => {
+    const max = this.chartMax();
+    const ticks = (top: number) => {
+      const step = tickStep(top);
+      return Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
+    };
+    return { gold: ticks(max.gold), damage: ticks(max.damage) };
   });
 
   protected icon = championIcon;
   protected time = clock;
 
-  /** Bar length; 44px is kept free past the tip for the value label. */
+  /** Bar length on the chart's axis. */
   barWidth(key: 'gold' | 'damage', p: PostPlayer): string {
-    const f = p[key] / this.chartMax()[key];
-    return `calc((100% - 44px) * ${f.toFixed(4)})`;
+    return this.at(key, p[key]);
+  }
+  /** Where a value sits on the chart's axis (70px kept free at the end for the value and share). */
+  at(key: 'gold' | 'damage', v: number): string {
+    return `calc((100% - 70px) * ${(v / this.chartMax()[key]).toFixed(4)})`;
+  }
+  total(key: 'gold' | 'damage', t: PostTeam): number {
+    return t.players.reduce((a, x) => a + x[key], 0);
+  }
+  share(key: 'gold' | 'damage', p: PostPlayer, t: PostTeam): number {
+    const total = this.total(key, t);
+    return total > 0 ? Math.round((p[key] / total) * 100) : 0;
+  }
+  splitTip(key: 'gold' | 'damage'): string {
+    const unit = this.charts.find((c) => c.key === key)!.unit;
+    return this.game().teams.map((t) => `${t.isMine ? 'Your team' : 'Enemy team'}: ${this.total(key, t).toLocaleString()} ${unit}`).join(' · ');
   }
   tip(key: 'gold' | 'damage', p: PostPlayer, t: PostTeam): string {
-    const total = t.players.reduce((a, x) => a + x[key], 0);
-    const share = total > 0 ? Math.round((p[key] / total) * 100) : 0;
+    const share = this.share(key, p, t);
     const who = p.name ?? this.rift.champName(p.championId);
     const unit = this.charts.find((c) => c.key === key)!.unit;
     return `${who} (${this.rift.champName(p.championId)}): ${p[key].toLocaleString()} ${unit}, ${share}% of ${t.isMine ? 'your' : 'their'} team`;
@@ -378,4 +443,11 @@ export class PostGameView {
   mode(m: string): string {
     return m ? m.charAt(0) + m.slice(1).toLowerCase() : 'Game';
   }
+}
+
+/** A round gridline step giving about 3–5 lines up to `max`. */
+function tickStep(max: number): number {
+  const raw = max / 4;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  return [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? 10 * mag;
 }

@@ -611,9 +611,9 @@ export class ProfileView {
       { label: 'Flex', line: p.flex, history: p.lpHistory?.flex ?? [] },
     ];
   }
-  /** Ranked queues, which get an LP graph. */
+  /** Ranked queues with at least two saved ranks, which get an LP graph. */
   ranked(p: MyProfile) {
-    return this.ranks(p).filter((r) => r.line);
+    return this.ranks(p).filter((r) => r.line && r.history.length > 1);
   }
   pct = winPct;
   ratio = kdaRatio;

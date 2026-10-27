@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, computed, inject, output, signal } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { PlayerCard } from './player-card';
 import { RecCard } from './rec-card';
@@ -13,7 +12,7 @@ import { ImportEvent } from '../core/models';
 @Component({
   selector: 'rl-live',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [PlayerCard, RecCard, MatchupCard, PostGameView, DecimalPipe, FullscreenHint, TeamDamage],
+  imports: [PlayerCard, RecCard, MatchupCard, PostGameView, FullscreenHint, TeamDamage],
   template: `
     @if (rift.fullscreenHint()) {
       <rl-fullscreen-hint class="top-hint" />
@@ -102,21 +101,14 @@ import { ImportEvent } from '../core/models';
         <section class="ingame card row">
           <div class="clock mono">{{ time(o.gameTime) }}</div>
           <div class="mono">{{ o.kills }}/{{ o.deaths }}/{{ o.assists }} <span class="faint">KDA</span></div>
-          @if (o.lane; as ln) {
-            <div class="mono" title="Total cost of your items vs your lane opponent's">
-              <span [class.win]="ln.mine > ln.theirs" [class.loss]="ln.mine < ln.theirs">{{ ln.mine > ln.theirs ? '+' : ln.mine < ln.theirs ? '−' : '±' }}{{ abs(ln.mine - ln.theirs) | number }}</span>
-              <span class="faint">items vs {{ ln.opponent }}</span>
-            </div>
-          }
           <div class="spacer"></div>
           @for (t of o.timers; track t.key) {
             <div class="timer"><span class="muted">{{ t.label }}</span> <span class="mono">{{ time(t.spawnAt - o.gameTime) }}</span></div>
           }
         </section>
       }
-      <rl-team-damage [allies]="loadAllyIds()" [enemies]="loadEnemyIds()" />
-      <rl-matchup />
-      <rl-rec-card />
+      <!-- Team vs team first: what the game looks like, then who's in it, then your own lane and build. -->
+      <rl-team-damage [allies]="loadAllyIds()" [enemies]="loadEnemyIds()" [showGold]="true" />
       <div class="row head">
         <h3 class="section">{{ l.queueName || 'Game' }}</h3>
         <div class="spacer"></div>
@@ -136,6 +128,8 @@ import { ImportEvent } from '../core/models';
             [hiddenLabel]="'Hidden player'" [hiddenNote]="'This player has streamer mode on'" />
         }
       </div>
+      <rl-matchup />
+      <rl-rec-card />
     } @else if (visiblePostGame(); as pg) {
       <rl-post-game [game]="pg" (closed)="rift.closedPostGame.set(pg.gameId)" />
     } @else if (postGamePhase() && !rift.postGame()) {
@@ -302,7 +296,6 @@ export class LiveView {
   protected icon = championIcon;
   protected pos = positionLabel;
   protected time = clock;
-  protected abs = Math.abs;
 
   async importSwiftplay(): Promise<void> {
     this.busy.set(true);

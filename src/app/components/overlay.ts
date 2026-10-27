@@ -36,7 +36,16 @@ const PREVIEW: OverlayState = {
   hasBuild: true,
   skillMax: ['Q', 'W', 'E'],
   nextSkill: 'Q',
-  lane: { opponent: 'Zed', championId: 238, mine: 5350, theirs: 3967 },
+  lane: {
+    opponent: 'Zed', championId: 238, mine: 5350, theirs: 3967,
+    foes: [
+      { opponent: 'Darius', championId: 122, position: 'TOP', theirs: 4875 },
+      { opponent: 'Vi', championId: 254, position: 'JUNGLE', theirs: 4100 },
+      { opponent: 'Zed', championId: 238, position: 'MIDDLE', theirs: 3967 },
+      { opponent: "Kai'Sa", championId: 145, position: 'BOTTOM', theirs: 6200 },
+      { opponent: 'Pyke', championId: 555, position: 'UTILITY', theirs: 3500 },
+    ],
+  },
   team: { ours: 21400, theirs: 22650 },
   situational: [
     { id: 3102, name: "Banshee's Veil", tag: 'survive', label: 'Survive burst', reason: 'Burst from Zed (assassin, 7/2)', score: 2, started: false, offPool: false, games: 210, winRate: 0.53, price: 3000, affordable: false },
@@ -76,17 +85,22 @@ const PREVIEW: OverlayState = {
                 }
               </div>
             }
-            <!-- Item gold: you vs your lane opponent (their icon), then team vs team, then CS/min. -->
+            <!-- Item gold: you vs an enemy (their icon; your lane opponent unless you picked another), then team vs team, then CS/min. -->
             @if (showLane() && o.lane; as l) {
-              <div class="gold">
-                @if (champIcon(l.championId ?? 0); as url) {
-                  <img class="champ" [src]="url" [alt]="l.opponent" (error)="rift.hideImg($event)" />
+              @let f = foe();
+              <button #goldBtn class="gold pick" [class.open]="foesOpen()" [disabled]="!l.foes?.length"
+                title="Compare against another enemy" (click)="foesOpen.set(!foesOpen())">
+                @if (f.position !== lanePos()) {
+                  <span class="cap">{{ role(f.position) }}</span>
+                }
+                @if (champIcon(f.championId ?? 0); as url) {
+                  <img class="champ" [src]="url" [alt]="f.opponent" (error)="rift.hideImg($event)" />
                 } @else {
-                  <span class="cap">vs {{ l.opponent.slice(0, 3) }}</span>
+                  <span class="cap">vs {{ f.opponent.slice(0, 3) }}</span>
                 }
                 <svg class="coin" viewBox="0 0 16 16" aria-hidden="true"><g stroke="#3a2606" stroke-width="0.8"><path d="M2.5 11.2v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1v-1.6z" fill="#b07a1e" /><ellipse cx="8" cy="11.2" rx="5.5" ry="2.1" fill="#e9b949" /><path d="M2.5 7.7v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1V7.7z" fill="#b07a1e" /><ellipse cx="8" cy="7.7" rx="5.5" ry="2.1" fill="#e9b949" /><path d="M2.5 4.2v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1V4.2z" fill="#b07a1e" /><ellipse cx="8" cy="4.2" rx="5.5" ry="2.1" fill="#fbd96b" /></g><ellipse cx="8" cy="4.2" rx="3" ry="1" fill="none" stroke="#c48d22" stroke-width="0.7" /></svg>
-                <span class="diff" [class.ahead]="l.mine > l.theirs" [class.behind]="l.mine < l.theirs">{{ gold(l.mine - l.theirs) }}</span>
-              </div>
+                <span class="diff" [class.ahead]="l.mine > f.theirs" [class.behind]="l.mine < f.theirs">{{ gold(l.mine - f.theirs) }}</span>
+              </button>
             }
             @if (showTeam() && o.team; as t) {
               <div class="gold">
@@ -99,6 +113,22 @@ const PREVIEW: OverlayState = {
               <div class="gold"><span class="cap">CS</span><span class="diff cs" [class.low]="+cs < 5" [class.great]="+cs >= 8">{{ cs }}</span></div>
             }
           </div>
+          @if (foesOpen() && showLane() && o.lane?.foes?.length) {
+            <!-- Like swapping rows on the scoreboard: pick the enemy to compare against. -->
+            <div #foesRow class="foes">
+              @for (e of o.lane!.foes!; track $index) {
+                <button class="foe" [class.on]="e.opponent === foe().opponent" (click)="pickFoe(e.opponent)">
+                  <span class="cap">{{ role(e.position) }}</span>
+                  @if (champIcon(e.championId ?? 0); as url) {
+                    <img class="champ" [src]="url" [alt]="e.opponent" (error)="rift.hideImg($event)" />
+                  } @else {
+                    <span class="cap">{{ e.opponent.slice(0, 3) }}</span>
+                  }
+                  <span class="diff" [class.ahead]="o.lane!.mine > e.theirs" [class.behind]="o.lane!.mine < e.theirs">{{ gold(o.lane!.mine - e.theirs) }}</span>
+                </button>
+              }
+            </div>
+          }
         }
         @if (showTimers() && o.timers.length) {
           <div class="timers">
@@ -224,6 +254,19 @@ const PREVIEW: OverlayState = {
     .gold .diff.cs { color: #7cc4ff; }
     .gold .diff.cs.low { color: var(--loss); }
     .gold .diff.cs.great { color: var(--win); }
+    /* Above the drag layer, and kept clickable when locked (see the button rects). */
+    .pick, .foe { all: unset; position: relative; z-index: 11; cursor: pointer; border-radius: 5px; }
+    .pick { display: flex; align-items: center; gap: 2px; padding: 0 2px; white-space: nowrap; }
+    .pick:hover, .pick.open { background: rgba(255, 255, 255, 0.08); }
+    .pick:disabled { cursor: default; background: none; }
+    .foes { display: flex; justify-content: space-between; gap: 3px; margin: -2px 0 6px; }
+    .foe { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 3px 0; background: rgba(255, 255, 255, 0.04); }
+    .foe:hover { background: rgba(255, 255, 255, 0.1); }
+    .foe.on { box-shadow: inset 0 0 0 1px rgba(255, 79, 163, 0.6); }
+    .foe .champ { width: 20px; height: 20px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.15); }
+    .foe .diff { font: 600 11.5px var(--mono); color: var(--text-dim); }
+    .foe .diff.ahead { color: var(--win); }
+    .foe .diff.behind { color: var(--loss); }
     .skills { display: flex; align-items: center; gap: 2px; font-size: 13px; flex-shrink: 0; }
     .skills b { color: var(--accent); padding: 0 1px; border-radius: 4px; }
     .skills .sep { color: var(--text-faint); }
@@ -290,6 +333,21 @@ export class Overlay {
   protected readonly showCs = computed(() => this.rift.config()?.showCs ?? true);
   protected readonly showBuyNow = computed(() => this.rift.config()?.showBuyNow ?? true);
   protected readonly expanded = signal(false);
+  protected readonly foesOpen = signal(false);
+  /** The enemy you picked, with the game's enemy line-up so a new game goes back to your lane opponent. */
+  private readonly picked = signal<{ name: string; lineup: string } | null>(null);
+  private readonly lineup = computed(() => (this.state()?.lane?.foes ?? []).map((f) => f.opponent).join('|'));
+  protected readonly lanePos = computed(() => {
+    const l = this.state()?.lane;
+    return l?.foes?.find((f) => f.opponent === l.opponent)?.position ?? '';
+  });
+  /** Who the lane gold diff compares against: your pick, else your lane opponent. */
+  protected readonly foe = computed(() => {
+    const l = this.state()!.lane!;
+    const p = this.picked();
+    const pick = p && p.lineup === this.lineup() ? l.foes?.find((f) => f.opponent === p.name) : undefined;
+    return pick ?? { opponent: l.opponent, championId: l.championId, position: this.lanePos(), theirs: l.theirs };
+  });
   /** The shopping list, unless it only repeats rows the build card already marks green. */
   protected readonly buyNow = computed(() => {
     const o = this.state();
@@ -303,14 +361,17 @@ export class Overlay {
   protected champIcon = championIcon;
   private readonly lockBtn = viewChild<ElementRef<HTMLElement>>('lockBtn');
   private readonly moreBtn = viewChild<ElementRef<HTMLElement>>('moreBtn');
+  private readonly goldBtn = viewChild<ElementRef<HTMLElement>>('goldBtn');
+  private readonly foesRow = viewChild<ElementRef<HTMLElement>>('foesRow');
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   constructor() {
     afterRenderEffect(() => {
-      // Both buttons stay clickable while the rest of the locked overlay is click-through.
+      // The buttons stay clickable while the rest of the locked overlay is click-through.
       // Re-measured on every update: rows above "more" (timers, items) move it.
       this.state();
       this.expanded();
+      this.foesOpen();
       this.showTimers();
       this.showLane();
       this.showSit();
@@ -319,7 +380,7 @@ export class Overlay {
       this.showBuyNow();
       this.width();
       this.scale();
-      const rects = [this.lockBtn(), this.moreBtn()]
+      const rects = [this.lockBtn(), this.moreBtn(), this.goldBtn(), this.foesRow()]
         .map((b) => b?.nativeElement.getBoundingClientRect())
         .filter((r): r is DOMRect => !!r)
         .map((r): [number, number, number, number] => [r.x, r.y, r.width, r.height]);
@@ -328,6 +389,16 @@ export class Overlay {
       const r = this.host.nativeElement.getBoundingClientRect();
       if (this.state()) this.rift.fitOverlay(r.width, r.height);
     });
+  }
+
+  protected pickFoe(name: string): void {
+    this.picked.set({ name, lineup: this.lineup() });
+    this.foesOpen.set(false);
+  }
+
+  /** Scoreboard role, short: Top, Jg, Mid, Bot, Sup. */
+  role(position: string): string {
+    return { TOP: 'Top', JUNGLE: 'Jg', MIDDLE: 'Mid', BOTTOM: 'Bot', UTILITY: 'Sup' }[position] ?? '?';
   }
 
   /** CS per minute to one decimal, e.g. "7.2"; nothing in the first minute, when it jumps around. */

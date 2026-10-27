@@ -7,6 +7,7 @@ import {
   ChampStat,
   Guide,
   GuideAbility,
+  GoldPoint,
   Config,
   Insights,
   ItemEffect,
@@ -134,7 +135,16 @@ export function demoSnapshot(): Snapshot {
       hasBuild: true,
       skillMax: ['Q', 'W', 'E'],
       nextSkill: 'Q',
-      lane: { opponent: 'Zed', championId: 238, mine: 5350, theirs: 3967 },
+      lane: {
+        opponent: 'Zed', championId: 238, mine: 5350, theirs: 3967,
+        foes: [
+          { opponent: 'Darius', championId: 122, position: 'TOP', theirs: 4875 },
+          { opponent: 'Vi', championId: 254, position: 'JUNGLE', theirs: 4100 },
+          { opponent: 'Zed', championId: 238, position: 'MIDDLE', theirs: 3967 },
+          { opponent: "Kai'Sa", championId: 145, position: 'BOTTOM', theirs: 6200 },
+          { opponent: 'Pyke', championId: 555, position: 'UTILITY', theirs: 3500 },
+        ],
+      },
       team: { ours: 21400, theirs: 22650 },
       allyChampions: [516, 64, 103, 222, 412],
       enemyChampions: [122, 254, 238, 145, 555],
@@ -808,4 +818,13 @@ export function demoGuide(championId: number, name: string): Guide {
       'Stay behind minions to make Charm difficult to land, this will reduce Ahri\'s damage potential significantly.',
     ],
   };
+}
+
+/** A made-up team gold lead up to `now`: ahead early, then behind, ending on the snapshot's 21,400 vs 22,650. */
+export function demoGoldHistory(now: number): GoldPoint[] {
+  const points: GoldPoint[] = [];
+  const lead = (t: number) => -1250 * (t / now) ** 2 + Math.sin(t / 60) * 900 * Math.sin((Math.PI * t) / now);
+  for (let t = 0; t < now; t += 15) points.push({ t, lead: Math.round(lead(t)) });
+  points.push({ t: now, lead: -1250 });
+  return points;
 }

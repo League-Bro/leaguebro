@@ -17,7 +17,7 @@ function score(p: LpPoint): number {
   return t * 400 + Math.max(0, DIVISIONS.indexOf(p.division)) * 100 + p.lp;
 }
 
-/** A small LP-over-time line for the Profile header: dots colored by tier, newest on the right. */
+/** A small LP-over-time line for the Profile header: dots colored by tier, newest on the right. Needs 2+ points. */
 @Component({
   selector: 'rl-lp-graph',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -33,10 +33,6 @@ function score(p: LpPoint): number {
       <div class="cap mono" [class.win]="net() > 0" [class.loss]="net() < 0">
         {{ net() > 0 ? '+' : '' }}{{ net() }} LP <span class="faint">since {{ since() }}</span>
       </div>
-    } @else {
-      <div class="empty faint" title="League Bro saves your rank each time the Profile loads and after each game, so the graph fills in as you play.">
-        LP graph fills in<br />as you play
-      </div>
     }
   `,
   styles: `
@@ -46,10 +42,6 @@ function score(p: LpPoint): number {
     circle { fill: currentColor; stroke: var(--bg-raised); stroke-width: 1; }
     .now { stroke: var(--text-faint); stroke-width: 1; stroke-dasharray: 2 3; opacity: 0.6; }
     .cap { font-size: 11px; }
-    .empty {
-      width: 220px; height: 52px; display: flex; align-items: center; justify-content: center; text-align: center;
-      border: 1px dashed var(--line-strong); border-radius: 8px; font-size: 11px; line-height: 1.3;
-    }
   `,
 })
 export class LpGraph {

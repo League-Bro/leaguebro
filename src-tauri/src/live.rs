@@ -207,6 +207,23 @@ pub struct LaneDiff {
     pub opponent_key: String,
     pub mine: i64,
     pub theirs: i64,
+    /// Every enemy in scoreboard order (top to support), so the overlay can
+    /// compare you against another lane, like swapping rows on the scoreboard.
+    pub foes: Vec<LaneFoe>,
+}
+
+/// One enemy's item value, for comparing against a lane other than your own.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LaneFoe {
+    pub opponent: String,
+    /// Filled in by the engine, like `LaneDiff::champion_id`.
+    pub champion_id: i64,
+    #[serde(skip)]
+    pub opponent_key: String,
+    /// The live data's position, e.g. "TOP" or "UTILITY".
+    pub position: String,
+    pub theirs: i64,
 }
 
 /// "game_character_displayname_MonkeyKing" -> "MonkeyKing".
@@ -244,12 +261,27 @@ pub fn lane_diff(data: &Value, items: &HashMap<i64, ShopItem>) -> Option<LaneDif
     let opp = list(data, "allPlayers")
         .iter()
         .find(|p| text(p, "team") != team && text(p, "position").eq_ignore_ascii_case(pos))?;
+    const ORDER: [&str; 5] = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"];
+    let mut foes: Vec<LaneFoe> = list(data, "allPlayers")
+        .iter()
+        .filter(|p| text(p, "team") != team)
+        .map(|p| LaneFoe {
+            opponent: text(p, "championName").to_string(),
+            champion_id: 0,
+            opponent_key: raw_champion_key(p),
+            position: text(p, "position").to_ascii_uppercase(),
+            theirs: item_value(p, items),
+        })
+        .collect();
+    // Stable, so players without a known position keep the game's order at the end.
+    foes.sort_by_key(|f| ORDER.iter().position(|o| *o == f.position).unwrap_or(ORDER.len()));
     Some(LaneDiff {
         opponent: text(opp, "championName").to_string(),
         champion_id: 0,
         opponent_key: raw_champion_key(opp),
         mine: item_value(me, items),
         theirs: item_value(opp, items),
+        foes,
     })
 }
 
@@ -907,7 +939,8 @@ mod tests {
         // Zed: two potions in one slot, plus an item the client list doesn't know.
         d["allPlayers"][2]["items"] = json!([{"itemID": 2003, "count": 2}, {"itemID": 9999, "count": 1, "price": 875}]);
         let lane = lane_diff(&d, &items).unwrap();
-        assert_eq!(lane, LaneDiff { opponent: "Zed".into(), champion_id: 0, opponent_key: "Zed".into(), mine: 1500, theirs: 975 });
+        let zed = LaneFoe { opponent: "Zed".into(), champion_id: 0, opponent_key: "Zed".into(), position: "MIDDLE".into(), theirs: 975 };
+        assert_eq!(lane, LaneDiff { opponent: "Zed".into(), champion_id: 0, opponent_key: "Zed".into(), mine: 1500, theirs: 975, foes: vec![zed] });
         assert_eq!(overlay_state(&d, &TimerConfig::default(), &Guidance::default(), &items).lane, Some(lane));
         // Lee Sin has nothing, so the teams are just the two of you.
         assert_eq!(team_diff(&d, &items), Some(TeamDiff { ours: 1500, theirs: 975 }));
@@ -917,6 +950,22 @@ mod tests {
             p["position"] = json!("");
         }
         assert_eq!(lane_diff(&d, &items), None);
+    }
+
+    #[test]
+    fn lane_foes_in_scoreboard_order() {
+        let mut d = sample(600.0, json!([]));
+        let foe = |name: &str, pos: &str| json!({"championName": name, "team": "CHAOS", "position": pos, "items": [{"itemID": 1, "price": 100}]});
+        let players = d["allPlayers"].as_array_mut().unwrap();
+        players.push(foe("Leona", "UTILITY"));
+        players.push(foe("Darius", "TOP"));
+        players.push(foe("Jinx", "BOTTOM"));
+        players.push(foe("Vi", "JUNGLE"));
+        let lane = lane_diff(&d, &HashMap::new()).unwrap();
+        let names: Vec<_> = lane.foes.iter().map(|f| (f.opponent.as_str(), f.position.as_str(), f.theirs)).collect();
+        assert_eq!(names, vec![("Darius", "TOP", 100), ("Vi", "JUNGLE", 100), ("Zed", "MIDDLE", 0), ("Jinx", "BOTTOM", 100), ("Leona", "UTILITY", 100)]);
+        // Your own lane stays the default comparison.
+        assert_eq!(lane.opponent, "Zed");
     }
 
     #[test]

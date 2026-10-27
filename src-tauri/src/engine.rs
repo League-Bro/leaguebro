@@ -1265,6 +1265,9 @@ impl Engine {
             let mut st = live::overlay_state(&data, &cfg.timers, &guide, &items);
             if let Some(lane) = st.lane.as_mut() {
                 lane.champion_id = sh.live_champion(&lane.opponent_key, &lane.opponent).map_or(0, |c| c.id);
+                for f in &mut lane.foes {
+                    f.champion_id = sh.live_champion(&f.opponent_key, &f.opponent).map_or(0, |c| c.id);
+                }
             }
             let (ours, theirs) = live::team_champions(&data);
             let ids = |t: &[(String, String)]| t.iter().filter_map(|(k, n)| sh.live_champion(k, n)).map(|c| c.id).collect();
