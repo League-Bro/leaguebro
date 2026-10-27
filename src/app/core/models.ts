@@ -207,6 +207,8 @@ export interface SwiftplaySlot {
   championId: number;
   /** Lowercase client position, e.g. "utility". */
   position: string;
+  /** The rune page, spells and build picked for this champion and position. */
+  choice: RecChoice;
 }
 
 export interface ImportEvent {

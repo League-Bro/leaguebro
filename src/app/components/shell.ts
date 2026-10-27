@@ -35,6 +35,9 @@ const PHASE_LABELS: Record<string, string> = {
   EndOfGame: 'Game over',
 };
 
+/** Client phases from joining a lobby to closing the end-of-game screen. */
+const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'));
+
 @Component({
   selector: 'rl-shell',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -185,7 +188,7 @@ const PHASE_LABELS: Record<string, string> = {
 export class Shell implements OnInit {
   protected readonly rift = inject(RiftService);
   protected readonly updates = inject(UpdateService);
-  /** The app opens on your profile; champ select and games still pull you to Live (see the constructor). */
+  /** The app opens on your profile; champ select and games pull you to Live and going idle sends you back (see the constructor). */
   protected readonly tab = signal<Tab>('profile');
   protected readonly tabs: { id: Tab; label: string }[] = [
     { id: 'live', label: 'Live' },
@@ -206,6 +209,12 @@ export class Shell implements OnInit {
     return pg && pg.gameId !== this.rift.closedPostGame() ? 'Game summary' : null;
   });
 
+  /** Not in a lobby, queue or game, and nothing left on the Live tab (an open game summary counts). */
+  private readonly quiet = computed(() => {
+    const s = this.rift.status();
+    return !this.liveActivity() && (!s.connected || !BUSY_PHASES.has(s.phase));
+  });
+
   constructor() {
     // Champ select, the loading screen and the post-game summary each pull you to the Live tab once
     // when they start (Back returns you); switching away afterwards is left alone.
@@ -217,6 +226,19 @@ export class Shell implements OnInit {
         this.backTo.set(t);
         this.tab.set('live');
       });
+    });
+    // When the client goes quiet (you left the lobby, the game ended and its summary is closed, League
+    // closed), the Live tab has nothing to show, so it hands you back to your profile. Only on that
+    // change: browsing Live while idle is left alone, and so is any other tab.
+    let wasQuiet = true;
+    effect(() => {
+      const quiet = this.quiet();
+      if (quiet && !wasQuiet) {
+        untracked(() => {
+          if (this.tab() === 'live') this.go('profile');
+        });
+      }
+      wasQuiet = quiet;
     });
     // Links between pages (rift.showChampion): open the tab, and Back returns to this one.
     effect(() => {

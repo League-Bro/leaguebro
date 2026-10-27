@@ -211,6 +211,18 @@ async fn choose_rec_option(app: AppHandle, choice: opgg::RecChoice) -> Result<St
     engine::choose(&app, choice).await
 }
 
+/// Picks a rune page, spells or build for a Swiftplay lobby champion and
+/// imports it into that slot.
+#[tauri::command]
+async fn choose_swiftplay_option(
+    app: AppHandle,
+    champion_id: i64,
+    position: String,
+    choice: opgg::RecChoice,
+) -> Result<Vec<engine::ImportEvent>, String> {
+    engine::choose_swiftplay(&app, champion_id, position, choice).await
+}
+
 /// Sets your lane opponent in champ select (an enemy champion id; 0 = none)
 /// instead of League Bro's guess.
 #[tauri::command]
@@ -467,6 +479,7 @@ pub fn run() {
             save_config,
             import_runes_now,
             import_swiftplay_now,
+            choose_swiftplay_option,
             lookup_rec,
             choose_rec_option,
             choose_lane_opponent,

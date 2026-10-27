@@ -80,6 +80,7 @@ import { Loader } from './loader';
     </div>
   `,
   styles: `
+    :host { display: block; container-type: inline-size; }
     .player {
       display: grid;
       grid-template-columns: minmax(180px, 1.4fr) 1fr 1fr 1fr;
@@ -90,6 +91,7 @@ import { Loader } from './loader';
       border-left: 3px solid var(--ally);
       border-radius: 12px;
       min-height: 62px;
+      height: 100%;
     }
     .player.enemy { border-left-color: var(--enemy); }
     .player.me { background: linear-gradient(90deg, var(--accent-soft), transparent 60%), var(--bg-raised); border-left-color: var(--accent); }
@@ -110,6 +112,11 @@ import { Loader } from './loader';
     .main { display: flex; align-items: center; gap: 3px; font-size: 12px; }
     .otp { font-size: 11px; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; }
     .loading { grid-column: 2 / -1; font-size: 13px; }
+    /* Half-width card (champ select teams side by side): top champs drop under rank and form. */
+    @container (max-width: 640px) {
+      .player { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 4px 12px; }
+      .mains { grid-column: 2 / -1; }
+    }
   `,
 })
 export class PlayerCard {

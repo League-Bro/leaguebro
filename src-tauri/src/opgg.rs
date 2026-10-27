@@ -52,9 +52,13 @@ pub const MIN_GAMES: i64 = 20;
 const MIN_LATE_ITEM_GAMES: i64 = 10;
 /// Bump when `Recommendation` or `extract` changes, so saved answers are
 /// fetched again instead of read in an old shape.
-const CACHE_FORMAT: u32 = 3;
-/// Rune pages, spell pairs, core builds and boots offered to pick from (the top one included).
+const CACHE_FORMAT: u32 = 4;
+/// Spell pairs, core builds and boots offered to pick from (the top one included).
 const PICK_OPTIONS: usize = 3;
+/// Rune pages offered to pick from (one per keystone + secondary tree): the
+/// most played keystones, each with its most played secondary trees.
+const RUNE_KEYSTONES: usize = 3;
+const RUNE_TREES: usize = 3;
 /// How long after a patch's notes come out OP.GG answers are kept for only a
 /// day, while the new patch's numbers settle. After that, a week.
 const SETTLING_SECS: u64 = 7 * DAY_SECS;
@@ -326,6 +330,67 @@ fn worth_offering<T>(options: Vec<T>, games: impl Fn(&T) -> i64) -> Vec<T> {
     options.into_iter().enumerate().filter(|(i, o)| *i == 0 || games(o) >= MIN_GAMES).map(|(_, o)| o).collect()
 }
 
+/// The rune pages to pick from: the most played page of each keystone +
+/// secondary tree, with the numbers of all pages in that group (what OP.GG's
+/// and Blitz's keystone tabs show), most played first. Pages that differ only
+/// in stat shards would look the same in the picker, so they're never offered
+/// twice. `groups` is the website's `rune_pages`; without it (the MCP tool,
+/// matchups) the flat `pages` list is grouped here instead.
+fn rune_options(groups: &[Value], pages: &[Value]) -> Vec<RuneRec> {
+    let mut out: Vec<RuneRec> = Vec::new();
+    for g in groups {
+        if let Some(mut top) = list(g, "builds").first().and_then(rune_rec) {
+            (top.games, top.win_rate, top.pick_rate) = (int(g, "play"), win_rate(g), pick_rate(g));
+            out.push(top);
+        }
+    }
+    let flat: Vec<RuneRec> = pages.iter().filter_map(rune_rec).collect();
+    if out.is_empty() {
+        for p in &flat {
+            match out.iter_mut().find(|o| same_group(o, p)) {
+                Some(o) => {
+                    let wins = o.win_rate * o.games as f64 + p.win_rate * p.games as f64;
+                    o.games += p.games;
+                    o.win_rate = if o.games > 0 { wins / o.games as f64 } else { 0.0 };
+                    o.pick_rate += p.pick_rate;
+                }
+                None => out.push(p.clone()),
+            }
+        }
+        out.sort_by(|a, b| b.games.cmp(&a.games));
+    }
+    let mut out = worth_offering(out, |r| r.games);
+    let mut per_keystone: Vec<(i64, usize)> = Vec::new();
+    out.retain(|o| {
+        let keystones = per_keystone.len();
+        match per_keystone.iter_mut().find(|(k, _)| *k == o.perk_ids[0]) {
+            Some((_, n)) if *n < RUNE_TREES => {
+                *n += 1;
+                true
+            }
+            Some(_) => false,
+            None if keystones < RUNE_KEYSTONES => {
+                per_keystone.push((o.perk_ids[0], 1));
+                true
+            }
+            None => false,
+        }
+    });
+    // A single keystone: offer its other popular pages instead (other runes, not just shards).
+    if out.len() == 1 {
+        for p in flat.into_iter().filter(|p| p.games >= MIN_GAMES) {
+            if out.len() < PICK_OPTIONS && !out.iter().any(|o| o.perk_ids[..6] == p.perk_ids[..6]) {
+                out.push(p);
+            }
+        }
+    }
+    out
+}
+
+fn same_group(a: &RuneRec, b: &RuneRec) -> bool {
+    a.perk_ids.first() == b.perk_ids.first() && a.sub_style_id == b.sub_style_id
+}
+
 fn rune_rec(r: &Value) -> Option<RuneRec> {
     let primary = ints(r, "primary_rune_ids");
     let secondary = ints(r, "secondary_rune_ids");
@@ -439,13 +504,14 @@ fn situational_pool(data: &Value, later: &[Vec<ItemSet>]) -> Vec<ItemSet> {
 /// Extracts a Recommendation from a parsed lol_get_champion_analysis result.
 pub fn extract(parsed: &Value, champion_id: i64, position: &str, game_mode: &str) -> Result<Recommendation> {
     let data = parsed.get("data").ok_or_else(|| anyhow!("OP.GG response has no data"))?;
-    let runes = data.get("runes").and_then(rune_rec);
     // `<key>_options` comes from the website API; the MCP tool has only the top pick.
     let options = |key: &str| -> Vec<Value> {
         let all = list(data, &format!("{key}_options"));
         if all.is_empty() { data.get(key).cloned().into_iter().collect() } else { all.to_vec() }
     };
-    let rune_options = worth_offering(options("runes").iter().filter_map(rune_rec).collect(), |r: &RuneRec| r.games);
+    let rune_options = rune_options(list(data, "rune_pages"), &options("runes"));
+    // The default page is the first option, so its numbers match the picker's.
+    let runes = rune_options.first().cloned().or_else(|| data.get("runes").and_then(rune_rec));
     let spell_options = worth_offering(options("summoner_spells").iter().filter_map(spell_option).collect(), |s: &SpellOption| s.games);
     let core_options = worth_offering(options("core_items").iter().filter_map(item_set).collect(), |s: &ItemSet| s.games);
     let boots_options = worth_offering(options("boots").iter().filter_map(item_set).collect(), |s: &ItemSet| s.games);
@@ -638,9 +704,12 @@ pub fn web_to_mcp(main: &Value, builds: &Value, damage_type: &str) -> Result<Val
         }
     }
     // The alternatives the player can pick instead (`extract` reads `<key>_options`).
-    for key in ["runes", "summoner_spells", "boots", "core_items"] {
+    for key in ["summoner_spells", "boots", "core_items"] {
         data.insert(format!("{key}_options"), list(d, key).iter().take(PICK_OPTIONS).cloned().collect());
     }
+    // Every page and the keystone + secondary tree groups: `rune_options` picks from them.
+    data.insert("runes_options".into(), list(d, "runes").into());
+    data.insert("rune_pages".into(), list(d, "rune_pages").into());
     for (depth, key) in [(4, "fourth_items"), (5, "fifth_items"), (6, "sixth_items")] {
         let options = list(builds, "/data/single_items").iter().find(|s| int(s, "depth") == depth).map_or(&[][..], |s| list(s, "items"));
         data.insert(key.into(), options.iter().take(LATE_ITEM_OPTIONS).cloned().collect());
@@ -1186,7 +1255,8 @@ mod tests {
         let runes = r.runes.as_ref().unwrap();
         assert_eq!((runes.primary_style_id, runes.sub_style_id), (8100, 8200));
         assert_eq!(runes.perk_ids, vec![8112, 8139, 8140, 8106, 8210, 8226, 5005, 5008, 5001]);
-        assert_eq!((runes.games, runes.pick_rate), (6015, 0.4686));
+        // The numbers are the whole Electrocute + Sorcery group's, as in the picker.
+        assert_eq!((runes.games, runes.pick_rate), (9482, 0.7386));
         assert_eq!(r.spells, vec![4, 14]);
         assert_eq!(r.skill_max, vec!["Q", "W", "E"]);
         assert_eq!(r.skill_order[0], "W");
@@ -1213,12 +1283,49 @@ mod tests {
     }
 
     #[test]
+    fn rune_pages_grouped_without_website_groups() {
+        // Matchup answers have no `rune_pages`: the flat list is grouped by
+        // keystone + secondary tree, so shard-only twins never show up twice.
+        let main: Value = serde_json::from_str(&fixture("opgg_web_ahri_vs_zed.json")).unwrap();
+        let r = extract(&web_to_mcp(&main, &Value::Null, "AP").unwrap(), 103, "mid", "ranked").unwrap();
+        let groups: Vec<(i64, i64, i64)> = r.rune_options.iter().map(|o| (o.perk_ids[0], o.sub_style_id, o.games)).collect();
+        assert_eq!(groups, vec![(8112, 8200, 545), (8992, 8100, 88), (8112, 8300, 43)]);
+        assert!((r.rune_options[0].win_rate - 265.0 / 545.0).abs() < 1e-9);
+        assert_eq!(r.runes.as_ref(), r.rune_options.first());
+
+        // At most three keystones.
+        let group = |k: i64, sub: i64, play: i64| {
+            json!({"play": play, "win": play / 2, "builds": [{"primary_page_id": 8000, "primary_rune_ids": [k, 9111, 9104, 8014],
+                   "secondary_page_id": sub, "secondary_rune_ids": [8473, 8444], "stat_mod_ids": [5005, 5008, 5001], "play": play, "win": play / 2}]})
+        };
+        let groups = [group(8010, 8400, 900), group(8005, 8400, 800), group(8008, 8400, 700), group(8021, 8400, 600), group(8010, 8300, 500)];
+        let keys: Vec<(i64, i64)> = rune_options(&groups, &[]).iter().map(|o| (o.perk_ids[0], o.sub_style_id)).collect();
+        assert_eq!(keys, vec![(8010, 8400), (8005, 8400), (8008, 8400), (8010, 8300)]);
+
+        // One keystone only: its other pages are offered, but not ones that differ only in shards.
+        let page = |sub: [i64; 2], shards: [i64; 3], play: i64| {
+            json!({"primary_page_id": 8100, "primary_rune_ids": [8112, 8139, 8140, 8106], "secondary_page_id": 8200,
+                   "secondary_rune_ids": sub, "stat_mod_ids": shards, "play": play, "win": play / 2})
+        };
+        let pages = [page([8210, 8226], [5005, 5008, 5001], 500), page([8210, 8226], [5005, 5008, 5011], 300), page([8226, 8237], [5005, 5008, 5001], 200)];
+        let opts = rune_options(&[], &pages);
+        assert_eq!(opts.len(), 2);
+        assert_eq!(opts[0].games, 1000);
+        assert_eq!(opts[1].perk_ids[4..6], [8226, 8237]);
+    }
+
+    #[test]
     fn options_and_picking_one() {
         let main: Value = serde_json::from_str(&fixture("opgg_web_ahri_mid.json")).unwrap();
         let builds: Value = serde_json::from_str(&fixture("opgg_web_ahri_mid_builds.json")).unwrap();
         let r = extract(&web_to_mcp(&main, &builds, "AP").unwrap(), 103, "mid", "ranked").unwrap();
         // Top three of each list, most played first; the top one is what's shown by default.
-        assert_eq!(r.rune_options.len(), 3);
+        // Rune pages: one per keystone + secondary tree, up to three trees per keystone
+        // (Electrocute + Precision, with 113 games, is the fourth, so it's left out).
+        let groups: Vec<(i64, i64, i64)> = r.rune_options.iter().map(|o| (o.perk_ids[0], o.sub_style_id, o.games)).collect();
+        assert_eq!(groups, vec![(8112, 8200, 9482), (8992, 8100, 1444), (8112, 8400, 743), (8112, 8300, 621)]);
+        assert_eq!(r.rune_options[1].perk_ids, vec![8992, 8226, 8210, 8237, 8106, 8139, 5005, 5008, 5001]);
+        assert!((r.rune_options[1].win_rate - 753.0 / 1444.0).abs() < 1e-9);
         assert_eq!(r.rune_options[0], *r.runes.as_ref().unwrap());
         assert_eq!(r.spell_options.iter().map(|s| s.ids.clone()).collect::<Vec<_>>(), vec![vec![4, 14], vec![4, 12], vec![3, 4]]);
         assert_eq!(r.spell_options[1].games, 3639);
@@ -1267,7 +1374,8 @@ mod tests {
         let rec = m.rec.as_ref().unwrap();
         // The matchup's own numbers, far fewer games than Ahri's overall page.
         assert_eq!(rec.runes.as_ref().unwrap().perk_ids, vec![8112, 8139, 8140, 8106, 8210, 8226, 5005, 5008, 5001]);
-        assert_eq!(rec.games, 462);
+        // Every Electrocute + Sorcery page in the matchup (462 + 43 + 40 games).
+        assert_eq!(rec.games, 545);
         assert_eq!(rec.spells, vec![4, 14]);
         assert!(!rec.later.is_empty());
         let tip = m.tip.unwrap();

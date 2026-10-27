@@ -97,6 +97,8 @@ const OTHERS_SHOWN = 3;
       display: flex; flex-direction: column; gap: 10px; min-width: 0;
       padding: 14px 16px 16px; border-radius: var(--radius-sm); background: var(--bg-hover); border: 1px solid var(--line);
     }
+    /* Inside another panel (the rec card's items): no panel of its own. */
+    :host(.bare) .panel { padding: 0; background: none; border: 0; border-radius: 0; }
     .panel header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
     .panel h4 { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
     .hint { font-size: 12px; color: var(--text-faint); }

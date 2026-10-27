@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, output, signal, untracked } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { PlayerCard } from './player-card';
 import { RecCard } from './rec-card';
@@ -7,7 +7,7 @@ import { PostGameView } from './post-game';
 import { FullscreenHint } from './fullscreen-hint';
 import { TeamDamage } from './team-damage';
 import { championIcon, clock, positionLabel } from '../core/assets';
-import { ImportEvent } from '../core/models';
+import { ImportEvent, RecChoice, RecState, SwiftplaySlot } from '../core/models';
 
 @Component({
   selector: 'rl-live',
@@ -62,29 +62,24 @@ import { ImportEvent } from '../core/models';
       <rl-matchup />
       <rl-rec-card />
 
-      <h3 class="section">Your team</h3>
-      <div class="stack tight">
+      <!-- Both teams side by side; the grid lines up each ally with the enemy in the same row. -->
+      <div class="teams">
+        <h3 class="section ally">Your team</h3>
         @for (p of cs.allies; track p.cellId; let i = $index) {
           <rl-player
             [name]="p.name" [puuid]="p.isMe ? null : p.puuid" [championId]="p.championId || p.pickIntent"
             [position]="p.position" [isMe]="p.isMe"
             [hiddenLabel]="'Ally ' + (i + 1)" [hiddenNote]="'Hidden in ranked champ select · shown on the loading screen'" />
         }
+        <h3 class="section enemy">Enemy team</h3>
+        @for (e of cs.enemies; track e.cellId; let i = $index) {
+          <rl-player class="foe"
+            [name]="e.name" [puuid]="e.puuid" [championId]="e.championId" [position]="e.position" side="enemy"
+            [hiddenLabel]="'Enemy ' + (i + 1)" [hiddenNote]="'Names show on the loading screen'" />
+        }
       </div>
 
       <div class="row picks">
-        <div>
-          <h3 class="section">Enemy picks</h3>
-          <div class="row">
-            @for (e of cs.enemies; track e.cellId) {
-              @if (e.championId > 0) {
-                <img class="champ-icon" [src]="icon(e.championId)" [title]="rift.champName(e.championId)" alt="" />
-              } @else {
-                <div class="champ-icon"></div>
-              }
-            }
-          </div>
-        </div>
         @if (cs.bans.length) {
           <div>
             <h3 class="section">Bans</h3>
@@ -139,18 +134,18 @@ import { ImportEvent } from '../core/models';
       </div>
     } @else if (swiftHasChamp()) {
       <section class="card swift">
-        <div class="row">
-          <div class="grow stack">
-            <h2>Swiftplay</h2>
-            <span class="muted">{{ swiftAutoText() }}</span>
-          </div>
-          <button class="primary" [disabled]="busy() || !swiftHasChamp()" (click)="importSwiftplay()">{{ busy() ? 'Importing…' : 'Import runes' }}</button>
+        <div class="stack">
+          <h2>Swiftplay</h2>
+          <span class="muted">{{ swiftAutoText() }}</span>
         </div>
         @if (swiftError(); as err) {
           <div class="import bad">{{ err }}</div>
         }
-        <div class="stack tight slots">
-          @for (s of rift.swiftplay(); track $index) {
+      </section>
+      <!-- Both lobby slots side by side, each with its own runes and build. -->
+      <div class="swift-cols">
+        @for (s of rift.swiftplay(); track $index) {
+          <div class="swift-col">
             <div class="slot row">
               @if (s.championId > 0) {
                 <img class="champ-icon md" [src]="icon(s.championId)" alt="" />
@@ -161,13 +156,26 @@ import { ImportEvent } from '../core/models';
                 <b>{{ rift.champName(s.championId) || 'No champion yet' }}</b>
                 <span class="muted">{{ pos(s.position) || 'Any role' }}</span>
               </div>
-              @if (slotImport(s.championId); as li) {
-                <span class="import" [class.bad]="!li.ok">{{ li.message }}</span>
+              @if (swiftBusy() === slotKey(s)) {
+                <span class="import faint">Setting…</span>
+              } @else if (slotImport(s.championId); as li) {
+                <!-- Only problems: the card below already shows what's set. -->
+                @if (!li.ok) {
+                  <span class="import bad" [title]="li.message">{{ shortImport(li) }}</span>
+                  <button class="ghost retry" (click)="retrySlot(s)">Retry</button>
+                }
               }
             </div>
-          }
-        </div>
-      </section>
+            @if (s.championId > 0) {
+              @if (swiftRecs()[slotKey(s)]; as st) {
+                <rl-rec-card [lookup]="st" (choiceChange)="pickSwift(st, $event)" />
+              }
+            } @else {
+              <p class="faint hint">Pick a champion for this position in the lobby.</p>
+            }
+          </div>
+        }
+      </div>
     } @else {
       <div class="empty card">
         @if (rift.swiftplay().length) {
@@ -209,10 +217,23 @@ import { ImportEvent } from '../core/models';
     .swift { padding: 24px; }
     .swift h2 { font-size: 22px; }
     .swift .row { align-items: center; gap: 14px; }
-    .slots { margin-top: 18px; }
     .slot { padding: 10px 12px; border-radius: 12px; background: var(--bg-sunken); }
-    .slot .import { text-align: right; max-width: 50%; }
+    .slot .import { text-align: right; white-space: nowrap; cursor: help; }
+    .swift-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; align-items: start; }
+    .swift-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+    .swift-col .slot { border: 1px solid var(--line); align-items: center; gap: 12px; }
+    .retry { padding: 3px 10px; font-size: 12.5px; color: var(--accent); }
+    .swift-col .slot .import { overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 60%; }
+    @media (max-width: 900px) { .swift-cols { grid-template-columns: minmax(0, 1fr); } }
+    .hint { font-size: 12.5px; margin: 12px 0 0; }
     .picks { align-items: flex-start; gap: 48px; }
+    .teams { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: row dense; column-gap: 14px; row-gap: 6px; }
+    .teams > * { grid-column: 1; }
+    .teams > .enemy, .teams > .foe { grid-column: 2; }
+    @media (max-width: 760px) {
+      .teams { grid-template-columns: minmax(0, 1fr); }
+      .teams > .enemy, .teams > .foe { grid-column: 1; }
+    }
     .banned { filter: grayscale(1) brightness(0.6); }
     .ingame { gap: 22px; flex-wrap: wrap; }
     .clock { font-size: 22px; font-weight: 600; color: var(--accent); }
@@ -251,10 +272,90 @@ export class LiveView {
   protected readonly swiftHasChamp = computed(() => this.rift.swiftplay().some((s) => s.championId > 0));
   protected readonly swiftAutoText = computed(() => {
     const c = this.rift.config();
-    if (!c?.autoImportRunes) return 'Auto-import is off. Pick your champions here, then import their runes.';
-    const spells = c.recSource === 'opgg' && c.setSummonerSpells;
-    return (spells ? 'Runes and summoner spells are' : 'Runes are') + ' set automatically when you pick a champion here.';
+    if (c?.recSource !== 'opgg') return 'OP.GG recommendations are off (Settings → Recommendations), so there are no builds to pick from.';
+    if (!c.autoImportRunes) return 'Auto-import is off: anything you pick below goes into that slot.';
+    return 'Set when you pick a champion. Change anything below before you hit Find Match.';
   });
+  /** OP.GG's options per Swiftplay champion and position (`slotKey`), with the slot's picks in place. */
+  protected readonly swiftRecs = signal<Record<string, RecState>>({});
+  /** The slot (`slotKey`) whose pick is being imported, or null. */
+  protected readonly swiftBusy = signal<string | null>(null);
+  /** Champion and position of each slot with a champion, so picks changing doesn't refetch. */
+  private readonly swiftKeys = computed(
+    () => this.rift.swiftplay().filter((s) => s.championId > 0).map((s) => this.slotKey(s)).join(','),
+  );
+
+  constructor() {
+    effect(() => {
+      const keys = this.swiftKeys();
+      untracked(() => {
+        const slots = this.rift.swiftplay().filter((s) => s.championId > 0);
+        const old = this.swiftRecs();
+        // Keep what's loaded for slots that stayed, drop the rest.
+        this.swiftRecs.set(Object.fromEntries(Object.entries(old).filter(([k]) => keys.split(',').includes(k))));
+        for (const s of slots) if (!old[this.slotKey(s)]) void this.loadSwift(s);
+      });
+    });
+  }
+
+  protected slotKey(s: SwiftplaySlot): string {
+    return `${s.championId}:${s.position}`;
+  }
+
+  private async loadSwift(slot: SwiftplaySlot): Promise<void> {
+    const key = this.slotKey(slot);
+    const { championId, position, choice } = slot;
+    const base: RecState = { championId, position, loading: true, rec: null, error: null, choice };
+    // Only while the slot still has this champion (the lobby can change during the lookup).
+    const put = (st: RecState) => {
+      if (this.swiftKeys().split(',').includes(key)) this.swiftRecs.update((r) => ({ ...r, [key]: st }));
+    };
+    put(base);
+    try {
+      let rec = await this.rift.lookupRec(championId, position, 'ranked');
+      if (choice.runes || choice.spells || choice.core || choice.boots) rec = await this.rift.recWithChoice(rec, choice);
+      put({ ...base, loading: false, rec });
+    } catch (e) {
+      put({ ...base, loading: false, error: String(e) });
+    }
+  }
+
+  /** A pick on a slot's card: shown at once, then imported into that lobby slot. */
+  async pickSwift(s: RecState, choice: RecChoice, retry = false): Promise<void> {
+    if ((!s.rec && !retry) || this.swiftBusy()) return;
+    const key = `${s.championId}:${s.position}`;
+    this.swiftBusy.set(key);
+    this.swiftError.set(null);
+    try {
+      if (s.rec) {
+        const rec = await this.rift.recWithChoice(s.rec, choice);
+        if (this.swiftRecs()[key] === s) this.swiftRecs.update((r) => ({ ...r, [key]: { ...s, rec, choice } }));
+      }
+      const events = await this.rift.chooseSwiftplayOption(s.championId, s.position, choice);
+      this.swiftResults.update((r) => ({ ...r, ...Object.fromEntries(events.map((e) => [e.championId, e])) }));
+    } catch (e) {
+      this.swiftError.set(String(e));
+    } finally {
+      this.swiftBusy.set(null);
+      this.clearSwiftSoon();
+    }
+  }
+
+  private swiftTimer?: ReturnType<typeof setTimeout>;
+  /** Hides the Swiftplay import results after a few seconds. */
+  private clearSwiftSoon(): void {
+    clearTimeout(this.swiftTimer);
+    this.swiftTimer = setTimeout(() => {
+      this.swiftResults.set({});
+      this.swiftError.set(null);
+    }, 8000);
+  }
+
+  /** A failed slot import in a few words; the full message is its tooltip. */
+  protected shortImport(li: ImportEvent): string {
+    return li.message.includes('rune menu') ? '✕ Pick the League Bro page in the lobby' : '✕ Couldn\'t set runes';
+  }
+
   protected slotImport(championId: number): ImportEvent | null {
     if (!championId) return null;
     const manual = this.swiftResults()[championId];
@@ -297,21 +398,10 @@ export class LiveView {
   protected pos = positionLabel;
   protected time = clock;
 
-  async importSwiftplay(): Promise<void> {
-    this.busy.set(true);
-    this.swiftError.set(null);
-    try {
-      const events = await this.rift.importSwiftplayNow();
-      this.swiftResults.set(Object.fromEntries(events.map((e) => [e.championId, e])));
-    } catch (e) {
-      this.swiftError.set(String(e));
-    } finally {
-      this.busy.set(false);
-      setTimeout(() => {
-        this.swiftResults.set({});
-        this.swiftError.set(null);
-      }, 8000);
-    }
+  /** Imports a slot again with its current picks, after a failed import. */
+  async retrySlot(slot: SwiftplaySlot): Promise<void> {
+    const st = this.swiftRecs()[this.slotKey(slot)];
+    if (st) await this.pickSwift(st, slot.choice, true);
   }
 
   async importNow(): Promise<void> {

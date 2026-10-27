@@ -246,6 +246,21 @@ export class RiftService {
     );
   }
 
+  /** Picks a rune page, spells or build for one Swiftplay lobby champion; imported into its slot right away. */
+  chooseSwiftplayOption(championId: number, position: string, choice: RecChoice): Promise<ImportEvent[]> {
+    return this.call(
+      'choose_swiftplay_option',
+      { championId, position, choice },
+      () => {
+        this.swiftplay.update((slots) =>
+          slots.map((s) => (s.championId === championId && s.position === position ? { ...s, choice } : s)),
+        );
+        return [{ ok: true, championId, message: `Swiftplay ${positionLabel(position)} runes (OP.GG) · Flash + Ignite · build added to the shop` }];
+      },
+      300,
+    );
+  }
+
   /** OP.GG's recommendation for any champion (Champions tab). Position: top|jungle|middle|bottom|utility. */
   /** Picks a different rune page, spells or build for champ select's champion; imported right away there. */
   chooseRecOption(choice: RecChoice): Promise<string> {

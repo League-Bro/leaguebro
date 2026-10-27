@@ -47,13 +47,9 @@ export class UpdateService {
   readonly lastResult = signal<string>('');
 
   /** League is in champ select or a game, so updates wait. */
-  readonly leagueBusy = computed(
-    () =>
-      BUSY_PHASES.has(this.rift.status().phase) ||
-      !!this.rift.champSelect() ||
-      !!this.rift.loading() ||
-      !!this.rift.overlay(),
-  );
+  readonly leagueBusy = computed(() => !!this.busyReason());
+  /** What the update check at launch found and did, shown in Settings to tell why an update didn't install. */
+  readonly launchNote = signal('');
   /** "A new version is out" popup; held back during champ select and games. */
   private readonly promptOpen = signal(false);
   readonly showPrompt = computed(() => this.promptOpen() && this.state().kind === 'available' && !this.leagueBusy());
@@ -98,17 +94,40 @@ export class UpdateService {
     this.launching = true;
     const minShown = sleep(SPLASH_MIN_MS);
     const settled = sleep(LAUNCH_SETTLE_MS);
-    await Promise.race([this.check(), sleep(BOOT_MAX_MS)]);
+    const checked = this.check();
+    // A slow GitHub answer lets the splash go, but the launch rules still apply when it comes.
+    const timedOut = await Promise.race([checked.then(() => false), sleep(BOOT_MAX_MS).then(() => true)]);
     await minShown;
+    if (timedOut) {
+      this.booting.set(false);
+      await checked;
+    }
     if (this.state().kind === 'available') await settled;
     this.launching = false;
-    if (this.state().kind === 'available' && !this.leagueBusy()) {
+    const update = this.state();
+    if (update.kind === 'available') {
+      const busy = this.busyReason();
+      this.launchNote.set(
+        busy ? `Found ${update.version} on launch, but League was busy (${busy}), so it asked instead.` : `Found ${update.version} on launch and installed it.`,
+      );
       // install() switches the splash over to download progress.
-      this.install();
-    } else if (this.state().kind === 'available') {
-      this.promptOpen.set(true);
+      if (busy) this.promptOpen.set(true);
+      else this.install();
+    } else {
+      this.launchNote.set(`Launch check: ${this.lastResult()}${timedOut ? ` (GitHub took over ${BOOT_MAX_MS / 1000} s)` : ''}`);
     }
     this.booting.set(false);
+  }
+
+  /** Why League counts as busy right now, or '' when it isn't. */
+  private busyReason(): string {
+    const r = this.rift;
+    const phase = r.status().phase;
+    if (BUSY_PHASES.has(phase)) return `phase ${phase}`;
+    if (r.champSelect()) return 'champ select';
+    if (r.loading()) return 'loading screen';
+    if (r.overlay()) return 'in game';
+    return '';
   }
 
   async check(manual = false): Promise<void> {
@@ -117,7 +136,7 @@ export class UpdateService {
     if (busy === 'downloading' || busy === 'installing') return;
     this.checking.set(true);
     try {
-      const update = await check();
+      const update = await check({ timeout: 30_000 });
       if (update) {
         this.pending = update;
         this.state.set({ kind: 'available', version: update.version, notes: update.body ?? '' });

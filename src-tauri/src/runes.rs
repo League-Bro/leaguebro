@@ -165,20 +165,19 @@ pub fn slot_perks(page: &RunePage) -> String {
     .to_string()
 }
 
-/// Swiftplay's temporary page for a lobby slot's champion. The perks plugin
-/// keeps one per slot (`isTemporary`, `quickPlayChampionIds: [id]`, named like
-/// "Nautilus - Aftershock"); the lobby's rune picker shows it and the game
-/// starts on it. Its id changes whenever the client remakes it.
-pub fn quick_play_page(pages: &Value, champion_id: i64) -> Option<&Value> {
+/// The page the Swiftplay lobby's rune menu shows for this champion's slot:
+/// the one whose `quickPlayChampionIds` has it. Usually the slot's temporary
+/// page; a page the player picked in the menu gets linked instead. The links
+/// can be missing (seen with the champion picker closed, October 2026).
+pub fn linked_page(pages: &Value, champion_id: i64) -> Option<&Value> {
     pages.as_array()?.iter().find(|p| {
-        flag(p, "isTemporary")
-            && p.get("quickPlayChampionIds")
-                .and_then(Value::as_array)
-                .is_some_and(|ids| ids.iter().any(|id| id.as_i64() == Some(champion_id)))
+        p.get("quickPlayChampionIds")
+            .and_then(Value::as_array)
+            .is_some_and(|ids| ids.iter().any(|id| id.as_i64() == Some(champion_id)))
     })
 }
 
-/// The temporary page with `page`'s runes, everything else kept as the client has it.
+/// The linked page with `page`'s runes, everything else kept as the client has it.
 pub fn quick_play_body(existing: &Value, page: &RunePage) -> Value {
     let mut body = existing.clone();
     body["name"] = json!(page.name);
@@ -188,17 +187,34 @@ pub fn quick_play_body(existing: &Value, page: &RunePage) -> Value {
     body
 }
 
-/// Puts `page`'s runes on the Swiftplay temporary page for this champion.
-/// Returns the page's id (the client may answer with a remade page's).
-/// (The per-slot `POST player-slots/{index}/{perks}` returns 400
-/// INVALID_REQUEST, checked October 2026.)
-pub async fn set_quick_play_page(lcu: &Lcu, champion_id: i64, page: &RunePage) -> Result<i64> {
+/// Puts `page`'s runes on the page linked to this champion's Swiftplay slot,
+/// if it's a temporary page or League Bro's own; the player's own pages are
+/// left alone. Returns whether a page was written.
+pub async fn set_linked_page(lcu: &Lcu, champion_id: i64, page: &RunePage) -> Result<bool> {
     let pages = lcu.get_req("/lol-perks/v1/pages").await?;
-    let existing = quick_play_page(&pages, champion_id)
-        .ok_or_else(|| anyhow!("the client has no Swiftplay rune page for this champion"))?;
-    let id = existing.get("id").and_then(Value::as_i64).unwrap_or_default();
-    let written = lcu.put(&format!("/lol-perks/v1/pages/{id}"), &quick_play_body(existing, page)).await?;
-    Ok(written.get("id").and_then(Value::as_i64).unwrap_or(id))
+    let Some(existing) = linked_page(&pages, champion_id) else { return Ok(false) };
+    if !(is_temporary(existing) || is_ours(text(existing, "name"))) || !allows(existing, "isEditable") {
+        return Ok(false);
+    }
+    let id = page_id(existing).ok_or_else(|| anyhow!("rune page without an id"))?;
+    lcu.put(&format!("/lol-perks/v1/pages/{id}"), &quick_play_body(existing, page)).await?;
+    Ok(true)
+}
+
+/// Deletes leftover temporary pages that older versions renamed "League Bro:
+/// ..." (the client keeps them around, deletable and linked to no slot).
+pub async fn drop_stale_temporary(lcu: &Lcu) {
+    let Ok(pages) = lcu.get_req("/lol-perks/v1/pages").await else { return };
+    for p in pages.as_array().into_iter().flatten().filter(|p| stale_temporary(p)) {
+        if let Some(id) = page_id(p) {
+            let _ = lcu.delete(&format!("/lol-perks/v1/pages/{id}")).await;
+        }
+    }
+}
+
+fn stale_temporary(p: &Value) -> bool {
+    let linked = p.get("quickPlayChampionIds").and_then(Value::as_array).is_some_and(|ids| !ids.is_empty());
+    is_temporary(p) && flag(p, "isDeletable") && !linked && is_ours(text(p, "name"))
 }
 
 /// Creates (or replaces) the League Bro rune page and makes it current.
@@ -217,9 +233,10 @@ pub async fn import(
     Ok(ImportResult { page_name: page.name, source, replaced })
 }
 
-/// Swiftplay's temporary pages: `set_quick_play_page` renames them to
-/// "League Bro: ...", but the client refuses to delete them (403 "Page is not
-/// deletable") and remakes them, so they don't count as League Bro's page.
+/// Swiftplay's temporary pages (`isTemporary`, one per lobby slot). Older
+/// versions renamed them to "League Bro: ...", but the client refuses to
+/// delete them (403 "Page is not deletable") and remakes them, so they don't
+/// count as League Bro's page.
 fn is_temporary(p: &Value) -> bool {
     flag(p, "isTemporary")
 }
@@ -378,31 +395,33 @@ mod tests {
     }
 
     #[test]
-    fn swiftplay_quick_play_page() {
-        // Shapes from a real Swiftplay lobby (October 2026).
+    fn swiftplay_linked_pages() {
+        // Shapes from a real Swiftplay lobby (October 2026): Yasuo's slot on its
+        // temporary page, Master Yi's on the League Bro page, plus a stale leftover.
         let pages = json!([
-            {"id": 2061975328, "name": "Nautilus - Aftershock", "isTemporary": true, "isDeletable": false,
-             "quickPlayChampionIds": [111], "primaryStyleId": 8400, "subStyleId": 8000, "order": 7,
-             "selectedPerkIds": [8439, 8401, 8429, 8453, 9105, 9111, 5005, 5001, 5001]},
-            {"id": 865385380, "name": "League Bro: Nami Support", "isTemporary": false,
-             "quickPlayChampionIds": [], "primaryStyleId": 8200, "subStyleId": 8400}
+            {"id": 540183416, "name": "League Bro: Yasuo Mid", "isTemporary": true, "isDeletable": false, "isEditable": true,
+             "quickPlayChampionIds": [157], "primaryStyleId": 8000, "subStyleId": 8400},
+            {"id": 1724831441, "name": "League Bro: Yasuo Mid", "isTemporary": true, "isDeletable": true, "isEditable": true,
+             "quickPlayChampionIds": [], "primaryStyleId": 8400, "subStyleId": 8000},
+            {"id": 102402902, "name": "League Bro: Master Yi", "isTemporary": false, "isDeletable": false, "isEditable": true,
+             "quickPlayChampionIds": [11], "primaryStyleId": 8100, "subStyleId": 8000},
+            {"id": 376696107, "name": "Blitz: Master Yi Jungle", "isTemporary": false, "quickPlayChampionIds": []}
         ]);
-        let found = quick_play_page(&pages, 111).unwrap();
-        assert_eq!(found["id"], 2061975328);
-        assert!(quick_play_page(&pages, 31).is_none());
+        assert_eq!(linked_page(&pages, 157).unwrap()["id"], 540183416);
+        assert_eq!(linked_page(&pages, 11).unwrap()["id"], 102402902);
+        assert!(linked_page(&pages, 64).is_none());
+        let stale: Vec<_> = pages.as_array().unwrap().iter().filter(|p| stale_temporary(p)).map(|p| p["id"].clone()).collect();
+        assert_eq!(stale, vec![json!(1724831441)]);
         let page = RunePage {
-            name: "League Bro: Nautilus".into(),
-            primary_style_id: 8400,
-            sub_style_id: 8300,
-            selected_perk_ids: vec![8439, 8401, 8473, 8242, 8345, 8347, 5007, 5001, 5001],
+            name: "League Bro: Master Yi".into(),
+            primary_style_id: 8100,
+            sub_style_id: 8000,
+            selected_perk_ids: vec![9923, 8143, 8140, 8135, 9104, 9111, 5005, 5008, 5001],
         };
-        let body = quick_play_body(found, &page);
-        assert_eq!(body["id"], 2061975328);
-        assert_eq!(body["isTemporary"], true);
-        assert_eq!(body["quickPlayChampionIds"], json!([111]));
-        assert_eq!(body["name"], "League Bro: Nautilus");
-        assert_eq!(body["subStyleId"], 8300);
-        assert_eq!(body["selectedPerkIds"], json!([8439, 8401, 8473, 8242, 8345, 8347, 5007, 5001, 5001]));
+        let body = quick_play_body(linked_page(&pages, 11).unwrap(), &page);
+        assert_eq!(body["id"], 102402902);
+        assert_eq!(body["quickPlayChampionIds"], json!([11]));
+        assert_eq!(body["selectedPerkIds"], json!([9923, 8143, 8140, 8135, 9104, 9111, 5005, 5008, 5001]));
     }
 
     #[test]

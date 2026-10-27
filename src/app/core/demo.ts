@@ -238,11 +238,12 @@ export function demoSituational(live: boolean): SituationalState {
   };
 }
 
-/** A Swiftplay lobby with a champion picked for one of the two positions. */
+/** A Swiftplay lobby with a champion picked for both positions. */
 export function demoSwiftplay(): SwiftplaySlot[] {
+  const choice = { runes: 0, spells: 0, core: 0, boots: 0 };
   return [
-    { championId: 103, position: 'middle' },
-    { championId: 0, position: 'jungle' },
+    { championId: 103, position: 'middle', choice },
+    { championId: 64, position: 'jungle', choice },
   ];
 }
 
@@ -578,9 +579,9 @@ export function demoRec(withMatchup = true): RecState {
         primaryName: '',
         secondaryName: '',
         perkNames: [],
-        games: 6015,
-        winRate: 3050 / 6015,
-        pickRate: 0.4686,
+        games: 9482,
+        winRate: 4833 / 9482,
+        pickRate: 0.7386,
       },
       spells: [4, 14],
       spellStats: { games: 8890, winRate: 4576 / 8890, pickRate: 0.6925 },
@@ -597,12 +598,14 @@ export function demoRec(withMatchup = true): RecState {
       ],
       situationalPool: [set([3089], 950, 540), set([3157], 739, 446), set([3135], 247, 138), set([3102], 210, 112), set([3165], 120, 61), set([3100], 90, 47)],
       buildOrder: [3118, 3020, 4645, 3157, 3089, 3135],
-      games: 6015,
+      games: 9482,
       source: 'OP.GG',
       runeOptions: [
-        rune(8100, 8200, [8112, 8139, 8140, 8106, 8210, 8226, 5005, 5008, 5001], 6015, 3050),
-        rune(8200, 8100, [8229, 8226, 8210, 8237, 8139, 8135, 5005, 5008, 5001], 1048, 540),
-        rune(8100, 8200, [8112, 8139, 8140, 8135, 8210, 8226, 5005, 5008, 5001], 579, 301),
+        // One page per keystone + secondary tree, with that group's numbers.
+        rune(8100, 8200, [8112, 8139, 8140, 8106, 8210, 8226, 5005, 5008, 5001], 9482, 4833),
+        rune(8200, 8100, [8229, 8226, 8210, 8237, 8139, 8135, 5005, 5008, 5001], 1444, 753),
+        rune(8100, 8400, [8112, 8139, 8140, 8106, 8451, 8473, 5005, 5008, 5001], 743, 379),
+        rune(8100, 8300, [8112, 8139, 8140, 8106, 8345, 8347, 5005, 5008, 5001], 621, 300),
       ],
       spellOptions: [spell([4, 14], 8890, 4576), spell([4, 12], 3639, 1890), spell([3, 4], 175, 91)],
       coreOptions: [set([3118, 4645, 3157], 971, 502), set([3118, 4645, 3089], 588, 310), set([3118, 3100, 3089], 344, 180)],
@@ -626,13 +629,13 @@ export function demoMatchup(opponentId = 238, guessed = true): MatchupState {
   const set = (ids: number[], games: number, wins: number) => ({ ids, names: [], games, winRate: wins / games, pickRate: games / total });
   const spell = (ids: number[], games: number, wins: number): SpellOption => ({ ids, games, winRate: wins / games, pickRate: games / total });
   const overall = demoRecBase();
-  const runes = { ...overall.runes!, games: 462, winRate: 227 / 462, pickRate: 0.449 };
+  const runes = { ...overall.runes!, games: 545, winRate: 265 / 545, pickRate: 0.53 };
   const comet: RuneRec = { ...overall.runeOptions[1], games: 121, winRate: 0.512, pickRate: 0.118 };
   const core = [set([3118, 4645, 3157], 86, 41), set([3118, 3157, 4645], 48, 24), set([3118, 3100, 3157], 41, 19)];
   const boots = [set([3020], 512, 254), set([3111], 301, 156), set([3158], 160, 77)];
   const spells = [spell([4, 14], 738, 369), spell([4, 12], 231, 111), spell([3, 4], 43, 21)];
   const rec: Recommendation = {
-    ...overall, runes, games: 462, spells: [4, 14], spellStats: { games: 738, winRate: 0.5, pickRate: 0.718 },
+    ...overall, runes, games: 545, spells: [4, 14], spellStats: { games: 738, winRate: 0.5, pickRate: 0.718 },
     core: core[0], boots: boots[0], runeOptions: [runes, comet], spellOptions: spells, coreOptions: core, bootsOptions: boots,
     buildOrder: [3118, 3020, 4645, 3157, 3089, 3135],
   };

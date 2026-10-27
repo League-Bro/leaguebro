@@ -282,6 +282,7 @@ type BoolKey =
             </button>
             @if (updates.lastResult()) { <span class="faint small">{{ updates.lastResult() }}</span> }
           </div>
+          @if (updates.launchNote()) { <p class="faint small">{{ updates.launchNote() }}</p> }
         </section>
       </div>
       @if (error()) { <p class="loss">{{ error() }}</p> }

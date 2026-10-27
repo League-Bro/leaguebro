@@ -9,6 +9,9 @@ import { buildWhy, rolesLabel } from '../core/why';
 import { Loader } from './loader';
 
 /** One of OP.GG's options in a pick list: icons, a name, and its win and play rates. */
+/** Rune tree names for when the client's data isn't loaded (the website API sends no names). */
+const TREES: Record<number, string> = { 8000: 'Precision', 8100: 'Domination', 8200: 'Sorcery', 8300: 'Inspiration', 8400: 'Resolve' };
+
 interface ChoiceRow {
   o: { games: number; winRate: number; pickRate: number };
   label: string;
@@ -17,6 +20,8 @@ interface ChoiceRow {
   items?: number[];
   tip: string;
   round?: boolean;
+  /** Index into the option list when the rows are a filtered part of it (rune pages of one keystone). */
+  i?: number;
 }
 
 /** OP.GG's recommendation for your current champion: runes, spells, skills, items. */
@@ -35,7 +40,7 @@ interface ChoiceRow {
               OP.GG · {{ r.games | number }} games
               @if (r.runes; as ru) { · {{ ru.winRate * 100 | number: '1.0-1' }}% win }
             </span>
-            <button class="ghost why-toggle" [class.on]="showWhy()" (click)="showWhy.set(!showWhy())">
+            <button class="ghost why-toggle" [class.on]="showWhy()" (click)="toggleWhy()">
               {{ showWhy() ? 'Hide why' : 'Why these picks?' }}
             </button>
           } @else if (s.loading) {
@@ -111,6 +116,35 @@ interface ChoiceRow {
           @if (r.games < minGames) {
             <p class="warn small">Only {{ r.games }} games on OP.GG for this pick, so runes and spells use the League client's suggestion instead. The data below is shown for reference.</p>
           }
+          @if (showWhy() && why(); as w) {
+            <!-- Under the header, so it opens where the button is. -->
+            <div class="why">
+              <div class="why-intro muted small">{{ intro() }}</div>
+              <div class="why-grid">
+                <div class="why-col">
+                  <div class="label">Runes</div>
+                  @for (x of w.runes; track x.id) {
+                    <ng-container *ngTemplateOutlet="whyRow; context: { $implicit: x, rune: true }" />
+                  }
+                  @for (n of w.runeNotes; track $index) { <p class="faint small note">{{ n }}</p> }
+
+                  @if (w.spells.length || w.skills.length) {
+                    <div class="label">Spells &amp; skills</div>
+                    @for (x of w.spells; track x.id) {
+                      <ng-container *ngTemplateOutlet="whyRow; context: { $implicit: x }" />
+                    }
+                    @for (n of w.skills; track $index) { <p class="muted small note">{{ n }}</p> }
+                  }
+                </div>
+                <div class="why-col">
+                  <div class="label">Items</div>
+                  @for (x of w.items; track $index) {
+                    <ng-container *ngTemplateOutlet="whyRow; context: { $implicit: x }" />
+                  }
+                </div>
+              </div>
+            </div>
+          }
           @if (vsRec(); as vs) {
             <div class="source" role="radiogroup" aria-label="Which games the build comes from">
               <button class="src" role="radio" [attr.aria-checked]="!s.choice.matchup" [class.on]="!s.choice.matchup"
@@ -127,9 +161,27 @@ interface ChoiceRow {
             </div>
           }
           <div class="layout">
+            <!-- One panel for runes | spells + skill order, one for items + situational items. -->
+            <section class="panel wide">
+              <div class="cols">
             @if (r.runes; as ru) {
-              <section class="panel">
+              <div class="part">
                 <header><h4>Runes</h4></header>
+                @if (keystones(); as keys) {
+                  <!-- The most played keystones; each one's secondary trees are listed under the page. -->
+                  <div class="keystones" role="radiogroup" aria-label="Keystones">
+                    @for (k of keys; track k.id) {
+                      <button class="ks" role="radio" [attr.aria-checked]="k.on" [class.on]="k.on" [disabled]="pickBusy()"
+                        [title]="k.label" (click)="!k.on && pick('runes', k.i)">
+                        @if (k.icon) { <img [src]="k.icon" alt="" (error)="rift.hideImg($event)" /> }
+                        <span class="ks-text">
+                          <span class="ks-name">{{ k.label }}</span>
+                          <span class="ks-stats"><span class="num">{{ pct(k.winRate) }}</span> <span class="faint">{{ k.games | number }} games</span></span>
+                        </span>
+                      </button>
+                    }
+                  </div>
+                }
                 <div class="rune-main">
                   @if (perkIcon(ru.perkIds[0]); as url) { <img class="keystone" [src]="url" [title]="perkName(ru.perkIds[0])" alt="" (error)="rift.hideImg($event)" /> }
                   <div>
@@ -161,14 +213,14 @@ interface ChoiceRow {
                 </div>
                 @if (runePages(); as rows) {
                   <div class="divider"></div>
-                  <ng-container *ngTemplateOutlet="choices; context: { $implicit: rows, kind: 'runes', head: 'Popular pages', sel: s.choice.runes }" />
+                  <ng-container *ngTemplateOutlet="choices; context: { $implicit: rows, kind: 'runes', head: keystones() ? 'Secondary tree' : 'Rune pages', sel: s.choice.runes }" />
                 }
-              </section>
+              </div>
             }
 
             <div class="stack">
               @if (r.spells.length === 2) {
-                <section class="panel">
+                <div class="part">
                   <header><h4>Summoner spells</h4></header>
                   @if (spellRows(); as rows) {
                     <ng-container *ngTemplateOutlet="choices; context: { $implicit: rows, kind: 'spells', head: 'Popular picks', sel: s.choice.spells }" />
@@ -180,10 +232,10 @@ interface ChoiceRow {
                       }
                     </div>
                   }
-                </section>
+                </div>
               }
               @if (r.skillMax.length) {
-                <section class="panel">
+                <div class="part">
                   <header><h4>Skill order</h4><span class="hint">Max in this order</span></header>
                   <div class="max">
                     @for (k of r.skillMax; track $index; let last = $last) {
@@ -200,12 +252,16 @@ interface ChoiceRow {
                       }
                     </div>
                   }
-                </section>
+                </div>
               }
             </div>
+              </div>
+            </section>
 
+            @if (r.starter || r.buildOrder.length || r.situationalPool.length) {
+            <section class="panel wide">
             @if (r.starter || r.buildOrder.length) {
-              <section class="panel wide">
+              <div class="part">
                 <header>
                   <h4>Items</h4>
                   @if (rift.config()?.useRecommendedBuilds && r.buildOrder.length) { <span class="hint">The overlay will remind you of this build in game</span> }
@@ -243,9 +299,11 @@ interface ChoiceRow {
                     }
                   </div>
                 }
-              </section>
+              </div>
             }
-            <rl-situational class="wide" [pool]="r.situationalPool" [core]="coreIds(r)" [state]="situational()" [championId]="s.championId" />
+            <rl-situational class="bare" [pool]="r.situationalPool" [core]="coreIds(r)" [state]="situational()" [championId]="s.championId" />
+            </section>
+            }
           </div>
           @if (pickBusy()) {
             <p class="muted small">Applying your pick…</p>
@@ -253,34 +311,6 @@ interface ChoiceRow {
             <p class="small" [class.loss]="m.bad" [class.picked]="!m.bad">{{ m.text }}</p>
           }
 
-          @if (showWhy() && why(); as w) {
-            <div class="why">
-              <div class="why-intro muted small">{{ intro() }}</div>
-              <div class="why-grid">
-                <div class="why-col">
-                  <div class="label">Runes</div>
-                  @for (x of w.runes; track x.id) {
-                    <ng-container *ngTemplateOutlet="whyRow; context: { $implicit: x, rune: true }" />
-                  }
-                  @for (n of w.runeNotes; track $index) { <p class="faint small note">{{ n }}</p> }
-
-                  @if (w.spells.length || w.skills.length) {
-                    <div class="label">Spells &amp; skills</div>
-                    @for (x of w.spells; track x.id) {
-                      <ng-container *ngTemplateOutlet="whyRow; context: { $implicit: x }" />
-                    }
-                    @for (n of w.skills; track $index) { <p class="muted small note">{{ n }}</p> }
-                  }
-                </div>
-                <div class="why-col">
-                  <div class="label">Items</div>
-                  @for (x of w.items; track $index) {
-                    <ng-container *ngTemplateOutlet="whyRow; context: { $implicit: x }" />
-                  }
-                </div>
-              </div>
-            </div>
-          }
         }
       </section>
     }
@@ -297,8 +327,8 @@ interface ChoiceRow {
       <div class="choices" role="radiogroup" [attr.aria-label]="head">
         <div class="choices-head" aria-hidden="true"><span>{{ head }}</span><span>Win</span><span>Played</span></div>
         @for (p of rows; track $index) {
-          <button class="choice" role="radio" [attr.aria-checked]="sel === $index" [class.on]="sel === $index"
-            [disabled]="pickBusy()" [attr.title]="p.items ? null : p.tip" (click)="pick(kind, $index)">
+          <button class="choice" role="radio" [attr.aria-checked]="sel === (p.i ?? $index)" [class.on]="sel === (p.i ?? $index)"
+            [disabled]="pickBusy()" [attr.title]="p.items ? null : p.tip" (click)="pick(kind, p.i ?? $index)">
             <span class="choice-what">
               @for (u of p.icons; track $index) { <img [class.round]="p.round" [src]="u" alt="" [rlItemTip]="p.items?.[$index] ?? 0" (error)="rift.hideImg($event)" /> }
               <span class="choice-name" [attr.title]="p.items ? p.tip : null">{{ p.label }}</span>
@@ -358,6 +388,16 @@ interface ChoiceRow {
     .hint { font-size: 12px; color: var(--text-faint); }
     .sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
     @container (max-width: 720px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+    /* Inside a combined panel: runes | spells + skills side by side, a line between each part. */
+    .part { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+    .cols { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+    .cols > .stack { gap: 0; border-left: 1px solid var(--line); padding-left: 24px; }
+    .stack > .part + .part { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 16px; }
+    .part + rl-situational:not(:empty) { display: block; border-top: 1px solid var(--line); padding-top: 16px; margin-top: 2px; }
+    @container (max-width: 720px) {
+      .cols { grid-template-columns: minmax(0, 1fr); }
+      .cols > .stack { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 16px; }
+    }
 
     /* Which games the build comes from (all games / vs your lane opponent). */
     .source { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -382,6 +422,20 @@ interface ChoiceRow {
     .rune span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .shards { display: flex; gap: 6px; }
     .shards img { width: 20px; height: 20px; opacity: 0.9; }
+
+    /* Keystone picker at the top of the runes panel: icon, name, win rate and games. */
+    .keystones { display: flex; flex-wrap: wrap; gap: 8px; }
+    .ks {
+      display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 10px;
+      border: 1px solid var(--line-strong); background: var(--bg-hover); color: var(--text-dim); text-align: left; cursor: pointer;
+    }
+    .ks:hover:not(:disabled) { color: var(--text); border-color: var(--accent-soft); }
+    .ks.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); cursor: default; }
+    .ks:disabled:not(.on) { cursor: progress; }
+    .ks img { width: 30px; height: 30px; flex: none; }
+    .ks-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .ks-name { font-size: 13px; font-weight: 600; white-space: nowrap; }
+    .ks-stats { display: flex; gap: 6px; font-size: 11.5px; white-space: nowrap; }
 
     /* Options from OP.GG (rune page, spells, core items, boots): one row each, the picked one outlined. */
     .choices { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -430,7 +484,7 @@ interface ChoiceRow {
     @container (max-width: 720px) { .item-choices { grid-template-columns: minmax(0, 1fr); } }
     .why-toggle { margin-left: 4px; font-size: 12.5px; color: var(--accent); }
     .why-toggle.on { border-color: var(--line-strong); }
-    .why { border-top: 1px solid var(--line); padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+    .why { border-bottom: 1px solid var(--line); padding-bottom: 14px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 10px; }
     .why-intro { line-height: 1.5; }
     .why-grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: 22px; }
     .why-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
@@ -476,6 +530,11 @@ export class RecCard {
   protected readonly minGames = MIN_GAMES;
   protected readonly champIcon = championIcon;
   protected readonly showWhy = signal(false);
+
+  protected toggleWhy(): void {
+    this.showWhy.set(!this.showWhy());
+  }
+
   /** Skill-order placeholder: one box per level. */
   protected readonly levels = Array.from({ length: 18 });
   /** Rune-name placeholders, roughly as wide as real names ("Taste of Blood", "Grisly Mementos"…). */
@@ -561,35 +620,55 @@ export class RecCard {
     }
   }
 
+  /** The rune page picked now (the top one until the player picks another). */
+  private readonly pickedPage = computed(() => {
+    const opts = this.state()?.rec?.runeOptions ?? [];
+    return opts[this.state()?.choice.runes ?? 0] ?? opts[0];
+  });
+
   /**
-   * OP.GG's rune pages, each named by what sets it apart from the most played one
-   * (they often share the keystone and trees, so "Inspiration" three times says nothing).
+   * OP.GG's most played keystones, each with the numbers of all its pages offered below
+   * (like Blitz's keystone tiles). Picking one takes its most played page.
+   */
+  protected readonly keystones = computed(() => {
+    const opts = this.state()?.rec?.runeOptions ?? [];
+    const picked = this.pickedPage()?.perkIds[0];
+    const out: { id: number; label: string; icon: string; games: number; winRate: number; i: number; on: boolean }[] = [];
+    opts.forEach((o, i) => {
+      const id = o.perkIds[0];
+      let k = out.find((x) => x.id === id);
+      if (!k) {
+        k = { id, label: this.perkLabel(id, o.keystoneName), icon: this.perkIcon(id), games: 0, winRate: 0, i, on: id === picked };
+        out.push(k);
+      }
+      k.winRate = (k.winRate * k.games + o.winRate * o.games) / Math.max(1, k.games + o.games);
+      k.games += o.games;
+    });
+    return out.length > 1 ? out : null;
+  });
+
+  /**
+   * The picked keystone's pages: one per secondary tree ("Resolve", "Sorcery"), with
+   * that tree's numbers. When a champion has just one popular keystone its other pages
+   * are offered instead, named by the runes they swap in.
    */
   protected readonly runePages = computed(() => {
     const opts = this.state()?.rec?.runeOptions ?? [];
-    if (opts.length < 2) return null;
-    const base = opts[0];
-    return opts.map((o, i) => {
-      let id = o.perkIds[0];
-      let label = 'Most played';
-      if (i > 0) {
+    const keystone = this.pickedPage()?.perkIds[0];
+    const rows = opts.flatMap((o, i) => {
+      if (o.perkIds[0] !== keystone) return [];
+      const twin = opts.slice(0, i).find((p) => p.perkIds[0] === o.perkIds[0] && p.subStyleId === o.subStyleId);
+      let label = this.styleName(o.subStyleId, o.secondaryName);
+      let icons = [assetUrl(this.rift.styleById().get(o.subStyleId)?.iconPath)];
+      if (twin) {
         const minor = (r: RuneRec) => r.perkIds.slice(1, 6);
-        const swapped = minor(o).filter((p) => !minor(base).includes(p));
-        if (o.perkIds[0] !== base.perkIds[0]) {
-          label = this.perkLabel(id, o.keystoneName);
-        } else if (o.subStyleId !== base.subStyleId) {
-          label = `${this.styleName(o.subStyleId, o.secondaryName)} secondary`;
-          id = o.subStyleId;
-        } else if (swapped.length) {
-          label = swapped.map((p) => this.perkLabel(p, o.perkNames[o.perkIds.indexOf(p)] ?? '')).filter(Boolean).join(' + ') || 'Other runes';
-          id = swapped[0];
-        } else {
-          label = 'Other shards';
-        }
+        const swapped = minor(o).filter((p) => !minor(twin).includes(p));
+        label = swapped.map((p) => this.perkLabel(p, o.perkNames[o.perkIds.indexOf(p)] ?? '')).filter(Boolean).join(' + ') || 'Other runes';
+        icons = [this.perkIcon(swapped[0] ?? o.perkIds[0])];
       }
-      const icon = id === o.subStyleId ? assetUrl(this.rift.styleById().get(id)?.iconPath) : this.perkIcon(id);
-      return { o, label, icons: icon ? [icon] : [], round: true, tip: this.optTip(o, this.runeOptionNames(o)) } satisfies ChoiceRow;
+      return [{ o, label, icons: icons.filter(Boolean), round: true, i, tip: this.optTip(o, this.runeOptionNames(o)) } satisfies ChoiceRow];
     });
+    return rows.length > 1 ? rows : null;
   });
 
   protected readonly spellRows = computed(() => {
@@ -650,7 +729,7 @@ export class RecCard {
     return this.rift.perkById().get(id)?.name ?? fallback;
   }
   styleName(id: number, fallback: string): string {
-    return this.rift.styleById().get(id)?.name ?? fallback;
+    return this.rift.styleById().get(id)?.name ?? (fallback || TREES[id]) ?? '';
   }
   spellIcon(id: number): string {
     return assetUrl(this.rift.spellById().get(id)?.iconPath);

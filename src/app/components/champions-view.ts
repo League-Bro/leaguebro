@@ -71,6 +71,9 @@ const ROLES = [
           @if (rift.config()?.recSource !== 'opgg') {
             <p class="faint small note">OP.GG recommendations are off (Settings → Recommendations).</p>
           }
+          @if (lobbySlot(); as slot) {
+            <p class="faint small note">{{ slotNote() || 'In your Swiftplay lobby: picks here go straight into its ' + rift.champName(slot.championId) + ' slot.' }}</p>
+          }
           <rl-rec-card [lookup]="recState()" (choiceChange)="pickOption($event)" />
         }
       </div>
@@ -107,14 +110,36 @@ export class ChampionsView {
   protected readonly roles_ = ROLES;
   protected readonly recState = signal<RecState | null>(null);
 
-  /** Shows another rune page, spells or build (nothing is imported from here). */
+  /**
+   * Shows another rune page, spells or build. When the champion and role are in
+   * your Swiftplay lobby it's imported into that slot too; otherwise nothing is.
+   */
   async pickOption(choice: RecChoice): Promise<void> {
     const s = this.recState();
     if (!s?.rec) return;
     const rec = await this.rift.recWithChoice(s.rec, choice);
     // Ignore it if the champion or role changed meanwhile.
     if (this.recState() === s) this.recState.set({ ...s, rec, choice });
+    if (!this.lobbySlot()) return;
+    this.slotNote.set('Setting your pick…');
+    try {
+      const events = await this.rift.chooseSwiftplayOption(s.championId, s.position, choice);
+      const bad = events.find((e) => !e.ok);
+      this.slotNote.set(bad ? bad.message : 'Set in your Swiftplay lobby.');
+    } catch (e) {
+      this.slotNote.set(String(e));
+    }
+    clearTimeout(this.noteTimer);
+    this.noteTimer = setTimeout(() => this.slotNote.set(null), 8000);
   }
+  /** The Swiftplay lobby slot with the champion and role shown here, if any. */
+  protected readonly lobbySlot = computed(() => {
+    const p = this.pick();
+    if (!p || p.mode !== 'ranked') return null;
+    return this.rift.swiftplay().find((s) => s.championId === p.championId && s.position === p.position) ?? null;
+  });
+  protected readonly slotNote = signal<string | null>(null);
+  private noteTimer?: ReturnType<typeof setTimeout>;
   protected readonly pick = this.rift.championsPick;
   private lookupSeq = 0;
 
@@ -150,8 +175,11 @@ export class ChampionsView {
     const base: RecState = { championId, position, loading: true, rec: null, error: null, choice: { runes: 0, spells: 0, core: 0, boots: 0 } };
     this.recState.set(base);
     try {
-      const rec = await this.rift.lookupRec(championId, position, mode);
-      if (seq === this.lookupSeq) this.recState.set({ ...base, loading: false, rec });
+      let rec = await this.rift.lookupRec(championId, position, mode);
+      // Start on the picks already made for this champion's Swiftplay slot.
+      const choice = untracked(() => this.lobbySlot())?.choice;
+      if (choice && (choice.runes || choice.spells || choice.core || choice.boots)) rec = await this.rift.recWithChoice(rec, choice);
+      if (seq === this.lookupSeq) this.recState.set({ ...base, loading: false, rec, choice: choice ?? base.choice });
     } catch (e) {
       if (seq === this.lookupSeq) this.recState.set({ ...base, loading: false, error: String(e) });
     }

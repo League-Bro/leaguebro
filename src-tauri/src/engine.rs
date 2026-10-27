@@ -186,6 +186,8 @@ pub struct SwiftplaySlot {
     pub champion_id: i64,
     /// Lowercase client position, e.g. "utility".
     pub position: String,
+    /// The rune page, spells and build picked for this champion and position.
+    pub choice: RecChoice,
 }
 
 /// The current champion's recommendation, as shown in the UI.
@@ -243,6 +245,9 @@ pub struct Shared {
     pub post_game: Option<PostGame>,
     /// Slots of the Swiftplay lobby you're in (empty otherwise).
     pub swiftplay: Vec<SwiftplaySlot>,
+    /// OP.GG options picked per Swiftplay champion and position (kept until
+    /// League Bro closes, so the next Swiftplay game uses them too).
+    pub swift_choices: HashMap<(i64, String), RecChoice>,
     /// The lane opponent the player chose in champ select (0 = none); None = guess.
     pub opponent_pick: Option<i64>,
     /// Situational items for this game (champ select picks, then the live scoreboard).
@@ -855,7 +860,7 @@ impl Engine {
             sh.lcu = None;
             sh.champ_select = None;
         }
-        self.set_swiftplay(Vec::new()).await;
+        self.set_swiftplay(&[]).await;
         self.hide_overlay().await;
         self.set_status(false, "", None, "Waiting for the League client").await;
     }
@@ -1027,7 +1032,7 @@ impl Engine {
             tauri::async_runtime::spawn(async move { matchup::prefetch(&app).await });
         }
         if prev == "Lobby" && phase != "Lobby" {
-            self.set_swiftplay(Vec::new()).await;
+            self.set_swiftplay(&[]).await;
         }
         if prev == "ChampSelect" && phase != "ChampSelect" {
             self.state().shared.lock().await.champ_select = None;
@@ -1150,8 +1155,7 @@ impl Engine {
     async fn lobby(&mut self, lcu: &Lcu) {
         let Ok(Some(slots)) = lcu.get(PLAYER_SLOTS).await else { return };
         let keys = slot_keys(&slots);
-        self.set_swiftplay(keys.iter().map(|(c, p)| SwiftplaySlot { champion_id: *c, position: p.clone() }).collect())
-            .await;
+        self.set_swiftplay(&keys).await;
         if keys == self.last_slot_keys || !self.state().config().auto_import_runes {
             return;
         }
@@ -1173,9 +1177,17 @@ impl Engine {
         });
     }
 
-    async fn set_swiftplay(&self, slots: Vec<SwiftplaySlot>) {
+    async fn set_swiftplay(&self, keys: &[(i64, String)]) {
         let state = self.state();
         let mut sh = state.shared.lock().await;
+        let slots: Vec<SwiftplaySlot> = keys
+            .iter()
+            .map(|k| SwiftplaySlot {
+                champion_id: k.0,
+                position: k.1.clone(),
+                choice: sh.swift_choices.get(k).copied().unwrap_or_default(),
+            })
+            .collect();
         if sh.swiftplay != slots {
             sh.swiftplay = slots.clone();
             drop(sh);
@@ -1568,6 +1580,15 @@ pub async fn import_slots(app: &AppHandle, lcu: &Lcu, wanted: Vec<(usize, i64, S
             recs[n] = rec;
         }
     }
+    // The rune page, spells and build picked on the Live tab, if any.
+    {
+        let sh = state.shared.lock().await;
+        for ((_, champ, pos), rec) in wanted.iter().zip(recs.iter_mut()) {
+            if let (Some(r), Some(c)) = (rec.as_ref(), sh.swift_choices.get(&(*champ, pos.clone()))) {
+                *rec = Some(opgg::with_choice(r, c));
+            }
+        }
+    }
     for ((slot, champ, pos), rec) in wanted.into_iter().zip(recs) {
         match runes::choose_page(lcu, champ, &pos, 11, rec.as_ref().and_then(|r| r.runes.as_ref())).await {
             Ok((mut page, source)) => {
@@ -1608,64 +1629,78 @@ pub async fn import_slots(app: &AppHandle, lcu: &Lcu, wanted: Vec<(usize, i64, S
     if done.is_empty() {
         return events;
     }
-    // The PUT sets the spells (and the slot's copy of the runes). The client
-    // refuses a PUT that changes nothing ("Put slots request matches current
-    // slots"), e.g. on a second "Import runes" click, so skip it then.
+    // The PUT sets the spells and the runes. The client refuses a PUT that
+    // changes nothing ("Put slots request matches current slots"), e.g. on a
+    // second "Import runes" click, so skip it then.
     if slots != before {
-        if let Err(e) = lcu.put(PLAYER_SLOTS, &slots).await.map_err(|e| format!("{e:#}")) {
-            if !e.contains("matches current slots") {
-                for (_, champ, ..) in done {
-                    let err = format!("couldn't update the Swiftplay slots: {e}");
-                    events.push(publish_import(app, champ, Err(err)).await);
-                }
-                return events;
+        if let Err(e) = put_slots(lcu, &slots).await {
+            for (_, champ, ..) in done {
+                let err = format!("couldn't update the Swiftplay slots: {e}");
+                events.push(publish_import(app, champ, Err(err)).await);
             }
+            return events;
         }
     }
-    // The runes themselves live on the slot's temporary rune page, which the
-    // perks plugin puts back over the slot's `perks`; so replace that page.
-    let mut failed: HashMap<usize, String> = HashMap::new();
-    let mut first_page = None;
+    // The lobby's rune menu shows, per slot, the page linked to its champion
+    // (`quickPlayChampionIds`, the slot's temporary page or the page picked
+    // for it); give that page the same runes so the menu and the slot agree.
+    // Never `PUT currentpage`: the lobby links the current page to whichever
+    // slot is open in its champion picker, which once put Yasuo's page on the
+    // Master Yi slot (October 2026).
     for (slot, champ, ..) in &done {
-        match runes::set_quick_play_page(lcu, *champ, &pages[slot]).await {
-            Ok(id) => first_page = first_page.or(Some(id)),
-            Err(e) => {
-                failed.insert(*slot, format!("{e:#}"));
-            }
+        if let Err(e) = runes::set_linked_page(lcu, *champ, &pages[slot]).await {
+            eprintln!("couldn't update the Swiftplay rune page for champion {champ}: {e:#}");
         }
     }
-    // Switch to the imported page, so the rune menu opens on it. Only one page
-    // can be current, so the first slot's (your primary position) wins.
-    if let Some(id) = first_page {
-        let _ = lcu.put("/lol-perks/v1/currentpage", &Value::from(id)).await;
-    }
+    runes::drop_stale_temporary(lcu).await;
     let items = if cfg.set_item_sets { slot_item_sets(app, lcu, &done).await } else { String::new() };
-    // Check that the client kept them.
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    let mut wrote_page = false;
-    for (slot, champ, pos, perks, msg, _) in done {
-        let path = format!("/lol-perks/v1/quick-play-selections/champion/{champ}/position/{pos}");
-        let kept = lcu.get(&path).await.ok().flatten().is_some_and(|v| same_perks(v.as_str().unwrap_or(""), &perks));
-        let r = if kept {
-            Ok(format!("{msg}{items}"))
-        } else if !wrote_page {
-            // Fall back to the League Bro page, which the lobby's rune menu lists.
-            wrote_page = true;
-            let page = &pages[&slot];
-            match runes::write_page(lcu, &cfg, page).await {
-                Ok(replaced) => {
-                    let replaced = replaced.map(|old| format!(" (replaced \"{old}\", slots were full)")).unwrap_or_default();
-                    Ok(format!("{msg} · saved as \"{}\"{replaced}, pick it in the slot's rune menu{items}", page.name))
+    let mut lost = slots_without_runes(lcu, &done).await;
+    if !lost.is_empty() {
+        // Put back from the linked page meanwhile: write those slots once more.
+        if let Ok(Some(mut again)) = lcu.get(PLAYER_SLOTS).await {
+            let before = again.clone();
+            for (slot, champ, pos, perks, ..) in done.iter().filter(|d| lost.contains(&d.0)) {
+                if let Some(s) = again.get_mut(*slot) {
+                    if (int(s, "championId"), text(s, "positionPreference").to_ascii_lowercase()) == (*champ, pos.clone()) {
+                        s["perks"] = Value::String(perks.clone());
+                    }
                 }
-                Err(e) => Err(format!("couldn't set Swiftplay runes: {e:#}")),
             }
+            if again != before {
+                let _ = put_slots(lcu, &again).await;
+            }
+        }
+        lost = slots_without_runes(lcu, &done).await;
+    }
+    for (slot, champ, _, _, msg, _) in done {
+        let r = if !lost.contains(&slot) {
+            Ok(format!("{msg}{items}"))
         } else {
-            let e = failed.remove(&slot).unwrap_or_else(|| "the League client kept its own runes".to_string());
-            Err(format!("couldn't set Swiftplay runes: {e}"))
+            Err("couldn't set Swiftplay runes: the League client kept its own; set them in the slot's rune menu".to_string())
         };
         events.push(publish_import(app, champ, r).await);
     }
     events
+}
+
+/// PUTs the whole Swiftplay slot list. A PUT that changes nothing counts as done.
+async fn put_slots(lcu: &Lcu, slots: &Value) -> Result<(), String> {
+    match lcu.put(PLAYER_SLOTS, slots).await.map_err(|e| format!("{e:#}")) {
+        Err(e) if !e.contains("matches current slots") => Err(e),
+        _ => Ok(()),
+    }
+}
+
+/// The slots (of `done`) whose runes the client didn't keep, read back from
+/// the lobby after a moment. (`quick-play-selections` can't tell: it answers
+/// with the current page for every slot, checked October 2026.)
+async fn slots_without_runes(lcu: &Lcu, done: &[(usize, i64, String, String, String, Option<Recommendation>)]) -> Vec<usize> {
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let slots = lcu.get(PLAYER_SLOTS).await.ok().flatten().unwrap_or(Value::Null);
+    done.iter()
+        .filter(|(slot, _, _, perks, ..)| !slots.get(*slot).is_some_and(|s| same_perks(&text(s, "perks"), perks)))
+        .map(|d| d.0)
+        .collect()
 }
 
 /// Writes the shop builds for the imported Swiftplay slots (one set per
@@ -1719,6 +1754,37 @@ pub async fn import_swiftplay_now(app: &AppHandle) -> Result<Vec<ImportEvent>, S
         return Err("Pick a champion for your Swiftplay positions first".into());
     }
     Ok(import_slots(app, &lcu, wanted).await)
+}
+
+/// Picks a rune page, spells or build for one Swiftplay champion and
+/// position (the Live tab), and imports it into that lobby slot right away.
+pub async fn choose_swiftplay(
+    app: &AppHandle,
+    champion_id: i64,
+    position: String,
+    choice: RecChoice,
+) -> Result<Vec<ImportEvent>, String> {
+    let state = app.state::<AppState>();
+    let choice = RecChoice { matchup: false, ..choice };
+    let lcu = {
+        let mut sh = state.shared.lock().await;
+        sh.swift_choices.insert((champion_id, position.clone()), choice);
+        let mut changed = false;
+        for s in sh.swiftplay.iter_mut().filter(|s| s.champion_id == champion_id && s.position == position) {
+            changed |= s.choice != choice;
+            s.choice = choice;
+        }
+        if changed {
+            let _ = app.emit("swiftplay", sh.swiftplay.clone());
+        }
+        sh.lcu.clone().ok_or("Not connected to the League client")?
+    };
+    let slots = lcu.get(PLAYER_SLOTS).await.map_err(msg)?.unwrap_or(Value::Null);
+    let slot = slot_keys(&slots)
+        .iter()
+        .position(|k| k.0 == champion_id && k.1 == position)
+        .ok_or("That champion isn't in your Swiftplay lobby anymore")?;
+    Ok(import_slots(app, &lcu, vec![(slot, champion_id, position)]).await)
 }
 
 /// Puts each recommended spell where you already have it (so Flash stays on
