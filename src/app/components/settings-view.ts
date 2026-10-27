@@ -34,7 +34,7 @@ type BoolKey =
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.overlayEnabled" (change)="setBool('overlayEnabled', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Show the in-game overlay</b><span>Set League's window mode to Borderless or Windowed. Fullscreen draws over it.</span></span>
+            <span class="label"><b>Show the in-game overlay</b><span>Needs League in Borderless or Windowed mode. Fullscreen draws over it.</span></span>
           </label>
           <rl-fullscreen-hint />
           <div class="field">
@@ -56,11 +56,11 @@ type BoolKey =
             <span class="mono faint">{{ (cfg.overlayScale * 100).toFixed(0) }}%</span>
             <button class="ghost" [disabled]="cfg.overlayWidth === 340 && cfg.overlayScale === 1" (click)="resetSize()">Reset</button>
           </div>
-          <p class="faint small">The height follows what's on the overlay. Size makes text and icons bigger, so it gets taller.</p>
+          <p class="faint small">The height follows what's on the overlay. Size scales text and icons.</p>
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.overlayGrowUp ?? false" (change)="setBool('overlayGrowUp', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Grow upward</b><span>For an overlay at the bottom of your screen: its bottom edge stays put and new rows push the top up. Off, the top stays put and it grows down.</span></span>
+            <span class="label"><b>Grow upward</b><span>For an overlay at the bottom of your screen: the bottom edge stays put and new rows push the top up.</span></span>
           </label>
           <div class="field">
             <span>Position</span>
@@ -83,8 +83,10 @@ type BoolKey =
               {{ rift.overlayLocked() ? 'Unlock to move' : 'Lock in place' }}
             </button>
           </div>
+        </section>
 
-          <h3 class="sub">Overlay top bar</h3>
+        <section class="card stack">
+          <h2>Overlay top bar</h2>
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.showLaneDiff" (change)="setBool('showLaneDiff', $any($event.target).checked)" />
             <span class="track"></span>
@@ -98,14 +100,17 @@ type BoolKey =
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.showCs ?? true" (change)="setBool('showCs', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>CS per minute</b><span>Next to the item gold, from the first minute on. The game only updates your CS every 10 minions, so it moves in small steps.</span></span>
+            <span class="label"><b>CS per minute</b><span>From the first minute on. The game only updates CS every 10 minions, so it moves in steps.</span></span>
           </label>
           <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
             <input type="checkbox" [checked]="cfg.showSkillHint" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('showSkillHint', $any($event.target).checked)" />
             <span class="track"></span>
             <span class="label"><b>Skill order</b><span>Which ability to max, and what to level when you have a point.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
           </label>
-          <h3 class="sub">Overlay sections</h3>
+        </section>
+
+        <section class="card stack">
+          <h2>Overlay sections</h2>
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.showTimers" (change)="setBool('showTimers', $any($event.target).checked)" />
             <span class="track"></span>
@@ -114,17 +119,17 @@ type BoolKey =
           <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
             <input type="checkbox" [checked]="cfg.useRecommendedBuilds" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('useRecommendedBuilds', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Next items to buy</b><span>Your starting items, then the next item from OP.GG's build and its parts left to buy, priced after what you own and green when you can afford them.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
+            <span class="label"><b>Next items to buy</b><span>Starting items, then OP.GG's next item and the parts left to buy, green when you can afford them.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
           </label>
           <label class="toggle" [class.off]="cfg.recSource !== 'opgg' || !cfg.useRecommendedBuilds">
             <input type="checkbox" [checked]="cfg.showBuyNow ?? true" [disabled]="cfg.recSource !== 'opgg' || !cfg.useRecommendedBuilds" (change)="setBool('showBuyNow', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Buy now</b><span>What your gold buys right now toward the next item, like a Long Sword when you can't afford the Noonquiver yet.@if (cfg.recSource !== 'opgg' || !cfg.useRecommendedBuilds) { Needs Next items to buy. }</span></span>
+            <span class="label"><b>Buy now</b><span>What your gold buys now toward the next item, like a Long Sword before the Noonquiver.@if (cfg.recSource !== 'opgg' || !cfg.useRecommendedBuilds) { Needs Next items to buy. }</span></span>
           </label>
           <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
             <input type="checkbox" [checked]="cfg.showSituational" [disabled]="cfg.recSource !== 'opgg'" (change)="setBool('showSituational', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Situational items</b><span>The best counter item for this game from OP.GG's 4th–6th item options, updated as enemies buy items, with a button for the rest. The Live tab shows them either way.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
+            <span class="label"><b>Situational items</b><span>The best counter item from OP.GG's 4th–6th item options, updated as enemies buy items. The Live tab shows them either way.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
           </label>
         </section>
 
@@ -180,7 +185,7 @@ type BoolKey =
 
         <section class="card stack">
           <h2>Ability keys</h2>
-          <p class="faint small">If you've rebound your abilities in League, enter your keys. Skill orders everywhere in League Bro (champ select, the Champions tab, the overlay, patch notes) then show your keys instead of Q W E R.</p>
+          <p class="faint small">Rebound your abilities in League? Enter your keys and every skill order in League Bro shows them instead of Q W E R.</p>
           <div class="field">
             @for (k of abilitySlots; track k) {
               <label class="keybind">
@@ -245,16 +250,15 @@ type BoolKey =
         </section>
 
         <section class="card stack">
-          <h2>League install folder</h2>
+          <h2>Troubleshooting</h2>
+          <h3 class="sub first">League install folder</h3>
           <p class="faint small">Only needed if League Bro never connects. It normally finds the client on its own.</p>
           <div class="field">
             <input type="text" class="wide" [placeholder]="installHint" [value]="cfg.installDir ?? ''"
               (change)="setInstall($any($event.target).value)" />
           </div>
-        </section>
-        <section class="card stack">
-          <h2>Clear cache</h2>
-          <p class="faint small">League Bro saves downloads so it doesn't fetch them every time. Clearing one makes it download fresh copies the next time they're needed.</p>
+          <h3 class="sub">Clear cache</h3>
+          <p class="faint small">Saved downloads. Clearing one fetches a fresh copy the next time it's needed.</p>
           @for (c of cacheRows; track c.key) {
             <div class="cache-row">
               <span class="label"><b>{{ c.label }}</b><span>{{ c.hint }}</span></span>
@@ -284,19 +288,22 @@ type BoolKey =
     }
   `,
   styles: `
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; }
-    .card { gap: 8px; }
+    /* Columns, not a grid row per pair of cards: a tall card (Overlay) no longer
+       leaves a gap next to a short one, and cards fill each column in order. */
+    .grid { columns: 360px 3; column-gap: 16px; }
+    .grid > .card { break-inside: avoid; margin-bottom: 16px; gap: 6px; }
     .field { display: flex; align-items: center; gap: 10px; }
-    .field > span:first-child { width: 150px; color: var(--text-dim); }
+    .field > span:first-child { width: 72px; flex: none; color: var(--text-dim); }
     .field input[type='range'] { flex: 1; accent-color: var(--accent); }
     .wide { flex: 1; }
     .keybind { display: flex; flex-direction: column; align-items: center; gap: 2px; }
     .key { width: 52px; text-align: center; text-transform: uppercase; }
     .small { font-size: 12.5px; margin: 0; }
     .sub {
-      margin: 10px 0 0; padding-top: 12px; border-top: 1px solid var(--line);
+      margin: 8px 0 0; padding-top: 10px; border-top: 1px solid var(--line);
       font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
     }
+    .sub.first { margin-top: 0; padding-top: 0; border-top: none; }
     .toggle.off { opacity: 0.55; }
     .global-sets {
       display: flex; flex-direction: column; gap: 6px; margin-top: 4px; padding: 10px 12px;
