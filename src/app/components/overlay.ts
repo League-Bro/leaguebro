@@ -70,7 +70,8 @@ const PREVIEW: OverlayState = {
       <div class="panel" [style.opacity]="opacity()">
         @if (!locked()) {
           <!-- Invisible: unlocked looks the same as locked, it just takes the drag. -->
-          <div class="drag-layer" data-tauri-drag-region></div>
+          <!-- Our own drag, not data-tauri-drag-region: Windows' drag frees the cursor from League's window. -->
+          <div class="drag-layer" (pointerdown)="dragStart($event)" (pointermove)="dragMove($event)"></div>
         }
         <!-- One line, spread across the width: skill order, item gold diffs, CS/min (each can be off). -->
         @if (o.skillMax.length || (showLane() && o.lane) || (showTeam() && o.team) || (showCs() && csPerMin(o))) {
@@ -388,6 +389,24 @@ export class Overlay {
       // The window follows the panel's size (wrapped reasons, the expanded list, Settings).
       const r = this.host.nativeElement.getBoundingClientRect();
       if (this.state()) this.rift.fitOverlay(r.width, r.height);
+    });
+  }
+
+  private dragFrame = 0;
+
+  protected dragStart(e: PointerEvent): void {
+    if (e.button !== 0) return;
+    // Captured, so moves keep coming when a fast drag gets ahead of the window.
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    this.rift.dragOverlay(true);
+  }
+
+  protected dragMove(e: PointerEvent): void {
+    if (!(e.target as HTMLElement).hasPointerCapture(e.pointerId) || this.dragFrame) return;
+    // Once per frame; the backend reads the cursor itself, so skipped moves lose nothing.
+    this.dragFrame = requestAnimationFrame(() => {
+      this.dragFrame = 0;
+      this.rift.dragOverlay(false);
     });
   }
 

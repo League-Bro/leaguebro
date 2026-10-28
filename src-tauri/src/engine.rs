@@ -330,6 +330,8 @@ pub struct OverlayInput {
     pub buttons: Vec<[f64; 4]>,
     /// What `set_ignore_cursor_events` was last set to.
     pub passthrough: bool,
+    /// Where the cursor and the window were (physical px) when the current drag started.
+    pub drag: Option<([f64; 2], [i32; 2])>,
 }
 
 impl AppState {

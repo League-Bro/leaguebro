@@ -359,6 +359,27 @@ fn set_overlay_buttons(state: State<'_, AppState>, rects: Vec<[f64; 4]>) {
     state.overlay_input.lock().unwrap().buttons = rects;
 }
 
+/// Moves the unlocked overlay with the mouse: `start` at the press, then once
+/// per mouse move. Not Windows' own window dragging (`data-tauri-drag-region`):
+/// that move loop calls `ClipCursor(NULL)` when it ends, which frees the cursor
+/// from League's window, so with two monitors it could slide onto the other one
+/// until you alt-tabbed and League clipped it again.
+#[tauri::command]
+fn drag_overlay(app: AppHandle, state: State<'_, AppState>, start: bool) {
+    let Some(w) = app.get_webview_window("overlay") else { return };
+    let (Ok(cursor), Ok(pos)) = (app.cursor_position(), w.outer_position()) else { return };
+    let mut input = state.overlay_input.lock().unwrap();
+    if start {
+        input.drag = Some(([cursor.x, cursor.y], [pos.x, pos.y]));
+        return;
+    }
+    let Some(([cx, cy], [x, y])) = input.drag else { return };
+    let to = tauri::PhysicalPosition::new(x + (cursor.x - cx).round() as i32, y + (cursor.y - cy).round() as i32);
+    if to != pos {
+        let _ = w.set_position(to);
+    }
+}
+
 /// Shows the overlay outside a game so you can check its position.
 #[tauri::command]
 async fn preview_overlay(app: AppHandle, show: bool) -> Result<(), String> {
@@ -500,6 +521,7 @@ pub fn run() {
             cache_info,
             clear_cache,
             set_overlay_buttons,
+            drag_overlay,
             send_feedback,
             champion_guide,
             open_guide_videos
