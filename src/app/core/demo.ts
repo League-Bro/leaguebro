@@ -15,6 +15,7 @@ import {
   ItemInfo,
   MatchLine,
   MatchupState,
+  LpChange,
   LpPoint,
   MyProfile,
   QueueStat,
@@ -278,7 +279,7 @@ export function demoProfile(): MyProfile {
     created: Date.now() - (i * 5 + 1) * 3_600_000, duration: min * 60, result, championId, kills, deaths, assists, cs,
     gold: min * 420, damage: min * 850 + kills * 600, vision: Math.round(min * 0.8), level: Math.min(18, 6 + Math.round(min / 3)),
     items: [...(builds[championId] ?? []), 0, 0, 0, 0, 0, 0].slice(0, 6).concat(3340), spells: [4, 14],
-    laneOpponent: lane, enemies: enemies(i, lane),
+    laneOpponent: lane, enemies: enemies(i, lane), lpChange: demoLpChange(i, queueId, result),
   }));
   const queueIds = [...new Set(matches.map((m) => m.queueId))];
   const modes = queueIds
@@ -300,7 +301,17 @@ function demoLpHistory(): LpPoint[] {
     ['GOLD', 'IV', 66], ['GOLD', 'III', 4], ['GOLD', 'III', 27], ['GOLD', 'III', 49], ['GOLD', 'III', 72], ['GOLD', 'II', 12],
     ['GOLD', 'II', 35], ['GOLD', 'II', 58], ['GOLD', 'II', 79], ['GOLD', 'I', 3], ['GOLD', 'II', 84], ['GOLD', 'II', 65], ['GOLD', 'II', 47],
   ];
-  return steps.map(([tier, division, lp], i) => ({ at: Date.now() - (steps.length - i) * 20 * 3_600_000, tier, division, lp, games: 50 + i }));
+  // ?lp=N: only the last N points (0 and 1 show the division meter); past 19, a longer made-up climb before them.
+  const n = Number(new URLSearchParams(location.search).get('lp') ?? steps.length);
+  while (steps.length < n) {
+    const [tier, division, lp] = steps[0];
+    const score = ['IV', 'III', 'II', 'I'].indexOf(division) * 100 + lp - (steps.length % 3 === 0 ? -17 : 21);
+    const t = score < 0 ? 'BRONZE' : tier;
+    const s = (score + 400) % 400;
+    steps.unshift([t, ['IV', 'III', 'II', 'I'][Math.floor(s / 100)], s % 100]);
+  }
+  const shown = steps.slice(steps.length - Math.max(0, n));
+  return shown.map(([tier, division, lp], i) => ({ at: Date.now() - (shown.length - i) * 20 * 3_600_000, tier, division, lp, games: 50 + i }));
 }
 
 /** The profile as OP.GG has it (?profile=opgg): last updated two days ago, no enemy data or vision. */
@@ -397,6 +408,7 @@ export function demoPostGame(bad = false): PostGame {
     duration: 1834,
     result: bad ? 'loss' : 'win',
     goldLead: demoGoldLead(1834, bad ? -8900 : 8900),
+    lpChange: bad ? { delta: -19, tier: 'GOLD', division: 'II', lp: 47, moved: '' } : { delta: 22, tier: 'GOLD', division: 'I', lp: 3, moved: 'up' },
     teams: [
       {
         teamId: 100, win: !bad, isMine: true, kills: mineKills, gold: 61200, dragons: 3, barons: 1, towers: 9,
@@ -894,4 +906,11 @@ export function demoPickSuggestions(): PickSuggestions {
       pick(61, 2010, 0.512, 0.497, '4', 15300, 4),
     ],
   };
+}
+
+/** Ranked Solo/Duo games get an LP change, except the oldest (League Bro wasn't running); one was a promotion. */
+function demoLpChange(i: number, queueId: number, result: MatchLine['result']): LpChange | null {
+  if (queueId !== 420 || result === 'remake' || i > 9) return null;
+  const delta = result === 'win' ? 19 + (i % 4) : -(15 + (i % 5));
+  return { delta, tier: 'GOLD', division: i === 6 ? 'I' : 'II', lp: i === 6 ? 2 : 47, moved: i === 6 ? 'up' : '' };
 }

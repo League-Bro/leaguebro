@@ -780,6 +780,9 @@ struct PendingPostGame {
     queue_name: String,
     since: Instant,
     last_try: Option<Instant>,
+    /// The summary already shown and its game's start (unix ms), while
+    /// waiting for the ranked stats to count a ranked game.
+    shown: Option<(PostGame, i64)>,
 }
 
 /// An enemy for the situational items: their pick, and in game their items and score.
@@ -978,6 +981,7 @@ impl Engine {
             queue_name,
             since: Instant::now(),
             last_try: None,
+            shown: None,
         });
     }
 
@@ -1010,20 +1014,38 @@ impl Engine {
             return;
         }
         p.last_try = Some(Instant::now());
-        let path = format!("/lol-match-history/v1/games/{}", p.game_id);
-        let Ok(Some(game)) = lcu.get(&path).await else { return };
-        let Some(mut summary) = postgame::parse(&game, &self.my_puuid, &p.queue_name) else { return };
-        if let (Ok(Some(t)), Some(mine)) = (lcu.get(&postgame::timeline_path(p.game_id)).await, summary.teams.first().map(|t| t.team_id)) {
-            summary.gold_lead = postgame::gold_lead(&game, &t, mine);
+        let (mut summary, created, shown) = match p.shown.take() {
+            Some((summary, created)) => (summary, created, true),
+            None => {
+                let path = format!("/lol-match-history/v1/games/{}", p.game_id);
+                let Ok(Some(game)) = lcu.get(&path).await else { return };
+                let Some(mut summary) = postgame::parse(&game, &self.my_puuid, &p.queue_name) else { return };
+                if let (Ok(Some(t)), Some(mine)) = (lcu.get(&postgame::timeline_path(p.game_id)).await, summary.teams.first().map(|t| t.team_id)) {
+                    summary.gold_lead = postgame::gold_lead(&game, &t, mine);
+                }
+                (summary, int(&game, "gameCreation"), false)
+            }
+        };
+        // The client usually has the new LP by the time the game is in match history.
+        summary.lp_change = self.record_ranks(lcu).await.and_then(|h| h.change(summary.queue_id, created));
+        if !shown || summary.lp_change.is_some() {
+            self.state().shared.lock().await.post_game = Some(summary.clone());
+            let _ = self.app.emit("post-game", Some(summary.clone()));
         }
-        self.pending_post_game = None;
-        self.state().shared.lock().await.post_game = Some(summary.clone());
-        let _ = self.app.emit("post-game", Some(summary));
-        // The client has the new LP by the time the game is in match history.
-        if let Ok(Some(stats)) = lcu.get(&format!("/lol-ranked/v1/ranked-stats/{}", self.my_puuid)).await {
-            let (solo, flex) = (scout::parse_rank(&stats, "RANKED_SOLO_5x5"), scout::parse_rank(&stats, "RANKED_FLEX_SR"));
-            self.state().lp.record_ranks(&self.my_puuid, solo.as_ref(), flex.as_ref());
+        // A ranked game whose LP isn't in the ranked stats yet: show the summary
+        // now and keep reading the ranks until they count the game.
+        let waiting = matches!(summary.queue_id, 420 | 440) && summary.result != "remake" && summary.lp_change.is_none();
+        match self.pending_post_game.as_mut() {
+            Some(p) if waiting => p.shown = Some((summary, created)),
+            _ => self.pending_post_game = None,
         }
+    }
+
+    /// Saves your current ranks to the LP history, which it returns.
+    async fn record_ranks(&self, lcu: &Lcu) -> Option<crate::lp_history::LpHistory> {
+        let stats = lcu.get(&format!("/lol-ranked/v1/ranked-stats/{}", self.my_puuid)).await.ok().flatten()?;
+        let (solo, flex) = (scout::parse_rank(&stats, "RANKED_SOLO_5x5"), scout::parse_rank(&stats, "RANKED_FLEX_SR"));
+        self.state().lp.record_ranks(&self.my_puuid, solo.as_ref(), flex.as_ref())
     }
 
     async fn on_phase_change(&mut self, lcu: &Lcu, phase: &str) {
@@ -1055,6 +1077,8 @@ impl Engine {
             self.loading_game_id = None;
             self.pending_post_game = None;
             self.clear_game().await;
+            // The rank before the game, for its LP change afterwards.
+            self.record_ranks(lcu).await;
             // Map (11 = Summoner's Rift, 12 = ARAM) and queue pick the rune
             // lookup and OP.GG's game mode.
             if let Ok(Some(s)) = lcu.get("/lol-gameflow/v1/session").await {

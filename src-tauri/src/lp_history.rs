@@ -6,9 +6,15 @@
 //! PUUID). OP.GG's profile also has a few Solo/Duo points (`lp_histories`, one
 //! for each day OP.GG updated the player), which are merged in whenever the
 //! profile comes from OP.GG, so the graph doesn't always start empty.
+//!
+//! The same points give each ranked game's LP gain or loss (`LpChange`): two
+//! points in a row whose game counts are one apart bracket exactly one game,
+//! and the ranked game that started between them gets the difference. So a
+//! game only gets one when League Bro saw the rank before and after it (a
+//! point is also saved when champ select starts and right after each game).
 
 use crate::cache::DiskCache;
-use crate::profile::MyProfile;
+use crate::profile::{MatchLine, MyProfile};
 use crate::scout::RankLine;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -44,12 +50,85 @@ impl LpPoint {
     }
 }
 
+const TIERS: [&str; 7] = ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND"];
+const DIVISIONS: [&str; 4] = ["IV", "III", "II", "I"];
+
+/// One number per rank: 100 per division, Master and up stacked on top of
+/// Diamond I (they share one LP count). Same as the UI's LP graph.
+fn score(p: &LpPoint) -> i64 {
+    match TIERS.iter().position(|t| p.tier.eq_ignore_ascii_case(t)) {
+        Some(t) => t as i64 * 400 + DIVISIONS.iter().position(|d| *d == p.division).unwrap_or(0) as i64 * 100 + p.lp,
+        None => TIERS.len() as i64 * 400 + p.lp,
+    }
+}
+
+/// The LP one ranked game gained or lost, and the rank it left you at.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LpChange {
+    /// Across a promotion or demotion each division counts as 100 LP, so this
+    /// is the real gain or loss except where demotion puts you back at 75 LP.
+    pub delta: i64,
+    pub tier: String,
+    pub division: String,
+    pub lp: i64,
+    /// "up" or "down" when the game changed your division or tier, else "".
+    pub moved: &'static str,
+}
+
+/// The game that started at `created` (unix ms) between two points a game
+/// apart, as an `LpChange`.
+fn change_for(points: &[LpPoint], created: i64) -> Option<LpChange> {
+    points.windows(2).find_map(|w| {
+        let (a, b) = (&w[0], &w[1]);
+        let one_game = matches!((a.games, b.games), (Some(x), Some(y)) if y == x + 1);
+        (one_game && a.at < created && created < b.at).then(|| {
+            let same = a.tier.eq_ignore_ascii_case(&b.tier) && a.division == b.division;
+            let delta = score(b) - score(a);
+            let moved = if same { "" } else if delta > 0 { "up" } else { "down" };
+            LpChange { delta, tier: b.tier.clone(), division: b.division.clone(), lp: b.lp, moved }
+        })
+    })
+}
+
 /// Oldest first.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct LpHistory {
     pub solo: Vec<LpPoint>,
     pub flex: Vec<LpPoint>,
+}
+
+impl LpHistory {
+    /// The points for a ranked queue id (420 Solo/Duo, 440 Flex).
+    fn queue(&self, queue_id: i64) -> Option<&[LpPoint]> {
+        match queue_id {
+            420 => Some(&self.solo),
+            440 => Some(&self.flex),
+            _ => None,
+        }
+    }
+
+    /// The LP change of a ranked game that started at `created` (unix ms).
+    pub fn change(&self, queue_id: i64, created: i64) -> Option<LpChange> {
+        change_for(self.queue(queue_id)?, created)
+    }
+
+    /// Puts the LP change on each ranked match. Two games of that queue
+    /// between the same points (a remake, which doesn't count as a game) get
+    /// none, since it isn't clear which one the LP belongs to.
+    pub fn fill(&self, matches: &mut [MatchLine]) {
+        let starts: Vec<(i64, i64)> = matches.iter().map(|m| (m.queue_id, m.created)).collect();
+        for m in matches.iter_mut() {
+            m.lp_change = self.queue(m.queue_id).and_then(|points| {
+                let c = change_for(points, m.created)?;
+                let i = points.iter().rposition(|p| p.at < m.created)?;
+                let (from, to) = (points[i].at, points[i + 1].at);
+                let shared = starts.iter().filter(|(q, t)| *q == m.queue_id && from < *t && *t < to).count();
+                (shared == 1).then_some(c)
+            });
+        }
+    }
 }
 
 /// Adds the current rank to a queue's points unless it's the same as the
@@ -96,14 +175,23 @@ impl LpStore {
         let known = std::mem::take(&mut p.lp_history.solo);
         let at = p.updated_at.unwrap_or_else(now_ms);
         if let Some(h) = self.save(&p.puuid, p.solo.as_ref(), p.flex.as_ref(), &known, at) {
+            h.fill(&mut p.matches);
             p.lp_history = h;
         }
     }
 
+    /// The player's saved history.
+    pub fn history(&self, puuid: &str) -> LpHistory {
+        let _guard = self.lock.lock().unwrap();
+        let mut all: HashMap<String, LpHistory> = self.disk.read(FILE).unwrap_or_default();
+        all.remove(puuid).unwrap_or_default()
+    }
+
     /// Saves the client's ranks right after a game, so the graph gets a point
-    /// per game even when the Profile page isn't opened in between.
-    pub fn record_ranks(&self, puuid: &str, solo: Option<&RankLine>, flex: Option<&RankLine>) {
-        self.save(puuid, solo, flex, &[], now_ms());
+    /// per game even when the Profile page isn't opened in between, and when
+    /// champ select starts, so the next game has a point before it.
+    pub fn record_ranks(&self, puuid: &str, solo: Option<&RankLine>, flex: Option<&RankLine>) -> Option<LpHistory> {
+        self.save(puuid, solo, flex, &[], now_ms())
     }
 
     /// The player's history after adding these ranks.
@@ -164,6 +252,56 @@ mod tests {
         merge(&mut v, Some(pt(1_000, "GOLD", "I", 0, Some(1))), &[]);
         assert_eq!(v.len(), MAX_POINTS);
         assert_eq!((v[0].at, v.last().unwrap().at), (1, 1_000));
+    }
+
+    #[test]
+    fn lp_change_needs_points_one_game_apart_around_the_game() {
+        let h = LpHistory {
+            solo: vec![
+                pt(10, "GOLD", "II", 80, Some(20)),
+                pt(30, "GOLD", "I", 2, Some(21)),
+                pt(50, "GOLD", "I", 2, Some(21)),
+                pt(70, "GOLD", "I", 0, Some(23)),
+                pt(90, "GOLD", "II", 75, Some(24)),
+            ],
+            flex: Vec::new(),
+        };
+        let c = h.change(420, 20).unwrap();
+        assert_eq!((c.delta, c.tier.as_str(), c.division.as_str(), c.lp, c.moved), (22, "GOLD", "I", 2, "up"));
+        // Two games between the points: unknown.
+        assert_eq!(h.change(420, 60), None);
+        let c = h.change(420, 80).unwrap();
+        assert_eq!((c.delta, c.moved), (-25, "down"));
+        assert_eq!(h.change(440, 20), None);
+        assert_eq!(h.change(420, 5), None);
+    }
+
+    #[test]
+    fn master_and_up_share_one_lp_count() {
+        assert_eq!(score(&pt(0, "MASTER", "", 15, None)) - score(&pt(0, "DIAMOND", "I", 90, None)), 25);
+    }
+
+    #[test]
+    fn fill_skips_points_with_two_games_between() {
+        let h = LpHistory { solo: vec![pt(10, "GOLD", "II", 50, Some(5)), pt(40, "GOLD", "II", 70, Some(6))], flex: Vec::new() };
+        let m = |created| MatchLine {
+            game_id: created,
+            queue_id: 420,
+            game_mode: "CLASSIC".into(),
+            created,
+            duration: 1800,
+            result: "win".into(),
+            line: Default::default(),
+            lane_opponent: None,
+            enemies: Vec::new(),
+            lp_change: None,
+        };
+        let mut one = vec![m(20)];
+        h.fill(&mut one);
+        assert_eq!(one[0].lp_change.as_ref().map(|c| c.delta), Some(20));
+        let mut two = vec![m(30), m(20)];
+        h.fill(&mut two);
+        assert!(two.iter().all(|m| m.lp_change.is_none()));
     }
 
     #[test]

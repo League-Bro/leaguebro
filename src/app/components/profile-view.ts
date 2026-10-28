@@ -6,6 +6,7 @@ import { LpPoint, MatchLine, MyProfile, PostGame, RankLine } from '../core/model
 import { PostGameView } from './post-game';
 import { ItemTip } from './item-tip';
 import { LpGraph } from './lp-graph';
+import { LpChangeTag } from './lp-change';
 import { Loader } from './loader';
 
 const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as const;
@@ -21,7 +22,7 @@ const REGIONS = [
 @Component({
   selector: 'rl-profile',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe, NgTemplateOutlet, PostGameView, ItemTip, LpGraph, Loader],
+  imports: [DecimalPipe, NgTemplateOutlet, PostGameView, ItemTip, LpGraph, LpChangeTag, Loader],
   template: `
     @if (setup()) {
       <section class="card empty">
@@ -85,7 +86,7 @@ const REGIONS = [
           @for (r of ranked(p); track r.label) {
             <div class="graph">
               @if (ranked(p).length > 1) { <div class="faint cap">{{ r.label }}</div> }
-              <rl-lp-graph [points]="r.history" />
+              <rl-lp-graph [points]="r.history" [rank]="r.line" />
             </div>
           }
         <div class="actions">
@@ -247,7 +248,12 @@ const REGIONS = [
           <button class="match" [class]="m.result" [class.static]="p.source === 'opgg'" [attr.aria-expanded]="openId() === m.gameId" (click)="toggle(m, $event)">
             <img class="champ-icon" [src]="champIcon(m.championId)" [title]="rift.champName(m.championId)" alt="" />
             <div class="what">
-              <div class="res">{{ resultLabel(m) }}</div>
+              <div class="res">
+                {{ resultLabel(m) }}
+                @if (m.lpChange; as lp) {
+                  <rl-lp-change class="lp" [change]="lp" />
+                }
+              </div>
               <div class="faint small">
                 {{ queue(m.queueId, m.gameMode) }} · {{ ago(m.created) }} · {{ mins(m.duration) }}
                 @if (m.laneOpponent; as opp) {
@@ -393,6 +399,7 @@ const REGIONS = [
     .match.loss .res { color: var(--loss); }
     .match.remake .res { color: var(--text-dim); }
     .res { font-weight: 600; }
+    .res .lp { margin-left: 6px; font-size: 12.5px; }
     .items { display: flex; gap: 3px; }
     .slot { width: 24px; height: 24px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line-strong); background: var(--bg-sunken); flex: none; }
     .slot img { display: block; width: 100%; height: 100%; }
@@ -614,9 +621,9 @@ export class ProfileView {
       { label: 'Flex', line: p.flex, history: p.lpHistory?.flex ?? [] },
     ];
   }
-  /** Ranked queues with at least two saved ranks, which get an LP graph. */
+  /** Ranked queues, which get an LP graph (or, before two saved ranks, a division meter). */
   ranked(p: MyProfile) {
-    return this.ranks(p).filter((r) => r.line && r.history.length > 1);
+    return this.ranks(p).filter((r) => r.line);
   }
   pct = winPct;
   ratio = kdaRatio;

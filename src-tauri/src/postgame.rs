@@ -21,6 +21,8 @@ pub struct PostGame {
     pub teams: Vec<PostTeam>,
     /// Your team's gold lead each minute (see `gold_lead`); empty without a timeline.
     pub gold_lead: Vec<GoldPoint>,
+    /// LP gained or lost, for ranked games League Bro saw your rank around.
+    pub lp_change: Option<crate::lp_history::LpChange>,
 }
 
 /// Your team's gold minus the other team's at a game time.
@@ -172,6 +174,7 @@ pub fn parse(game: &Value, my_puuid: &str, queue_name: &str) -> Option<PostGame>
         result: (if completed { result(me) } else { "remake" }).to_string(),
         teams,
         gold_lead: Vec::new(),
+        lp_change: None,
     })
 }
 

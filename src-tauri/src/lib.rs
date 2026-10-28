@@ -172,6 +172,7 @@ async fn get_match(state: State<'_, AppState>, game_id: i64, queue_name: String)
     if let (Ok(Some(t)), Some(mine)) = (timeline, summary.teams.first().map(|t| t.team_id)) {
         summary.gold_lead = postgame::gold_lead(&game, &t, mine);
     }
+    summary.lp_change = state.lp.history(puuid).change(summary.queue_id, util::int(&game, "gameCreation"));
     Ok(summary)
 }
 
