@@ -11,13 +11,23 @@ type SortKey = 'tier' | 'name' | 'winRate' | 'pickRate' | 'banRate' | 'games';
 const LANES: Lane[] = ['top', 'jungle', 'middle', 'bottom', 'utility'];
 
 /** Lane icons, drawn here so they need no download: the lane's part of the map, bright on a faint map square. */
-const LANE_ICONS: Record<Lane | 'all', string> = {
-  all: 'M5 5h5v5H5zM14 5h5v5h-5zM5 14h5v5H5zM14 14h5v5h-5z',
-  top: 'M5 16V5h11',
-  jungle: 'M8 4c.5 5 2 9 4 16M16 4c-.5 5-2 9-4 16M12 4v9',
-  middle: 'M6 18 18 6',
-  bottom: 'M8 19h11V8',
-  utility: 'M12 4l7 3v4.5c0 4-3 7-7 8.5-4-1.5-7-4.5-7-8.5V7z',
+/**
+ * League's position icons (34×34, like the client's icon-position-*.svg):
+ * `dim` is the faded rest of the map, `main` the lit part.
+ */
+const LANE_ICONS: Record<Lane | 'all', { dim: string; main: string }> = {
+  all: { dim: '', main: 'M5 5h10v10H5zM19 5h10v10H19zM5 19h10v10H5zM19 19h10v10H19z' },
+  top: { dim: 'M21 14h-7v7h7zM26 11v15H11l-4 4h23V7z', main: 'M4 4v24l5-5V9h14l5-5z' },
+  jungle: {
+    dim: '',
+    main: 'M25 3c-2.1 3.3-5.1 6.9-7 11.5.9 1.8 1.6 3.6 2 5.5.3-1 .6-2 1-3 0-5 1.9-8.7 4-14zM13 20c-1.5-4.5-4.8-7-9-9 3.9 3.1 4.4 7.5 5 12l3.7 3.3c1.5 1.6 3.8 4.1 4.3 4.7 4.6-9.4-3.4-20.8-8-28 2.7 6.6 4.7 10.3 4 17zm8 5c.1.7.1 1.3 0 2l4-4c.6-4.5 1.1-8.9 5-12-5.3 2.6-8.1 8.4-9 14z',
+  },
+  middle: { dim: 'M30 13l-4 4v9h-9l-4 4h17zM17 8l4-4H4v17l4-4V8z', main: 'M25 4 4 25v5h5L30 9V4z' },
+  bottom: { dim: 'M13 20h7v-7h-7zM4 4v23l4-4V8h15l4-4z', main: 'M30 6l-5 5v14H11l-5 5h24z' },
+  utility: {
+    dim: '',
+    main: 'M26 15.5c3.5 0 8-4 8-4H23l-3 3 2 7 5-2-3-4zM8 15.5c-3.5 0-8-4-8-4h11l3 3-2 7-5-2 3-4zM17 16.5l-3 2 3 10 3-10zM19.5 11.5 21 9.5l-1-4h-6l-1 4 1.5 2-1 1h9z',
+  },
 };
 
 /**
@@ -110,10 +120,7 @@ const prefs = signal({
         <div class="seg lanes" role="tablist" aria-label="Lane">
           @for (l of laneTabs; track l.id) {
             <button role="tab" [class.on]="p().lane === l.id" [attr.aria-selected]="p().lane === l.id" [title]="l.label" (click)="set({ lane: l.id })">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                @if (l.id !== 'all') { <rect class="map" x="4" y="4" width="16" height="16" rx="2" /> }
-                <path [attr.d]="l.icon" />
-              </svg>
+              <svg class="pos" viewBox="0 0 34 34" aria-hidden="true"><path class="dim" [attr.d]="l.icon.dim" /><path [attr.d]="l.icon.main" /></svg>
               <span class="lane-label">{{ l.label }}</span>
             </button>
           }
@@ -183,7 +190,7 @@ const prefs = signal({
 
       @if (error(); as e) {
         <div class="card err"><span class="loss small">Couldn't load champion stats: {{ e }}</span>
-          <button (click)="reload()">Try again</button></div>
+          <button class="ghost icon-btn" (click)="reload()" title="Try again" aria-label="Try again"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg></button></div>
       }
       @if (newPatch()) {
         <p class="note small">The patch is only a few days old, so these stats are based on fewer games than usual and will shift as more are played.</p>
@@ -206,7 +213,7 @@ const prefs = signal({
             <span class="c-rank mono faint">{{ r.e ? i + 1 : '' }}</span>
             <span class="c-lane">
               @if (r.lane) {
-                <svg viewBox="0 0 24 24" [attr.aria-label]="laneLabel(r.lane)"><rect class="map" x="4" y="4" width="16" height="16" rx="2" /><path [attr.d]="laneIcon(r.lane)" /></svg>
+                <svg class="pos" viewBox="0 0 34 34" role="img" [attr.aria-label]="laneLabel(r.lane)"><path class="dim" [attr.d]="laneIcon(r.lane).dim" /><path [attr.d]="laneIcon(r.lane).main" /></svg>
               }
             </span>
             <span class="c-name">
@@ -265,11 +272,10 @@ const prefs = signal({
     .search svg { position: absolute; left: 11px; top: 50%; translate: 0 -50%; width: 16px; height: 16px; fill: none; stroke: var(--text-faint); stroke-width: 2; stroke-linecap: round; }
     .search input { width: 100%; padding-left: 34px; border-radius: 999px; }
 
-    svg path, svg rect { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-    svg .map { stroke-width: 1.4; opacity: 0.22; }
+    svg.pos path { fill: currentColor; }
+    svg.pos .dim { opacity: 0.35; }
     .lanes button { display: flex; align-items: center; gap: 6px; padding: 5px 11px; }
     .lanes svg { width: 18px; height: 18px; flex: none; }
-    .lanes button:first-child svg path { stroke-width: 1.8; }
     .lane-label { font-size: 12.5px; }
 
     .rank-pick { position: relative; }
@@ -640,7 +646,7 @@ export class ChampionList {
     return POSITION_LABELS[lane];
   }
 
-  laneIcon(lane: Lane): string {
+  laneIcon(lane: Lane): { dim: string; main: string } {
     return LANE_ICONS[lane];
   }
 

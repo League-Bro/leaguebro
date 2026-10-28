@@ -43,6 +43,7 @@ __screenshots__/
 .DS_Store
 Thumbs.db
 leaguebro-signing-key.txt
+league-bro-feedback-PAT.txt
 
 # Tauri
 /src-tauri/target

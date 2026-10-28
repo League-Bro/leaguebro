@@ -165,7 +165,7 @@ import { ImportEvent, RecChoice, RecState, SwiftplaySlot } from '../core/models'
                 <!-- Only problems: the card below already shows what's set. -->
                 @if (!li.ok) {
                   <span class="import bad" [title]="li.message">{{ shortImport(li) }}</span>
-                  <button class="ghost retry" (click)="retrySlot(s)">Retry</button>
+                  <button class="ghost icon-btn sm retry" (click)="retrySlot(s)" title="Retry" aria-label="Retry"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg></button>
                 }
               }
             </div>
@@ -225,7 +225,7 @@ import { ImportEvent, RecChoice, RecState, SwiftplaySlot } from '../core/models'
     .swift-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; align-items: start; }
     .swift-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
     .swift-col .slot { border: 1px solid var(--line); align-items: center; gap: 12px; }
-    .retry { padding: 3px 10px; font-size: 12.5px; color: var(--accent); }
+    .retry { color: var(--accent); }
     .swift-col .slot .import { overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 60%; }
     @media (max-width: 900px) { .swift-cols { grid-template-columns: minmax(0, 1fr); } }
     .hint { font-size: 12.5px; margin: 12px 0 0; }

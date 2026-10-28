@@ -43,7 +43,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
             }
           </div>
         </div>
-        <button class="ghost" (click)="closed.emit()">Close</button>
+        <button class="ghost icon-btn close" (click)="closed.emit()" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /></svg></button>
       </section>
     }
 
@@ -266,6 +266,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
 
     .hero { position: relative; display: flex; align-items: center; gap: 20px; padding: 24px; border-left: 3px solid var(--text-faint); }
     .hero > :not(.splash) { position: relative; }
+    .hero > .close { position: absolute; top: 10px; right: 10px; }
     .hero.win { border-left-color: var(--win); }
     .hero.loss { border-left-color: var(--loss); }
     .hero.win .big { border-color: var(--win); box-shadow: 0 0 22px rgba(60, 207, 142, 0.35); }

@@ -34,7 +34,7 @@ type BoolKey =
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.overlayEnabled" (change)="setBool('overlayEnabled', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Show the in-game overlay</b><span>Needs League in Borderless or Windowed mode. Fullscreen draws over it.</span></span>
+            <span class="label"><b>Show the in-game overlay</b><span>Needs League in Borderless or Windowed mode. Fullscreen draws over it.</span><img class="peek big" [class.dim]="!cfg.overlayEnabled" src="overlay-parts/overlay.webp" alt="" /></span>
           </label>
           <rl-fullscreen-hint />
           <div class="field">
@@ -54,7 +54,7 @@ type BoolKey =
             <input type="range" min="0.8" max="1.5" step="0.05" [value]="cfg.overlayScale"
               (change)="setNum('overlayScale', +$any($event.target).value)" />
             <span class="mono faint">{{ (cfg.overlayScale * 100).toFixed(0) }}%</span>
-            <button class="ghost" [disabled]="cfg.overlayWidth === 340 && cfg.overlayScale === 1" (click)="resetSize()">Reset</button>
+            <button class="ghost icon-btn" [disabled]="cfg.overlayWidth === 340 && cfg.overlayScale === 1" (click)="resetSize()" title="Reset width and size" aria-label="Reset width and size"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.34-5.66M4 4v5h5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg></button>
           </div>
           <p class="faint small">The height follows what's on the overlay. Size scales text and icons.</p>
           <label class="toggle">
@@ -66,7 +66,7 @@ type BoolKey =
             <span>Position</span>
             <input type="number" placeholder="auto" [value]="cfg.overlayX ?? ''" (change)="setPos('overlayX', $any($event.target).value)" />
             <input type="number" placeholder="auto" [value]="cfg.overlayY ?? ''" (change)="setPos('overlayY', $any($event.target).value)" />
-            <button class="ghost" (click)="resetPos()">Reset</button>
+            <button class="ghost icon-btn" (click)="resetPos()" title="Reset position" aria-label="Reset position"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.34-5.66M4 4v5h5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg></button>
           </div>
           <p class="faint small">
             @if (rift.overlayLocked()) {
@@ -90,22 +90,22 @@ type BoolKey =
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.showLaneDiff" (change)="setBool('showLaneDiff', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Item gold vs your lane opponent</b><span>The total cost of your items against theirs. Not shown in modes without roles, like ARAM.</span></span>
+            <span class="label"><b>Item gold vs your lane opponent</b><span>The total cost of your items against theirs. Not shown in modes without roles, like ARAM.</span><img class="peek bar" [class.dim]="!cfg.showLaneDiff" src="overlay-parts/lane.webp" alt="" /></span>
           </label>
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.showTeamDiff ?? true" (change)="setBool('showTeamDiff', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Item gold vs the enemy team</b><span>Your team's item value against theirs.</span></span>
+            <span class="label"><b>Item gold vs the enemy team</b><span>Your team's item value against theirs.</span><img class="peek bar" [class.dim]="!(cfg.showTeamDiff ?? true)" src="overlay-parts/team.webp" alt="" /></span>
           </label>
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.showCs ?? true" (change)="setBool('showCs', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>CS per minute</b><span>From the first minute on. The game only updates CS every 10 minions, so it moves in steps.</span></span>
+            <span class="label"><b>CS per minute</b><span>From the first minute on. The game only updates CS every 10 minions, so it moves in steps.</span><img class="peek bar" [class.dim]="!(cfg.showCs ?? true)" src="overlay-parts/cs.webp" alt="" /></span>
           </label>
           <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
             <input type="checkbox" [checked]="cfg.showSkillHint" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('showSkillHint', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Skill order</b><span>Which ability to max, and what to level when you have a point.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
+            <span class="label"><b>Skill order</b><span>Which ability to max, and what to level when you have a point.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span><img class="peek bar" [class.dim]="!(cfg.showSkillHint && cfg.recSource === 'opgg')" src="overlay-parts/skills.webp" alt="" /></span>
           </label>
         </section>
 
@@ -114,22 +114,22 @@ type BoolKey =
           <label class="toggle">
             <input type="checkbox" [checked]="cfg.showTimers" (change)="setBool('showTimers', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Objective timers</b><span>Dragon, Baron and inhibitor respawns. The Live tab shows them either way.</span></span>
+            <span class="label"><b>Objective timers</b><span>Dragon, Baron and inhibitor respawns. The Live tab shows them either way.</span><img class="peek" [class.dim]="!cfg.showTimers" src="overlay-parts/timers.webp" alt="" /></span>
           </label>
           <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
             <input type="checkbox" [checked]="cfg.useRecommendedBuilds" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('useRecommendedBuilds', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Next items to buy</b><span>Starting items, then OP.GG's next item and the parts left to buy, green when you can afford them.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
+            <span class="label"><b>Next items to buy</b><span>Starting items, then OP.GG's next item and the parts left to buy, green when you can afford them.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span><img class="peek" [class.dim]="!(cfg.useRecommendedBuilds && cfg.recSource === 'opgg')" src="overlay-parts/next.webp" alt="" /></span>
           </label>
           <label class="toggle" [class.off]="cfg.recSource !== 'opgg' || !cfg.useRecommendedBuilds">
             <input type="checkbox" [checked]="cfg.showBuyNow ?? true" [disabled]="cfg.recSource !== 'opgg' || !cfg.useRecommendedBuilds" (change)="setBool('showBuyNow', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Buy now</b><span>What your gold buys now toward the next item, like a Long Sword before the Noonquiver.@if (cfg.recSource !== 'opgg' || !cfg.useRecommendedBuilds) { Needs Next items to buy. }</span></span>
+            <span class="label"><b>Buy now</b><span>What your gold buys now toward the next item, like a Long Sword before the Noonquiver.@if (cfg.recSource !== 'opgg' || !cfg.useRecommendedBuilds) { Needs Next items to buy. }</span><img class="peek" [class.dim]="!((cfg.showBuyNow ?? true) && cfg.useRecommendedBuilds && cfg.recSource === 'opgg')" src="overlay-parts/buy.webp" alt="" /></span>
           </label>
           <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
             <input type="checkbox" [checked]="cfg.showSituational" [disabled]="cfg.recSource !== 'opgg'" (change)="setBool('showSituational', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Situational items</b><span>The best counter item from OP.GG's 4th–6th item options, updated as enemies buy items. The Live tab shows them either way.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
+            <span class="label"><b>Situational items</b><span>The best counter item from OP.GG's 4th–6th item options, updated as enemies buy items. The Live tab shows them either way.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span><img class="peek" [class.dim]="!(cfg.showSituational && cfg.recSource === 'opgg')" src="overlay-parts/situational.webp" alt="" /></span>
           </label>
         </section>
 
@@ -194,7 +194,7 @@ type BoolKey =
                   [attr.aria-label]="'Your key for the ' + k.toUpperCase() + ' ability'" (input)="setKey(k, $any($event.target).value)" />
               </label>
             }
-            <button class="ghost" (click)="resetKeys()">Reset</button>
+            <button class="ghost icon-btn" (click)="resetKeys()" title="Reset keys" aria-label="Reset keys"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.34-5.66M4 4v5h5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg></button>
           </div>
         </section>
 
@@ -306,6 +306,14 @@ type BoolKey =
     }
     .sub.first { margin-top: 0; padding-top: 0; border-top: none; }
     .toggle.off { opacity: 0.55; }
+    /* What each switch shows on the overlay (public/overlay-parts, shot from the demo overlay); greyed out while it's off. */
+    .peek {
+      display: block; max-width: 100%; max-height: 120px; margin-top: 6px;
+      border-radius: 6px; border: 1px solid var(--line); transition: filter 0.15s, opacity 0.15s;
+    }
+    .peek.big { max-height: 220px; }
+    .peek.bar { height: 34px; }
+    .peek.dim { filter: grayscale(1); opacity: 0.45; }
     .global-sets {
       display: flex; flex-direction: column; gap: 6px; margin-top: 4px; padding: 10px 12px;
       border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg-sunken);

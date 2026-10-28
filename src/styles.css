@@ -75,6 +75,10 @@ button.primary { background: var(--accent); color: var(--on-accent); border-colo
 button.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
 button.ghost { background: transparent; border-color: transparent; color: var(--text-dim); padding: 4px 10px; }
 button.ghost:hover:not(:disabled) { color: var(--text); background: var(--bg-hover); border-color: transparent; }
+/* Round symbol button (✕, ↻): <button class="ghost icon-btn" title="…" aria-label="…"><svg …/></button> */
+button.icon-btn { display: inline-grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 0; border-radius: 50%; }
+button.icon-btn.sm { width: 28px; height: 28px; }
+button.icon-btn.sm svg { width: 15px; height: 15px; }
 /* Keyboard focus only (Tab key), so mouse clicks don't leave a ring. */
 button:focus-visible, a:focus-visible, input[type='range']:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
 

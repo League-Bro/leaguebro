@@ -46,7 +46,7 @@ const REGIONS = [
         <h2>Couldn't load your profile</h2>
         <p class="muted">{{ e }}</p>
         <div class="row center">
-          <button (click)="load()">Try again</button>
+          <button class="ghost icon-btn" (click)="load()" title="Try again" aria-label="Try again"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg></button>
           @if (!rift.status().connected) { <button class="ghost" (click)="editing.set(true)">Change Riot ID</button> }
         </div>
       </section>
@@ -310,7 +310,6 @@ const REGIONS = [
     .head .ranks { grid-area: ranks; justify-content: center; }
     .side { grid-area: side; display: flex; align-items: center; justify-content: flex-end; gap: 18px; }
     .graph { display: flex; flex-direction: column; gap: 2px; }
-    .icon-btn { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border-radius: 50%; }
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (max-width: 1100px) {
       .head { grid-template-columns: 1fr auto; grid-template-areas: 'me side' 'ranks ranks'; row-gap: 14px; }

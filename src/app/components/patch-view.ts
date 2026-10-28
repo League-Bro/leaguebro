@@ -43,7 +43,7 @@ const VERDICT_LABELS: Record<string, string> = {
 
     @if (error()) {
       <div class="card"><p class="loss small">Couldn't load patch notes: {{ error() }}</p>
-        <button (click)="reload()">Try again</button></div>
+        <button class="ghost icon-btn" (click)="reload()" title="Try again" aria-label="Try again"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg></button></div>
     } @else if (loading()) {
       <rl-loader [size]="44" [block]="true" class="muted">Loading patch notes…</rl-loader>
     } @else if (notes(); as n) {

@@ -89,7 +89,7 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
       @case ('error') {
         <div class="update-bar bad">
           <span>Update failed: {{ $any(updates.state()).message }}</span>
-          <button class="ghost" (click)="updates.dismiss()">Dismiss</button>
+          <button class="ghost icon-btn" (click)="updates.dismiss()" title="Dismiss" aria-label="Dismiss"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /></svg></button>
         </div>
       }
     }
