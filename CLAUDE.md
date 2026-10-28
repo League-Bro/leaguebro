@@ -27,7 +27,7 @@ npm start                    # UI only in a browser at http://127.0.0.1:4200 wit
 npm run build                # Angular production build (check this compiles)
 cd src-tauri; cargo test     # Rust unit tests (fixtures in src-tauri/tests/fixtures)
 npm run tauri build          # local NSIS installer (needs the updater signing key in env; normally CI does this)
-npm run bump                 # next patch version in all version files; `npm run bump -- 0.2.0` for a specific one
+.\release                    # from main: bump, commit, push, start the release + website workflows (asks first; `.\release 0.2.0`)
 ```
 
 Before handing work back: `cargo test` and `npm run build` must pass with no warnings. For UI changes, check the browser demo, and update `src/app/core/demo.ts` when data shapes change.
@@ -153,7 +153,7 @@ Working on it: `cd feedback-worker; npm install`, then `npm run dev` (Vite + wor
 ## Releases and auto-updates
 
 - Version lives in `src-tauri/tauri.conf.json`, `package.json` and `src-tauri/Cargo.toml`, mirrored in `package-lock.json` (twice) and `Cargo.lock` (the `leaguebro` entry). Bump with `bump` from the project folder (next patch version, one above the current version or newest local `v*` tag) or `bump <x.y.z>`; `bump.cmd` just calls `scripts\bump-version.cmd`. It edits just those six spots (no find-and-replace; the lock files hold unrelated packages at the same version numbers), refuses a version not higher than the current one or the newest local `v*` tag, and writes nothing unless every spot matched.
-- Dom pushes, then runs **Actions → Release installers → Run workflow**. That publishes `League.Bro_x.y.z_x64-setup.exe`, `League.Bro_x.y.z_universal.dmg`, the updater bundles with their `.sig`s, and `latest.json`.
+- Dom pushes, then runs **Actions → Release installers → Run workflow**. Or `release` (`release.cmd` → `scripts\release.ps1`) does it all from `main`: checks it's clean and not behind GitHub, fetches tags, bumps, asks, commits `bump to x.y.z`, pushes, and starts `build-windows.yml` and `pages.yml` with `gh` (tauri-action makes the tag and release). Answering no puts the version files back. The workflow publishes `League.Bro_x.y.z_x64-setup.exe`, `League.Bro_x.y.z_universal.dmg`, the updater bundles with their `.sig`s, and `latest.json`.
 - Installed copies check `releases/latest/download/latest.json` on startup and every 6 h, then show an "Update and restart" banner. Dev builds never self-update (`isDevMode()`).
 - Updates are signed. The private key and password are the repo secrets `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; the public key is in `tauri.conf.json`. Never change the pubkey unless Dom has lost the key, because that breaks updates for everyone already installed.
 - The website (`site/`) needs no change per release. Keep its copy in step with the app when features change, and keep the Riot "isn't endorsed by Riot Games" notice in its footer (required for fan projects). It uses no Riot logos or champion art.
