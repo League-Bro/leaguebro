@@ -118,7 +118,9 @@ function card(r) {
   if (env) details.append(env);
 
   const actions = el('div', { className: 'actions' });
-  if (r.github_url) {
+  if (r.github_url.startsWith('pending:')) {
+    actions.append(el('span', { className: 'meta', textContent: 'Making its GitHub issue…' }));
+  } else if (r.github_url) {
     actions.append(el('a', { href: r.github_url, target: '_blank', rel: 'noopener', textContent: 'GitHub issue ↗' }));
   } else {
     const gh = el('button', { className: 'primary', textContent: 'Create GitHub issue' });

@@ -3,7 +3,7 @@
 //! a GitHub issue with its own token (contact info stays in its private inbox),
 //! so players need no GitHub account and the app holds no GitHub token.
 
-use crate::util::{msg, web_client};
+use crate::util::{msg, read_body, web_client};
 use anyhow::{anyhow, Context};
 use serde::Deserialize;
 use serde_json::json;
@@ -65,7 +65,11 @@ pub async fn send(report: Report) -> Result<(), String> {
     }
     // The Worker answers {"error": "..."} in words a player can read (e.g. too many reports).
     let status = resp.status();
-    let text = resp.json::<serde_json::Value>().await.ok().and_then(|v| v["error"].as_str().map(str::to_string));
+    let text = read_body(resp, "the League Bro server")
+        .await
+        .ok()
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+        .and_then(|v| v["error"].as_str().map(str::to_string));
     Err(msg(anyhow!(text.unwrap_or_else(|| format!("the League Bro server answered {status}")))))
 }
 
@@ -73,12 +77,16 @@ pub async fn send(report: Report) -> Result<(), String> {
 mod tests {
     use super::*;
 
-    /// Sends a real report. Point it at a local Worker (`npm run dev` in
-    /// feedback-worker/) so it doesn't land in the real inbox:
+    /// Sends a real report to a local Worker (`npm run dev` in feedback-worker/):
     /// `LEAGUEBRO_FEEDBACK_URL=http://localhost:8799/api/report cargo test live_feedback -- --ignored`
+    /// Refuses to run without that, since the live Worker turns reports into public GitHub issues.
     #[tokio::test]
     #[ignore]
     async fn live_feedback() {
+        assert!(
+            option_env!("LEAGUEBRO_FEEDBACK_URL").is_some_and(|u| u.contains("localhost")),
+            "set LEAGUEBRO_FEEDBACK_URL to a local Worker; the live one files public GitHub issues"
+        );
         let report: Report = serde_json::from_value(json!({
             "kind": "bug", "area": "In game / overlay", "summary": "Test report from cargo test",
             "details": "", "contact": "", "client": "League client not found", "includeDetails": true,

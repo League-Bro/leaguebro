@@ -1,4 +1,3 @@
-# Field ids are also query params: the app's Feedback page fills them in (feedback-view.ts).
 name: Feature request
 description: An idea for League Bro.
 labels: [enhancement]

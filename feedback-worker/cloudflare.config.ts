@@ -4,7 +4,7 @@ import * as entrypoint from "./src/index.ts" with { type: "cf-worker" };
 /** This file runs in Node (cf, Vite); the Worker's own code doesn't get `process`. */
 declare const process: { env: Record<string, string | undefined> };
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   worker: {
     name: "leaguebro-feedback",
     entrypoint,
@@ -16,8 +16,8 @@ export default defineConfig({
       ADMIN_PASSWORD: bindings.secret(),
       /** Fine-grained GitHub token, Issues: read and write on doliaro/leaguebro only. */
       GITHUB_TOKEN: bindings.secret(),
-      /** Where issues are made; `GITHUB_API=http://localhost:8798 npm run dev` points a local run at a fake. */
-      GITHUB_API: bindings.text(process.env["GITHUB_API"] ?? "https://api.github.com"),
+      /** Where issues are made. `GITHUB_API=http://localhost:8798 npm run dev` points a local run at a fake; deploys (production mode) always use GitHub. */
+      GITHUB_API: bindings.text((mode === "development" && process.env["GITHUB_API"]) || "https://api.github.com"),
     },
   },
-});
+}));
