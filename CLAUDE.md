@@ -109,6 +109,7 @@ src-tauri/src/
   live.rs       live game: timers, next items, skill hint, overlay state
   postgame.rs   post-game summary from the match-history record
   usage.rs      anonymous daily usage ping to Aptabase ("app_open": random install ID as sessionId, app + Windows version, nothing else). Key baked in at build time from APTABASE_APP_KEY (release workflow secret); no key = sends nothing. At most once per UTC day (usage.json next to settings.json), checked at startup and every 6 h; Settings → Privacy → shareUsageStats off stops it. Don't add feature events without asking Dom.
+  feedback.rs   sends the Feedback tab's bug reports and ideas to the feedback Worker (`send_feedback`)
   profile.rs    your profile: rank, recent matches, insights; the Brawl/League Classic filter
   opgg_profile.rs  the same profile from OP.GG by Riot ID while the client isn't running; OP.GG's Update (renew)
   guide.rs      champion guides: kit, Riot ability clips, Data Dragon tips (Champions tab → Guide)
@@ -125,8 +126,8 @@ src/app/components/  shell, live-view, post-game, champions-view, guide-card, pr
                      pages go through `rift.showChampion` (main lane from OP.GG's tier lists), which sets `navTo` for the shell's Back.
 .github/workflows/build-windows.yml   release workflow: Windows job, then a macOS job (universal .dmg) that adds to the same latest.json
 .github/workflows/pages.yml           publishes site/ to GitHub Pages (https://doliaro.github.io/leaguebro/)
-.github/ISSUE_TEMPLATE/               bug report + feature request issue forms; the Feedback tab opens them prefilled
-                                      (query params = field ids) via `open_issue_page`, which only opens github.com/doliaro/leaguebro/issues links
+.github/ISSUE_TEMPLATE/               bug report + feature request issue forms (for people on GitHub; the app no longer opens them)
+feedback-worker/                      Cloudflare Worker (cf CLI, `cloudflare.config.ts`) + D1 for the Feedback tab: see "Feedback" below
 site/index.html                       download website: one static page, no build step; the download button
                                       reads releases/latest from GitHub's API in the browser and picks the
                                       *-setup.exe asset, falling back to the releases page
@@ -135,6 +136,16 @@ scripts/bump-version.ps1 (+ .cmd)     sets the version in all five files before 
 ```
 
 Adding a setting: add it to `config.rs` (with a default; `#[serde(default)]` keeps old settings files loading) **and** to `Config` in `models.ts` and `demoConfig()`.
+
+## Feedback
+
+The Feedback tab (`feedback-view.ts`) is written for players, not developers: "Something's not working" / "I have an idea", a "Where did it happen?" chip (pre-picked from the gameflow phase), one required text box, an optional follow-up, an optional "Want a reply?" contact, and an "Include app details" switch (League Bro version, OS version, client phase; added in Rust by `feedback.rs`). No GitHub account is needed. Every report becomes a public GitHub issue, and the page says so; the contact field stays private (October 2026). The app never talks to GitHub itself: a token shipped in the app could be pulled out of the installer.
+
+`send_feedback` posts to the Worker in `feedback-worker/` (`leaguebro-feedback`, deployed October 2026 on Daniel's (dgriego's) Cloudflare account at https://leaguebro-feedback.eggomygriego.workers.dev, so only he can redeploy it; moving it changes the URL and needs an app release; URL in `feedback::URL`, `LEAGUEBRO_FEEDBACK_URL` at build time overrides it). The Worker:
+- `POST /api/report`: stores the report in D1 (`reports` table, made by the Worker on first use), answers the app, then (`waitUntil`) opens an issue in doliaro/leaguebro labelled `bug` or `enhancement` plus `from-app`, with the `GITHUB_TOKEN` secret, saves its link and marks the report done. No auth; 10 reports per IP per hour (IPs kept only as a SHA-256 hash); fields are trimmed to fixed lengths. At most `AUTO_ISSUES_PER_DAY` (30) automatic issues per UTC day; past that, or when GitHub fails, the report stays "new" in the inbox. `@` in players' text gets a zero-width space so it pings nobody; the contact field never goes into the issue.
+- `/` is the devs' inbox page (New / Done / All, bugs/ideas filter), behind the `ADMIN_PASSWORD` secret: contact info, spam deletion, and a **Create GitHub issue** button for reports that have no issue yet. Report text is put on the page with `textContent` only, since it comes from the public.
+
+Working on it: `cd feedback-worker; npm install`, then `npm run dev` (Vite + workerd on http://localhost:8799, local D1; put `ADMIN_PASSWORD=...` and a dummy `GITHUB_TOKEN=...` in `.dev.vars`, git-ignored). To check issue creation without touching GitHub, start it as `GITHUB_API=http://localhost:8798 npm run dev` with a fake server there (the `GITHUB_API` binding is read from the environment by `cloudflare.config.ts`; `.dev.vars` doesn't override it). Check types with `npx tsc -p .`. Deploy with `cf deploy`; set secrets with `npx wrangler secret put ADMIN_PASSWORD --name leaguebro-feedback` (and `GITHUB_TOKEN`), since `cf` can't set a single secret yet. `cargo test live_feedback -- --ignored` with `LEAGUEBRO_FEEDBACK_URL=http://localhost:8799/api/report` sends a test report from Rust.
 
 ## Releases and auto-updates
 

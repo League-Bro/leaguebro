@@ -843,3 +843,18 @@ export interface SuggestedPick {
   masteryLevel: number;
   score: number;
 }
+
+/** A bug report or idea from the Feedback page (`send_feedback`, feedback.rs). */
+export interface FeedbackReport {
+  kind: 'bug' | 'idea';
+  /** Where it happened ("Champ select", "In game"…); empty for ideas. */
+  area: string;
+  summary: string;
+  details: string;
+  /** How to reach the player, if they want a reply. */
+  contact: string;
+  /** What the League client was doing. */
+  client: string;
+  /** Adds the app version, OS and `client`. */
+  includeDetails: boolean;
+}

@@ -10,6 +10,7 @@ import {
   Guide,
   ChampSelectView,
   Config,
+  FeedbackReport,
   ImportEvent,
   LoadingView,
   MyProfile,
@@ -427,9 +428,9 @@ export class RiftService {
     });
   }
 
-  /** Opens a github.com/doliaro/leaguebro/issues link in the default browser. */
-  async openIssuePage(url: string): Promise<void> {
-    await this.call('open_issue_page', { url }, () => void window.open(url, '_blank', 'noopener'));
+  /** Sends a bug report or idea to the devs' inbox (the feedback Worker). */
+  async sendFeedback(report: FeedbackReport): Promise<void> {
+    await this.call('send_feedback', { report }, () => undefined, 600);
   }
 
   private lastButtonRects = '';

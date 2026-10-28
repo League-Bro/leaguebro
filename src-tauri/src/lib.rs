@@ -2,6 +2,7 @@ mod config;
 mod util;
 mod cache;
 mod engine;
+mod feedback;
 mod guide;
 mod itemsets;
 mod lcu;
@@ -378,19 +379,10 @@ async fn preview_overlay(app: AppHandle, show: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// Where the Feedback page's issue links go. Nothing else can be opened.
-const ISSUE_URL_PREFIX: &str = "https://github.com/doliaro/leaguebro/issues";
-
-/// Opens a GitHub issue page (prefilled by the Feedback page) in the
-/// default browser. Creating the issue happens there, signed in as the user,
-/// so the app holds no GitHub token.
+/// Sends a bug report or idea from the Feedback page to the devs' inbox.
 #[tauri::command]
-fn open_issue_page(url: String) -> Result<(), String> {
-    let rest = url.strip_prefix(ISSUE_URL_PREFIX).ok_or("Not a League Bro issue link")?;
-    if !(rest.is_empty() || rest.starts_with('/') || rest.starts_with('?')) {
-        return Err("Not a League Bro issue link".into());
-    }
-    open_in_browser(&url)
+async fn send_feedback(report: feedback::Report) -> Result<(), String> {
+    feedback::send(report).await
 }
 
 /// A beginner's guide to any champion (the Champions tab's Guide view).
@@ -507,7 +499,7 @@ pub fn run() {
             cache_info,
             clear_cache,
             set_overlay_buttons,
-            open_issue_page,
+            send_feedback,
             champion_guide,
             open_guide_videos
         ])
