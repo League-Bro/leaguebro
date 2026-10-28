@@ -27,6 +27,7 @@ npm start                    # UI only in a browser at http://127.0.0.1:4200 wit
 npm run build                # Angular production build (check this compiles)
 cd src-tauri; cargo test     # Rust unit tests (fixtures in src-tauri/tests/fixtures)
 npm run tauri build          # local NSIS installer (needs the updater signing key in env; normally CI does this)
+npm run bump                 # next patch version in all version files; `npm run bump -- 0.2.0` for a specific one
 ```
 
 Before handing work back: `cargo test` and `npm run build` must pass with no warnings. For UI changes, check the browser demo, and update `src/app/core/demo.ts` when data shapes change.
