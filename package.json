@@ -5,8 +5,7 @@
     "ng": "ng",
     "start": "ng serve --host 127.0.0.1 --port 4200",
     "build": "ng build",
-    "tauri": "tauri",
-    "bump": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/bump-version.ps1"
+    "tauri": "tauri"
   },
   "private": true,
   "dependencies": {
