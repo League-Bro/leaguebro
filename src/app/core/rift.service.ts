@@ -1,4 +1,4 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, computed, effect, signal } from '@angular/core';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { LogicalSize, PhysicalPosition, getCurrentWindow } from '@tauri-apps/api/window';
@@ -32,7 +32,7 @@ import {
   TierSource,
   MIN_GAMES,
 } from './models';
-import { POSITION_LABELS, assetUrl, championSplash, positionLabel } from './assets';
+import { POSITION_LABELS, assetUrl, championIcon, championSplash, positionLabel } from './assets';
 import {
   demoCacheInfo,
   demoConfig,
@@ -74,6 +74,8 @@ export class RiftService {
   /** Your Swiftplay lobby slots (empty outside a Swiftplay lobby). */
   readonly swiftplay = signal<SwiftplaySlot[]>([]);
   readonly overlay = signal<OverlayState | null>(null);
+  /** When the last overlay update arrived (performance.now()), for the overlay's own clock. */
+  readonly overlayAt = signal(0);
   /** Your team's item value lead over this game, for the Live tab's gold graph. */
   readonly goldHistory = signal<GoldPoint[]>([]);
   readonly rec = signal<RecState | null>(null);
@@ -106,6 +108,38 @@ export class RiftService {
   readonly styleById = computed(() => new Map((this.statics()?.styles ?? []).map((p) => [p.id, p])));
 
   private started = false;
+  /** Icons already fetched for the overlay, kept so the browser keeps them decoded. */
+  private readonly preloaded = new Map<string, HTMLImageElement>();
+
+  constructor() {
+    // The overlay window fetches its icons during champ select and the loading
+    // screen (the build, its components, situational items, enemy champions),
+    // so they don't pop in once the game starts.
+    effect(() => {
+      if (this.windowLabel() !== 'overlay') return;
+      const items = this.itemById();
+      if (!items.size) return;
+      const r = this.rec()?.rec;
+      const ids = new Set<number>();
+      const add = (id: number, depth = 0) => {
+        if (id <= 0 || ids.has(id)) return;
+        ids.add(id);
+        if (depth < 2) for (const c of items.get(id)?.from ?? []) add(c, depth + 1);
+      };
+      const sets = r ? [r.starter, r.boots, r.core, ...r.later.flat(), ...r.situationalPool, ...r.coreOptions, ...r.bootsOptions] : [];
+      for (const set of sets) for (const id of set?.ids ?? []) add(id);
+      for (const id of r?.buildOrder ?? []) add(id);
+      for (const it of this.situational()?.items ?? []) add(it.id);
+      const champs = [...(this.champSelect()?.enemies ?? []), ...(this.loading()?.enemies ?? [])].map((p) => p.championId);
+      const urls = [...[...ids].map((id) => this.itemIcon(id)), ...champs.map(championIcon)];
+      for (const url of urls) {
+        if (!url || this.preloaded.has(url)) continue;
+        const img = new Image();
+        img.src = url;
+        this.preloaded.set(url, img);
+      }
+    });
+  }
 
   async start(): Promise<void> {
     if (this.started) return;
@@ -154,6 +188,7 @@ export class RiftService {
   }
 
   private setOverlay(o: OverlayState | null): void {
+    this.overlayAt.set(performance.now());
     this.overlay.set(o);
     if (!o?.team) return;
     const point = { t: o.gameTime, lead: o.team.ours - o.team.theirs };

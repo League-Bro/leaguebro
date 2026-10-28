@@ -1,8 +1,11 @@
 import { DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, afterRenderEffect, computed, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, afterRenderEffect, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { championIcon, clock } from '../core/assets';
 import { OverlayState } from '../core/models';
+
+/** Seconds the overlay's clock may run past the last update. */
+const MAX_AHEAD = 3;
 
 const PREVIEW: OverlayState = {
   gameTime: 742,
@@ -98,14 +101,14 @@ const PREVIEW: OverlayState = {
                 } @else {
                   <span class="cap">vs {{ f.opponent.slice(0, 3) }}</span>
                 }
-                <svg class="coin" viewBox="0 0 16 16" aria-hidden="true"><g stroke="#3a2606" stroke-width="0.8"><path d="M2.5 11.2v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1v-1.6z" fill="#b07a1e" /><ellipse cx="8" cy="11.2" rx="5.5" ry="2.1" fill="#e9b949" /><path d="M2.5 7.7v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1V7.7z" fill="#b07a1e" /><ellipse cx="8" cy="7.7" rx="5.5" ry="2.1" fill="#e9b949" /><path d="M2.5 4.2v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1V4.2z" fill="#b07a1e" /><ellipse cx="8" cy="4.2" rx="5.5" ry="2.1" fill="#fbd96b" /></g><ellipse cx="8" cy="4.2" rx="3" ry="1" fill="none" stroke="#c48d22" stroke-width="0.7" /></svg>
+                <img class="coin" src="gold.png" alt="" />
                 <span class="diff" [class.ahead]="l.mine > f.theirs" [class.behind]="l.mine < f.theirs">{{ gold(l.mine - f.theirs) }}</span>
               </button>
             }
             @if (showTeam() && o.team; as t) {
               <div class="gold">
                 <span class="cap">Team</span>
-                <svg class="coin" viewBox="0 0 16 16" aria-hidden="true"><g stroke="#3a2606" stroke-width="0.8"><path d="M2.5 11.2v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1v-1.6z" fill="#b07a1e" /><ellipse cx="8" cy="11.2" rx="5.5" ry="2.1" fill="#e9b949" /><path d="M2.5 7.7v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1V7.7z" fill="#b07a1e" /><ellipse cx="8" cy="7.7" rx="5.5" ry="2.1" fill="#e9b949" /><path d="M2.5 4.2v1.6c0 1.2 2.5 2.1 5.5 2.1s5.5-.9 5.5-2.1V4.2z" fill="#b07a1e" /><ellipse cx="8" cy="4.2" rx="5.5" ry="2.1" fill="#fbd96b" /></g><ellipse cx="8" cy="4.2" rx="3" ry="1" fill="none" stroke="#c48d22" stroke-width="0.7" /></svg>
+                <img class="coin" src="gold.png" alt="" />
                 <span class="diff" [class.ahead]="t.ours > t.theirs" [class.behind]="t.ours < t.theirs">{{ gold(t.ours - t.theirs) }}</span>
               </div>
             }
@@ -133,9 +136,9 @@ const PREVIEW: OverlayState = {
         @if (showTimers() && o.timers.length) {
           <div class="timers">
             @for (t of o.timers; track t.key) {
-              <div class="timer" [class]="t.side" [class.soon]="t.spawnAt - o.gameTime <= 30">
+              <div class="timer" [class]="t.side" [class.soon]="t.spawnAt - now() <= 30">
                 <span class="label">{{ t.label }}</span>
-                <span class="left">{{ time(t.spawnAt - o.gameTime) }}</span>
+                <span class="left">{{ time(t.spawnAt - now()) }}</span>
               </div>
             }
           </div>
@@ -207,12 +210,14 @@ const PREVIEW: OverlayState = {
             }
           </div>
         }
-        <!-- Bottom-right corner, out of the top line's way. -->
-        <button #lockBtn class="lock" [title]="locked() ? 'Unlock to move' : 'Lock in place'"
+        <!-- A pin on the top-right corner: quiet while unlocked (movable), pink once locked in place. -->
+        <button #lockBtn class="lock" [class.on]="locked()"
+          [title]="locked() ? 'Locked: clicks go through to the game. Click to unlock and move' : 'Lock in place, so clicks go through to the game'"
+          [attr.aria-label]="locked() ? 'Unlock overlay' : 'Lock overlay'"
           (click)="rift.setOverlayLocked(!locked())">
-          <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
-            <rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor" />
-            <path [attr.d]="locked() ? 'M5 7V5a3 3 0 0 1 6 0v2' : 'M5 7V5a3 3 0 0 1 6 0'" fill="none" stroke="currentColor" stroke-width="1.6" />
+          <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true">
+            <rect x="3" y="7.5" width="10" height="7" rx="1.6" fill="currentColor" />
+            <path [attr.d]="locked() ? 'M5.2 7.5V5.4a2.8 2.8 0 0 1 5.6 0v2.1' : 'M5.2 7.5V5.4a2.8 2.8 0 0 1 5.5-.8'" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
           </svg>
         </button>
         @if (preview() && !rift.overlay()) {
@@ -228,7 +233,7 @@ const PREVIEW: OverlayState = {
       background: rgba(15, 13, 20, 0.88);
       border: 1px solid rgba(255, 79, 163, 0.35);
       border-radius: 14px;
-      padding: 10px 12px 14px;
+      padding: 10px 12px;
       color: #f1f2f5;
       font-size: 13px;
       text-shadow: 0 1px 2px #000;
@@ -237,16 +242,20 @@ const PREVIEW: OverlayState = {
     .top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 5px; margin-bottom: 6px; }
     /* Tighter labels so skills, both gold diffs and CS/min fit one line at the default width. */
     .top .cap { letter-spacing: 0.02em; }
+    /* Sits on the corner, half over the border, in the host's 6px padding. */
     .lock {
-      all: unset; position: relative; z-index: 11;
-      display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px;
-      color: var(--text-faint); cursor: pointer;
+      all: unset; position: absolute; z-index: 11; top: -6px; right: -6px;
+      display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; box-sizing: border-box;
+      background: rgb(22, 19, 29); border: 1px solid rgba(255, 79, 163, 0.35);
+      color: var(--text-faint); cursor: pointer; transition: color 0.12s, background 0.12s;
     }
-    .lock:hover { color: var(--accent); background: rgba(255, 79, 163, 0.16); }
-    .lock { position: absolute; right: 4px; bottom: 3px; width: 16px; height: 16px; }
+    .lock:hover { color: #fff; border-color: var(--accent); }
+    .lock.on { color: #fff; background: var(--accent); border-color: var(--accent); }
+    .lock.on:hover { filter: brightness(1.12); }
     .gold { display: flex; align-items: center; gap: 2px; white-space: nowrap; }
     .gold .champ { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.15); }
-    .gold .coin { width: 15px; height: 15px; margin-right: -2px; flex-shrink: 0; }
+    /* The game's own gold coin (floating text icon), bundled in public/. */
+    .gold .coin { width: 14px; height: 14px; margin: 0 1px 0 1px; flex-shrink: 0; }
     .gold .diff { font: 600 13px var(--mono); color: var(--text-dim); }
     .gold .diff.ahead { color: var(--win); }
     .gold .diff.behind { color: var(--loss); }
@@ -333,6 +342,19 @@ export class Overlay {
   protected readonly showCs = computed(() => this.rift.config()?.showCs ?? true);
   protected readonly showBuyNow = computed(() => this.rift.config()?.showBuyNow ?? true);
   protected readonly expanded = signal(false);
+  /** Ticks a few times a second while there are timers, so they count down between updates. */
+  private readonly tick = signal(0);
+  private readonly ticking = computed(() => this.showTimers() && !!this.state()?.timers.length);
+  /**
+   * Game time now: the last update's, plus the time since it arrived. Capped a
+   * little ahead, so a paused game or a slow read doesn't run the timers off.
+   */
+  protected readonly now = computed(() => {
+    this.tick();
+    const t = this.state()?.gameTime ?? 0;
+    if (!this.rift.overlay()) return t;
+    return t + Math.min(MAX_AHEAD, (performance.now() - this.rift.overlayAt()) / 1000);
+  });
   protected readonly foesOpen = signal(false);
   /** The enemy you picked, with the game's enemy line-up so a new game goes back to your lane opponent. */
   private readonly picked = signal<{ name: string; lineup: string } | null>(null);
@@ -366,6 +388,11 @@ export class Overlay {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   constructor() {
+    effect((onCleanup) => {
+      if (!this.ticking()) return;
+      const id = setInterval(() => this.tick.update((n) => n + 1), 250);
+      onCleanup(() => clearInterval(id));
+    });
     afterRenderEffect(() => {
       // The buttons stay clickable while the rest of the locked overlay is click-through.
       // Re-measured on every update: rows above "more" (timers, items) move it.
