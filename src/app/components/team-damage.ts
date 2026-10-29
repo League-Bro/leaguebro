@@ -2,11 +2,34 @@ import { ChangeDetectionStrategy, Component, computed, inject, input } from '@an
 import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { championSplit, damageTip, DamageSplit, teamSplit } from '../core/damage';
+import { EnemyTrait, enemyTraits } from '../core/comp';
 import { GoldGraph } from './gold-graph';
 
+const TRAIT_TITLES: Record<EnemyTrait, (n: number) => string> = {
+  tanks: (n) => `${n} tanks.`,
+  dive: (n) => `${n} divers.`,
+  poke: (n) => `${n} poke champions.`,
+  squishy: () => 'No tank.',
+};
+/** What a trait means for your own team. */
+const FOR_US: Record<EnemyTrait, string> = {
+  tanks: 'You can take long fights and front line for your carries.',
+  dive: 'Built to jump their backline: go in together.',
+  poke: 'Wear them down before objectives instead of forcing fights.',
+  squishy: 'Avoid long fights; pick your moments.',
+};
+/** How to play into an enemy trait. */
+const VS_THEM: Record<EnemyTrait, string> = {
+  tanks: 'Armor or magic pen and % health damage pay off.',
+  dive: 'Stay near whoever can peel you; a defensive item helps.',
+  poke: 'Engage or flank fast instead of sitting in their range.',
+  squishy: 'Catching one of them out of position wins fights.',
+};
+
 /**
- * Your team vs the enemy team: a damage profile chart (AD / AP / true) and, in game,
- * a graph of the team gold lead (item value) over time.
+ * Your team vs the enemy team: a damage profile chart (AD / AP / true), what each
+ * comp is built around (`comp.ts`) and, in game, a graph of the team gold lead
+ * (item value) over time. Shown from champ select to the end of the game.
  */
 @Component({
   selector: 'rl-team-damage',
@@ -51,6 +74,10 @@ import { GoldGraph } from './gold-graph';
             @if (t.split && tip(t.split, t.key === 'enemy'); as tip) {
               <div class="tip muted"><b [class.enemy]="t.key === 'enemy'">{{ t.label }}</b> {{ tip }}</div>
             }
+          }
+          <!-- What each comp is built around, in the same style as the damage tips above. -->
+          @for (c of comps(); track c.key + c.trait) {
+            <div class="tip muted"><b [class.enemy]="c.key === 'enemy'">{{ c.label }}</b> <span class="trait" [class.enemy]="c.key === 'enemy'">{{ c.title }}</span> {{ c.text }}</div>
           }
         </figure>
 
@@ -108,6 +135,8 @@ import { GoldGraph } from './gold-graph';
     .tip b { color: var(--ally); font-weight: 600; margin-right: 4px; }
     .tip b.enemy { color: var(--enemy); }
 
+    .trait { font-weight: 600; color: var(--text); margin-right: 2px; }
+
     .now { font-size: 18px; }
     .stat { display: inline-flex; gap: 5px; align-items: baseline; }
     .stats { gap: 18px; flex-wrap: wrap; font-size: 13px; margin-top: 10px; }
@@ -135,6 +164,16 @@ export class TeamDamage {
     { key: 'ally', label: 'Your team', split: this.ours() },
     { key: 'enemy', label: 'Enemy team', split: this.theirs() },
   ]);
+
+  /** What each team is built around (2+ tanks, divers or poke, or no tank at all), one line per trait. */
+  protected readonly comps = computed(() => {
+    const m = this.champs();
+    const traits = (ids: number[]) => enemyTraits(ids.flatMap((id) => (m.has(id) ? [m.get(id)!] : [])));
+    return [
+      ...traits(this.allies()).map((t) => ({ key: 'ally', label: 'Your team', trait: t.trait, title: TRAIT_TITLES[t.trait](t.count), text: FOR_US[t.trait] })),
+      ...traits(this.enemies()).map((t) => ({ key: 'enemy', label: 'Enemy team', trait: t.trait, title: TRAIT_TITLES[t.trait](t.count), text: VS_THEM[t.trait] })),
+    ];
+  });
 
   protected readonly gold = computed(() => {
     const o = this.rift.overlay();
