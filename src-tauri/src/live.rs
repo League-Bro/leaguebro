@@ -84,7 +84,9 @@ pub fn starter_items(data: &Value, starter: &[i64], items: &HashMap<i64, ShopIte
 /// items when you can afford them, otherwise the biggest pieces of the next
 /// item that fit, going a level deeper when a component itself is too
 /// pricey (530 gold can't buy a Noonquiver, but it can buy its Long Sword).
-/// Empty when nothing fits.
+/// Gold left over once nothing more of an item fits goes to the pieces of
+/// the item after it (1600 gold: a Noonquiver, then Boots for the boots
+/// after it, rather than 300 gold unspent). Empty when nothing fits.
 pub fn buy_now(data: &Value, next: &[NextItem], items: &HashMap<i64, ShopItem>) -> Vec<StarterItem> {
     let mut left = float(data, "/activePlayer/currentGold").floor() as i64;
     let mut owned = my_items(data, items);
@@ -93,8 +95,11 @@ pub fn buy_now(data: &Value, next: &[NextItem], items: &HashMap<i64, ShopItem>) 
         Some(s) => s.count += 1,
         None => out.push(StarterItem { id, name: name.to_string(), count: 1, price }),
     };
-    // Each pass is one build item; move on to the next only once it's bought.
-    for (i, it) in next.iter().take(2).enumerate() {
+    // Each pass is one build item, in build order, until the gold runs out.
+    for (i, it) in next.iter().take(3).enumerate() {
+        if left <= 0 {
+            break;
+        }
         if it.price > 0 && it.price <= left {
             left -= it.price;
             add(&mut out, it.id, &it.name, it.price);
@@ -113,7 +118,6 @@ pub fn buy_now(data: &Value, next: &[NextItem], items: &HashMap<i64, ShopItem>) 
                 add(&mut out, id, &items.get(&id).map_or_else(|| format!("Item {id}"), |c| c.name.clone()), price);
             }
         }
-        break;
     }
     out
 }
@@ -828,10 +832,19 @@ mod tests {
         assert_eq!(plan(530.0, json!([]), 260.0), [(1036, 1)]);
         // Pickaxe fits: the biggest piece first, then a Dagger from the Noonquiver.
         assert_eq!(plan(1200.0, json!([]), 1000.0), [(1037, 1), (1042, 1)]);
+        // A Noonquiver, and the rest isn't enough for the Pickaxe: Boots for the boots after it.
+        assert_eq!(plan(1600.0, json!([]), 1000.0), [(6670, 1), (1001, 1)]);
         // Enough for the whole item: buy it, then start on the boots.
         assert_eq!(plan(3400.0, json!([]), 1000.0), [(6673, 1), (1001, 1)]);
         // Too poor for any piece.
         assert!(plan(200.0, json!([]), 260.0).is_empty());
+        // Only ever the build's items or their parts, whatever the gold.
+        let build_parts = [6673, 1037, 6670, 1036, 1042, 3006, 1001];
+        for gold in (0..=6000).step_by(50) {
+            for (id, _) in plan(gold as f64, json!([]), 1000.0) {
+                assert!(build_parts.contains(&id), "{id} at {gold} gold isn't part of the build");
+            }
+        }
     }
 
     #[test]

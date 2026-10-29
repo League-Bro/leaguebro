@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { RiftService } from '../core/rift.service';
 import { championIcon, positionLabel } from '../core/assets';
 import { championSplit, teamSplit } from '../core/damage';
-import { EnemyTrait, TRAIT_LABELS, answers, enemyTraits } from '../core/comp';
+import { answers, enemyTraits } from '../core/comp';
 import { demoPickSuggestions } from '../core/demo';
 import { PickSuggestions, SuggestedPick } from '../core/models';
 import { Loader } from './loader';
@@ -71,16 +71,6 @@ interface Shown extends SuggestedPick {
           }
         </div>
 
-        @if (traits().length) {
-          <div class="faint small">
-            Enemy team so far:
-            @for (t of traits(); track t.trait) {
-              <span class="tag trait">{{ traitLabel(t.trait) }} ({{ t.count }})</span>
-            }
-          </div>
-        } @else if (enemyCount() >= 2) {
-          <div class="faint small">Enemy team so far: nothing stands out (no 2+ tanks, divers or poke).</div>
-        }
         @if (best().length) {
           <div class="grid">
             @for (p of best(); track p.championId) {
@@ -102,7 +92,7 @@ interface Shown extends SuggestedPick {
               OP.GG's tier list for {{ pos(s.position) }} (Emerald+). Switches to counters once your lane opponent is picked.
             }
             @if (need()) { Picks that add {{ need() }} damage are moved up: your team is mostly {{ need() === 'AP' ? 'AD' : 'AP' }}. }
-            @if (traits().length) { Picks that answer the enemy comp are moved up a little too. }
+            @if (traits().length) { Picks that answer the enemy comp (see the team card below) are moved up a little too. }
           </p>
         } @else if (s.error) {
           <p class="loss small">Couldn't get picks from OP.GG: {{ s.error }}</p>
@@ -126,8 +116,8 @@ interface Shown extends SuggestedPick {
               }
               @if (p.adds || p.answers.length) {
                 <div class="tags">
-                  @if (p.adds) { <span class="tag dmg">Adds {{ p.adds }}</span> }
-                  @for (a of p.answers; track a) { <span class="tag dmg">{{ a }}</span> }
+                  @if (p.adds) { <span class="tag">Adds {{ p.adds }}</span> }
+                  @for (a of p.answers; track a) { <span class="tag">{{ a }}</span> }
                 </div>
               }
             </div>
@@ -151,10 +141,9 @@ interface Shown extends SuggestedPick {
     .tile .champ-icon { width: 40px; height: 40px; border-radius: 10px; flex: none; }
     .info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
     .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .tags { display: flex; gap: 4px; flex-wrap: wrap; }
-    .tag { font-size: 10.5px; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--line-strong); color: var(--text-dim); }
-    .tag.dmg { border-color: var(--accent); color: var(--accent); }
-    .tag.trait { margin-left: 4px; border-color: var(--enemy); color: var(--enemy); }
+    .tags { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; min-width: 0; }
+    .tag { font-size: 11.5px; line-height: 1.3; color: var(--accent); }
+    .tag::before { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: currentColor; margin: 0 6px 1px 0; vertical-align: middle; }
     .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
     .small { font-size: 12.5px; margin: 0; }
     .tiny { font-size: 11.5px; white-space: nowrap; }
@@ -211,8 +200,6 @@ export class PickSuggest {
     return s.ad >= 70 ? 'AP' : s.ap >= 70 ? 'AD' : '';
   });
 
-  protected readonly enemyCount = computed(() => this.enemies().length);
-
   /** What the enemy picks so far are built around (tanks, dive, poke, squishy). */
   protected readonly traits = computed(() => {
     const enemies = (this.rift.champSelect()?.enemies ?? []).map((e) => this.champs().get(e.championId)).filter((c) => !!c);
@@ -251,10 +238,6 @@ export class PickSuggest {
     } finally {
       this.busy.set(false);
     }
-  }
-
-  traitLabel(t: EnemyTrait): string {
-    return TRAIT_LABELS[t];
   }
 
   games(n: number): string {
