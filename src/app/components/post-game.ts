@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, injec
 import { RiftService } from '../core/rift.service';
 import { championIcon, clock, kdaRatio } from '../core/assets';
 import { PostGame, PostPlayer, PostTeam } from '../core/models';
-import { Grade, rerollReview, review, reviewText } from '../core/roast';
+import { Grade, review, reviewText } from '../core/roast';
 import { GoldGraph } from './gold-graph';
 import { ItemTip } from './item-tip';
 import { LpChangeTag } from './lp-change';
@@ -63,10 +63,6 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
             <p>{{ r.review.verdict }}</p>
           </div>
           <div class="actions">
-            <button class="ghost" (click)="reroll()" title="Let the Bro try again with new lines">
-              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="2" /><circle cx="9" cy="9" r="1.4" fill="currentColor" /><circle cx="15" cy="15" r="1.4" fill="currentColor" /><circle cx="15" cy="9" r="1.4" fill="currentColor" /><circle cx="9" cy="15" r="1.4" fill="currentColor" /></svg>
-              New lines
-            </button>
             <button class="ghost" (click)="copy()" [title]="'Copy the review to send to your friends'">{{ copied() ? 'Copied' : 'Copy' }}</button>
             @if (!r.player.isMe) {
               @if (r.player.name) { <button class="ghost" (click)="openPlayer(r.player)">See their profile</button> }
@@ -75,7 +71,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
           </div>
         </div>
         <div class="lines">
-          @for (x of r.review.lines; track x.kind + x.line) {
+          @for (x of r.review.lines; track x.kind) {
             <div class="roast-line" [class.good]="x.good" [style.animation-delay.ms]="$index * 60">
               <span class="stat mono" [title]="x.why">{{ x.stat }}</span>
               <span>{{ x.line }}</span>
@@ -290,7 +286,6 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .verdict p { margin: 2px 0 0; font-size: 15px; font-weight: 600; font-style: italic; }
     .whom { margin-left: 6px; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--text-dim); }
     .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px; align-self: flex-start; }
-    .actions button { display: inline-flex; align-items: center; gap: 6px; }
     .roast .clean { margin: 0; }
     /* One stat column as wide as the widest chip, shared by every line. */
     .lines { display: grid; grid-template-columns: minmax(96px, max-content) 1fr; gap: 8px 12px; }
@@ -414,12 +409,9 @@ export class PostGameView {
     const team = at ? g.teams.find((t) => t.teamId === at.teamId) : this.myTeam();
     const player = at ? team?.players[at.seat] : this.me();
     if (!team || !player) return null;
-    this.rerolls();
     const r = review(g, team, player, (id) => this.rift.champName(id));
-    return r ? { player, team, review: r } : null;
+    return r ? { player, review: r } : null;
   });
-  /** Bumped by "New lines", so the review is built again. */
-  private readonly rerolls = signal(0);
   protected readonly copied = signal(false);
   protected readonly maxDamage = computed(() =>
     Math.max(1, ...this.game().teams.flatMap((t) => t.players.map((p) => p.damage))),
@@ -495,13 +487,6 @@ export class PostGameView {
     this.picked.set(already || t.players[seat].isMe ? null : { teamId: t.teamId, seat });
     // The card sits above the scoreboard, so bring it into view.
     setTimeout(() => this.reviewCard()?.nativeElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
-  }
-  /** Lets the Bro write this review again from scratch. */
-  reroll(): void {
-    const r = this.review();
-    if (!r) return;
-    rerollReview(this.game(), r.team, r.player);
-    this.rerolls.update((n) => n + 1);
   }
   /** The review as text on the clipboard, for the group chat. */
   copy(): void {

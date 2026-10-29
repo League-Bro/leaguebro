@@ -838,14 +838,6 @@ export function review(game: PostGame, team: PostTeam, me: PostPlayer, champName
   return { grade, score, verdict, lines };
 }
 
-/** Throws away the remembered lines for one player's review, so the next look builds new ones. */
-export function rerollReview(game: PostGame, team: PostTeam, me: PostPlayer): void {
-  const mem = loadMemory();
-  const seed = `${game.gameId}:${team.teamId}:${me.championId}:`;
-  for (const key of Object.keys(mem.picks)) if (key.startsWith(seed)) delete mem.picks[key];
-  saveMemory(mem);
-}
-
 /** The review as plain text, for sharing. */
 export function reviewText(r: Review, who: string): string {
   return [`The Bro's review of ${who}: ${r.grade}. ${r.verdict}`, ...r.lines.map((x) => `${x.good ? '+' : '-'} [${x.stat}] ${x.line}`)].join('\n');
