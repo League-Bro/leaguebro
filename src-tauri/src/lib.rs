@@ -359,17 +359,23 @@ fn set_overlay_buttons(state: State<'_, AppState>, rects: Vec<[f64; 4]>) {
     state.overlay_input.lock().unwrap().buttons = rects;
 }
 
-/// Moves the unlocked overlay with the mouse: `start` at the press, then once
-/// per mouse move. Not Windows' own window dragging (`data-tauri-drag-region`):
+/// Moves the overlay with the mouse while its move handle is held: `start` at
+/// the press, `move` once per mouse move, `end` at the release (saves the
+/// spot). Not Windows' own window dragging (`data-tauri-drag-region`):
 /// that move loop calls `ClipCursor(NULL)` when it ends, which frees the cursor
 /// from League's window, so with two monitors it could slide onto the other one
 /// until you alt-tabbed and League clipped it again.
 #[tauri::command]
-fn drag_overlay(app: AppHandle, state: State<'_, AppState>, start: bool) {
+fn drag_overlay(app: AppHandle, state: State<'_, AppState>, step: String) {
     let Some(w) = app.get_webview_window("overlay") else { return };
+    if step == "end" {
+        state.overlay_input.lock().unwrap().drag = None;
+        engine::save_overlay_position(&app);
+        return;
+    }
     let (Ok(cursor), Ok(pos)) = (app.cursor_position(), w.outer_position()) else { return };
     let mut input = state.overlay_input.lock().unwrap();
-    if start {
+    if step == "start" {
         input.drag = Some(([cursor.x, cursor.y], [pos.x, pos.y]));
         return;
     }

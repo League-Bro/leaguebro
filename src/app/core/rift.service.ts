@@ -469,7 +469,7 @@ export class RiftService {
   }
 
   private lastButtonRects = '';
-  /** Where the overlay's buttons are (padlock, "show more"), so they stay clickable while locked. */
+  /** Where the overlay's buttons are (move handle, "show more"), so they stay clickable while the rest lets clicks through. */
   setOverlayButtons(rects: [number, number, number, number][]): void {
     if (this.demo || this.windowLabel() !== 'overlay') return;
     const key = JSON.stringify(rects);
@@ -478,10 +478,10 @@ export class RiftService {
     invoke('set_overlay_buttons', { rects }).catch(() => (this.lastButtonRects = ''));
   }
 
-  /** Moves the unlocked overlay with the cursor: `start` on press, then on each move (see `drag_overlay`). */
-  dragOverlay(start: boolean): void {
+  /** Moves the overlay with the cursor while its move handle is held: `start` on press, `move` on each move, `end` on release (see `drag_overlay`). */
+  dragOverlay(step: 'start' | 'move' | 'end'): void {
     if (this.demo || this.windowLabel() !== 'overlay') return;
-    invoke('drag_overlay', { start }).catch(() => undefined);
+    invoke('drag_overlay', { step }).catch(() => undefined);
   }
 
   private lastOverlaySize = [0, 0];

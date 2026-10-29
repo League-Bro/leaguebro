@@ -320,9 +320,9 @@ pub struct AppState {
     pub overlay_input: std::sync::Mutex<OverlayInput>,
 }
 
-/// Mouse handling for the overlay window. It starts unlocked (takes input,
-/// draggable); while locked it's click-through except over its buttons
-/// (the padlock, "show more").
+/// Mouse handling for the overlay window. It's locked (click-through except
+/// over its buttons: the move handle, "show more") whenever it shows; the
+/// handle drags it while held.
 #[derive(Debug, Default)]
 pub struct OverlayInput {
     pub unlocked: bool,
@@ -654,14 +654,14 @@ pub fn set_overlay_visible(app: &AppHandle, visible: bool) {
             if let Some(p) = pos {
                 let _ = w.set_position(p);
             }
-            // Starts unlocked so it can be dragged; the padlock locks it in place.
-            set_overlay_locked(app, false);
+            // Clicks go through to the game; the move handle stays clickable.
+            set_overlay_locked(app, true);
         }
         let _ = w.set_always_on_top(true);
         let _ = w.show();
     } else {
-        // A dragged overlay that was never locked still keeps its spot.
-        if w.is_visible().unwrap_or(false) && app.state::<AppState>().overlay_input.lock().unwrap().unlocked {
+        // Keeps the spot of a drag that never got its release.
+        if w.is_visible().unwrap_or(false) {
             save_overlay_position(app);
         }
         let _ = w.hide();
@@ -711,11 +711,12 @@ pub async fn watch_overlay_cursor(app: AppHandle) {
             continue;
         }
         let state = app.state::<AppState>();
-        let (unlocked, buttons, passthrough) = {
+        let (unlocked, buttons, passthrough, dragging) = {
             let i = state.overlay_input.lock().unwrap();
-            (i.unlocked, i.buttons.clone(), i.passthrough)
+            (i.unlocked, i.buttons.clone(), i.passthrough, i.drag.is_some())
         };
-        if unlocked {
+        // Mid-drag the cursor can run ahead of the move handle; the window keeps taking it until the release.
+        if unlocked || (dragging && !passthrough) {
             continue;
         }
         let over = match (app.cursor_position(), w.inner_position(), w.scale_factor()) {

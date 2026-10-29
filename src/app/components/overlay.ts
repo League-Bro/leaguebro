@@ -1,5 +1,5 @@
 import { DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, afterRenderEffect, computed, effect, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, afterRenderEffect, computed, effect, inject, input, signal, viewChild } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { championIcon, clock } from '../core/assets';
 import { OverlayState } from '../core/models';
@@ -66,16 +66,11 @@ const PREVIEW: OverlayState = {
   host: {
     '[style.width.px]': 'width() / scale()',
     '[style.zoom]': 'scale()',
-    '(document:contextmenu)': '$event.preventDefault()',
+    '(document:contextmenu)': 'inline() || $event.preventDefault()',
   },
   template: `
     @if (state(); as o) {
       <div class="panel" [style.opacity]="opacity()">
-        @if (!locked()) {
-          <!-- Invisible: unlocked looks the same as locked, it just takes the drag. -->
-          <!-- Our own drag, not data-tauri-drag-region: Windows' drag frees the cursor from League's window. -->
-          <div class="drag-layer" (pointerdown)="dragStart($event)" (pointermove)="dragMove($event)"></div>
-        }
         <!-- One line, spread across the width: skill order, item gold diffs, CS/min (each can be off). -->
         @if (o.skillMax.length || (showLane() && o.lane) || (showTeam() && o.team) || (showCs() && csPerMin(o))) {
           <div class="top">
@@ -211,24 +206,22 @@ const PREVIEW: OverlayState = {
             }
           </div>
         }
-        <!-- A pin on the top-right corner: quiet while unlocked (movable), pink once locked in place. -->
-        <button #lockBtn class="lock" [class.on]="locked()"
-          [title]="locked() ? 'Locked: clicks go through to the game. Click to unlock and move' : 'Lock in place, so clicks go through to the game'"
-          [attr.aria-label]="locked() ? 'Unlock overlay' : 'Lock overlay'"
-          (click)="rift.setOverlayLocked(!locked())">
-          <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true">
-            <rect x="3" y="7.5" width="10" height="7" rx="1.6" fill="currentColor" />
-            <path [attr.d]="locked() ? 'M5.2 7.5V5.4a2.8 2.8 0 0 1 5.6 0v2.1' : 'M5.2 7.5V5.4a2.8 2.8 0 0 1 5.5-.8'" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+        <!-- The move handle, a pin on the top-right corner: hold and drag; the rest of the overlay lets clicks through to the game. -->
+        <button #moveBtn class="move" [title]="inline() ? 'In game, drag here to move it' : 'Drag to move'" aria-label="Move overlay" (pointerdown)="dragStart($event)" (pointermove)="dragMove($event)"
+          (pointerup)="dragEnd($event)" (pointercancel)="dragEnd($event)">
+          <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+            <path d="M8 1.5v13M1.5 8h13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            <path d="M5.8 3.7 8 1.5l2.2 2.2M5.8 12.3 8 14.5l2.2-2.2M3.7 5.8 1.5 8l2.2 2.2M12.3 5.8 14.5 8l-2.2 2.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </button>
-        @if (preview() && !rift.overlay()) {
+        @if (preview() && !inline() && !rift.overlay()) {
           <div class="cap center">Preview</div>
         }
       </div>
     }
   `,
   styles: `
-    :host { display: block; box-sizing: border-box; padding: 6px; }
+    :host { display: block; box-sizing: border-box; padding: 8px; }
     .panel {
       position: relative;
       background: rgba(15, 13, 20, 0.88);
@@ -239,20 +232,19 @@ const PREVIEW: OverlayState = {
       font-size: 13px;
       text-shadow: 0 1px 2px #000;
     }
-    .drag-layer { position: absolute; inset: 0; z-index: 10; border-radius: 14px; cursor: move; }
     .top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 5px; margin-bottom: 6px; }
     /* Tighter labels so skills, both gold diffs and CS/min fit one line at the default width. */
     .top .cap { letter-spacing: 0.02em; }
-    /* Sits on the corner, half over the border, in the host's 6px padding. */
-    .lock {
-      all: unset; position: absolute; z-index: 11; top: -6px; right: -6px;
-      display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; box-sizing: border-box;
-      background: rgb(22, 19, 29); border: 1px solid rgba(255, 79, 163, 0.35);
-      color: var(--text-faint); cursor: pointer; transition: color 0.12s, background 0.12s;
+    /* Sits on the corner, half over the border, in the host's 8px padding. Pink like the app's accents, with the system's pointing hand. */
+    .move {
+      all: unset; position: absolute; z-index: 11; top: -8px; right: -8px;
+      display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; box-sizing: border-box;
+      background: rgb(43, 20, 36); border: 1px solid rgba(255, 79, 163, 0.6);
+      color: var(--accent); cursor: pointer; transition: color 0.12s, background 0.12s, box-shadow 0.12s;
     }
-    .lock:hover { color: #fff; border-color: var(--accent); }
-    .lock.on { color: #fff; background: var(--accent); border-color: var(--accent); }
-    .lock.on:hover { filter: brightness(1.12); }
+    .move:hover { color: #fff; border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+    .move:active { color: #fff; background: var(--accent); border-color: var(--accent); }
+    .move svg { pointer-events: none; }
     .gold { display: flex; align-items: center; gap: 2px; white-space: nowrap; }
     .gold .champ { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.15); }
     /* The game's own gold coin (floating text icon), bundled in public/. */
@@ -264,7 +256,7 @@ const PREVIEW: OverlayState = {
     .gold .diff.cs { color: #7cc4ff; }
     .gold .diff.cs.low { color: var(--loss); }
     .gold .diff.cs.great { color: var(--win); }
-    /* Above the drag layer, and kept clickable when locked (see the button rects). */
+    /* Kept clickable while the rest of the overlay lets clicks through (see the button rects). */
     .pick, .foe { all: unset; position: relative; z-index: 11; cursor: pointer; border-radius: 5px; }
     .pick { display: flex; align-items: center; gap: 2px; padding: 0 2px; white-space: nowrap; }
     .pick:hover, .pick.open { background: rgba(255, 255, 255, 0.08); }
@@ -314,7 +306,7 @@ const PREVIEW: OverlayState = {
     .comp .n { width: 10px; margin-left: -14px; font: 10px var(--mono); color: var(--text-faint); text-align: right; }
     /* Blue, not red or green, so it doesn't read like the gold diffs. */
     .sit .tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #7cc4ff; }
-    /* Wraps instead of cutting off: the locked overlay can't show a tooltip. */
+    /* Wraps instead of cutting off: the click-through overlay can't show a tooltip. */
     .sit .why { margin: -2px 0 2px 32px; font-size: 11.5px; color: var(--text-dim); line-height: 1.3; }
     /* Same blue as the tags; a real button, with a chevron that flips when open. */
     .more {
@@ -331,7 +323,23 @@ const PREVIEW: OverlayState = {
 export class Overlay {
   protected readonly rift = inject(RiftService);
   protected readonly preview = this.rift.overlayPreview;
-  protected readonly state = computed(() => this.rift.overlay() ?? (this.preview() ? PREVIEW : null));
+  /** Shown inside the main window (Settings' preview), not as the overlay window. */
+  readonly inline = input(false);
+  protected readonly state = computed(() => this.rift.overlay() ?? (this.preview() || this.inline() ? this.previewState() : null));
+  /** The sample game, minus what the engine leaves out with your settings (skill order, the build). */
+  private readonly previewState = computed((): OverlayState => {
+    const c = this.rift.config();
+    const opgg = c?.recSource === 'opgg';
+    const build = opgg && (c?.useRecommendedBuilds ?? true);
+    return {
+      ...PREVIEW,
+      skillMax: opgg && (c?.showSkillHint ?? true) ? PREVIEW.skillMax : [],
+      nextSkill: opgg && (c?.showSkillHint ?? true) ? PREVIEW.nextSkill : null,
+      nextItems: build ? PREVIEW.nextItems : [],
+      buyNow: build ? PREVIEW.buyNow : [],
+      hasBuild: build,
+    };
+  });
   protected readonly opacity = computed(() => this.rift.config()?.overlayOpacity ?? 0.9);
   protected readonly width = computed(() => this.rift.config()?.overlayWidth ?? 340);
   protected readonly scale = computed(() => this.rift.config()?.overlayScale ?? 1);
@@ -379,10 +387,9 @@ export class Overlay {
     const ready = new Set([it, ...(it?.components ?? [])].filter((x) => x?.affordable).map((x) => x!.id));
     return list.every((b) => ready.has(b.id) && b.count === 1) ? [] : list;
   });
-  protected readonly locked = this.rift.overlayLocked;
   protected time = clock;
   protected champIcon = championIcon;
-  private readonly lockBtn = viewChild<ElementRef<HTMLElement>>('lockBtn');
+  private readonly moveBtn = viewChild<ElementRef<HTMLElement>>('moveBtn');
   private readonly moreBtn = viewChild<ElementRef<HTMLElement>>('moreBtn');
   private readonly goldBtn = viewChild<ElementRef<HTMLElement>>('goldBtn');
   private readonly foesRow = viewChild<ElementRef<HTMLElement>>('foesRow');
@@ -395,7 +402,7 @@ export class Overlay {
       onCleanup(() => clearInterval(id));
     });
     afterRenderEffect(() => {
-      // The buttons stay clickable while the rest of the locked overlay is click-through.
+      // The buttons stay clickable while the rest of the overlay is click-through.
       // Re-measured on every update: rows above "more" (timers, items) move it.
       this.state();
       this.expanded();
@@ -408,7 +415,7 @@ export class Overlay {
       this.showBuyNow();
       this.width();
       this.scale();
-      const rects = [this.lockBtn(), this.moreBtn(), this.goldBtn(), this.foesRow()]
+      const rects = [this.moveBtn(), this.moreBtn(), this.goldBtn(), this.foesRow()]
         .map((b) => b?.nativeElement.getBoundingClientRect())
         .filter((r): r is DOMRect => !!r)
         .map((r): [number, number, number, number] => [r.x, r.y, r.width, r.height]);
@@ -421,20 +428,29 @@ export class Overlay {
 
   private dragFrame = 0;
 
+  /** Hold the move handle to drag the window; it stays where you let go. */
   protected dragStart(e: PointerEvent): void {
     if (e.button !== 0) return;
+    e.preventDefault();
     // Captured, so moves keep coming when a fast drag gets ahead of the window.
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    this.rift.dragOverlay(true);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    this.rift.dragOverlay('start');
   }
 
   protected dragMove(e: PointerEvent): void {
-    if (!(e.target as HTMLElement).hasPointerCapture(e.pointerId) || this.dragFrame) return;
+    if (!(e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId) || this.dragFrame) return;
     // Once per frame; the backend reads the cursor itself, so skipped moves lose nothing.
     this.dragFrame = requestAnimationFrame(() => {
       this.dragFrame = 0;
-      this.rift.dragOverlay(false);
+      this.rift.dragOverlay('move');
     });
+  }
+
+  /** Let go (or the drag was cancelled): the backend saves the spot. */
+  protected dragEnd(e: PointerEvent): void {
+    if (!(e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) return;
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    this.rift.dragOverlay('end');
   }
 
   protected pickFoe(name: string): void {

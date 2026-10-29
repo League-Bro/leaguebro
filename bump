@@ -1,0 +1,6 @@
+#!/bin/sh
+# Shortcut for bump.cmd from Git Bash / zsh, run from the project folder.
+# Usage: ./bump            (next patch version, e.g. 0.1.13 -> 0.1.14)
+#        ./bump 0.2.0      (a specific version)
+cd "$(dirname "$0")" || exit 1
+exec cmd //c bump.cmd "$@"

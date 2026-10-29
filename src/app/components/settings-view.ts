@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, effect, inject, signal, untracked }
 import { RiftService } from '../core/rift.service';
 import { UpdateService } from '../core/update.service';
 import { FullscreenHint } from './fullscreen-hint';
+import { Overlay } from './overlay';
 import { IS_MAC } from '../core/platform';
 import { AbilityKeys, CacheInfo, CacheName, Config, GlobalSets } from '../core/models';
 
@@ -25,7 +26,7 @@ type BoolKey =
 @Component({
   selector: 'rl-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FullscreenHint],
+  imports: [FullscreenHint, Overlay],
   template: `
     @if (rift.config(); as cfg) {
       <div class="grid">
@@ -68,19 +69,10 @@ type BoolKey =
             <input type="number" placeholder="auto" [value]="cfg.overlayY ?? ''" (change)="setPos('overlayY', $any($event.target).value)" />
             <button class="ghost icon-btn" (click)="resetPos()" title="Reset position" aria-label="Reset position"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.34-5.66M4 4v5h5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg></button>
           </div>
-          <p class="faint small">
-            @if (rift.overlayLocked()) {
-              Screen pixels from the top-left. Leave empty for the top-right corner, or unlock the overlay and drag it where you want it.
-            } @else {
-              Unlocked: drag the overlay to where you want it, then lock it here or with the padlock on the overlay.
-            }
-          </p>
+          <p class="faint small">Screen pixels from the top-left. Leave empty for the top-right corner, or drag the overlay by its corner handle during a game.</p>
           <div class="row">
-            <button (click)="rift.previewOverlay(!rift.overlayPreview())">
-              {{ rift.overlayPreview() ? 'Hide preview' : 'Preview overlay' }}
-            </button>
-            <button [class.ghost]="rift.overlayLocked()" (click)="toggleLock()">
-              {{ rift.overlayLocked() ? 'Unlock to move' : 'Lock in place' }}
+            <button (click)="previewOpen.set(!previewOpen())">
+              {{ previewOpen() ? 'Hide preview' : 'Preview overlay' }}
             </button>
           </div>
         </section>
@@ -286,12 +278,30 @@ type BoolKey =
         </section>
       </div>
       @if (error()) { <p class="loss">{{ error() }}</p> }
+      @if (previewOpen()) {
+        <!-- A copy of the overlay inside this window, with your settings applied as you change them;
+             the real overlay window (and where it sits in game) is left alone. -->
+        <aside class="preview-dock">
+          <div class="dock-head">
+            <span class="faint small">Overlay preview</span>
+            <button class="ghost icon-btn sm" (click)="previewOpen.set(false)" title="Close preview" aria-label="Close preview"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" /></svg></button>
+          </div>
+          <rl-overlay [inline]="true" />
+        </aside>
+      }
     }
   `,
   styles: `
     /* Columns, not a grid row per pair of cards: a tall card (Overlay) no longer
        leaves a gap next to a short one, and cards fill each column in order. */
     .grid { columns: 360px 3; column-gap: 16px; }
+    /* Floats over the page so it stays in view while you change the other overlay cards. */
+    .preview-dock {
+      position: fixed; right: 20px; bottom: 20px; z-index: 50; max-height: calc(100vh - 40px); max-width: calc(100vw - 40px); overflow: auto;
+      padding: 6px 6px 2px; border-radius: 16px; border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+      background: linear-gradient(160deg, #24324a, #2d3b2a 60%, #3a3326); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+    }
+    .dock-head { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 0 8px; }
     .grid > .card { break-inside: avoid; margin-bottom: 16px; gap: 6px; }
     .field { display: flex; align-items: center; gap: 10px; }
     .field > span:first-child { width: 72px; flex: none; color: var(--text-dim); }
@@ -331,6 +341,7 @@ export class SettingsView {
   protected readonly rift = inject(RiftService);
   protected readonly updates = inject(UpdateService);
   protected readonly error = signal('');
+  protected readonly previewOpen = signal(false);
   protected readonly abilitySlots: (keyof AbilityKeys)[] = ['q', 'w', 'e', 'r'];
   protected readonly osName = IS_MAC ? 'macOS' : 'Windows';
   protected readonly installHint = IS_MAC ? '/Applications/League of Legends.app/Contents/LoL' : 'C:\\Riot Games\\League of Legends';
@@ -439,11 +450,6 @@ export class SettingsView {
   }
   resetPos(): void {
     this.save((c) => ({ ...c, overlayX: null, overlayY: null, overlayBottom: null }));
-  }
-  async toggleLock(): Promise<void> {
-    const unlocking = this.rift.overlayLocked();
-    if (unlocking && !this.rift.overlayPreview()) await this.rift.previewOverlay(true);
-    await this.rift.setOverlayLocked(!unlocking);
   }
   setKey(key: keyof AbilityKeys, raw: string): void {
     // Empty is fine: displays fall back to Q/W/E/R (RiftService.abilityKey).
