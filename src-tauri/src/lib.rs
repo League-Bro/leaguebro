@@ -224,9 +224,9 @@ async fn get_match(state: State<'_, AppState>, game_id: i64, queue_name: String,
     // Seen from `puuid` (another player's profile) when given, else from you.
     let puuid = puuid.as_deref().filter(|p| !p.is_empty()).unwrap_or(text(&me, "puuid"));
     let (path, timeline_path) = (format!("/lol-match-history/v1/games/{game_id}"), postgame::timeline_path(game_id));
-    let (game, timeline) = tokio::join!(lcu.get(&path), lcu.get(&timeline_path));
+    let (game, timeline, lanes) = tokio::join!(lcu.get(&path), lcu.get(&timeline_path), postgame::lane_games(&state));
     let game = game.map_err(msg)?.ok_or("The League client doesn't have this game anymore")?;
-    let mut summary = postgame::parse(&game, puuid, &queue_name).ok_or_else(|| "Couldn't read this game".to_string())?;
+    let mut summary = postgame::parse(&game, puuid, &queue_name, &lanes).ok_or_else(|| "Couldn't read this game".to_string())?;
     // The gold graph is a bonus: the scoreboard still shows without a timeline.
     if let (Ok(Some(t)), Some(mine)) = (timeline, summary.teams.first().map(|t| t.team_id)) {
         summary.gold_lead = postgame::gold_lead(&game, &t, mine);

@@ -35,16 +35,18 @@ interface ChoiceRow {
     @if (rift.config()?.recSource === 'opgg' && state(); as s) {
       <section class="card rec">
         <div class="head">
-          <h3>Recommended for {{ rift.champName(s.championId) }}</h3>
+          <h3>{{ inGame() ? 'Build for' : 'Recommended for' }} {{ rift.champName(s.championId) }}</h3>
           <div class="spacer"></div>
           @if (s.rec; as r) {
             <span class="faint small">
               OP.GG · {{ r.games | number }} games
               @if (r.runes; as ru) { @if (!ru.custom) { · {{ ru.winRate * 100 | number: '1.0-1' }}% win } }
             </span>
-            <button class="ghost why-toggle" [class.on]="showWhy()" (click)="toggleWhy()">
-              {{ showWhy() ? 'Hide why' : 'Why these picks?' }}
-            </button>
+            @if (!inGame()) {
+              <button class="ghost why-toggle" [class.on]="showWhy()" (click)="toggleWhy()">
+                {{ showWhy() ? 'Hide why' : 'Why these picks?' }}
+              </button>
+            }
           } @else if (s.loading) {
             <!-- Keeps the header its loaded height. -->
             <button class="ghost why-toggle" style="visibility: hidden" tabindex="-1" aria-hidden="true">Why these picks?</button>
@@ -164,9 +166,11 @@ interface ChoiceRow {
           }
           <div class="layout">
             <!-- One panel for runes | spells + skill order, one for items + situational items. -->
+            <!-- In game runes and spells are set, so only the skill order stays from this panel. -->
+            @if (!inGame() || r.skillMax.length) {
             <section class="panel wide">
               <div class="cols">
-            @if (r.runes; as ru) {
+            @if (inGame() ? null : r.runes; as ru) {
               <div class="part">
                 <header>
                   <h4>Runes</h4>
@@ -225,7 +229,7 @@ interface ChoiceRow {
             }
 
             <div class="stack">
-              @if (r.spells.length === 2) {
+              @if (r.spells.length === 2 && !inGame()) {
                 <div class="part">
                   <header><h4>Summoner spells</h4></header>
                   @if (spellRows(); as rows) {
@@ -263,6 +267,7 @@ interface ChoiceRow {
             </div>
               </div>
             </section>
+            }
 
             @if (r.starter || r.buildOrder.length || r.situationalPool.length) {
             <section class="panel wide">
@@ -534,6 +539,8 @@ interface ChoiceRow {
 })
 export class RecCard {
   protected readonly rift = inject(RiftService);
+  /** In game: runes and spells are locked in by then, so only the skill order and items show. */
+  readonly inGame = input(false);
   protected readonly minGames = MIN_GAMES;
   protected readonly champIcon = championIcon;
   protected readonly showWhy = signal(false);

@@ -63,6 +63,10 @@ const REGIONS = [
       </section>
     } @else if (profile(); as p) {
       <section class="card head">
+        <!-- Your most played champion's splash art behind you. -->
+        @if (p.insights.champions[0]; as top) {
+          @if (rift.champSplash(top.championId); as sp) { <div class="splash"><img [src]="sp" alt="" /></div> }
+        }
         <div class="me">
         @if (icon(p.iconId); as url) { <img class="avatar" [src]="url" alt="" /> } @else { <div class="avatar"></div> }
         <div class="who" [title]="p.name">
@@ -323,6 +327,10 @@ const REGIONS = [
       display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
       grid-template-areas: 'me ranks side'; align-items: center; gap: 20px;
     }
+    .head { position: relative; padding: 30px 28px; min-height: 190px; overflow: hidden; }
+    .head > :not(.splash) { position: relative; }
+    .head .splash img { object-position: 60% 22%; opacity: 0.7; }
+    .head .splash::after { background: linear-gradient(90deg, var(--bg-raised) 22%, rgba(20, 18, 25, 0.7) 55%, rgba(20, 18, 25, 0.35)), linear-gradient(0deg, var(--bg-raised), transparent 60%); }
     .me { grid-area: me; display: flex; align-items: center; gap: 16px; min-width: 0; }
     .avatar { flex: none; }
     .who h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -330,27 +338,35 @@ const REGIONS = [
     .side { grid-area: side; display: flex; align-items: center; justify-content: flex-end; gap: 18px; }
     .graph { display: flex; flex-direction: column; gap: 2px; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    @media (max-width: 1100px) {
+    /* 1400 rather than 1100: the side rail takes ~216px of the window. */
+    @media (max-width: 1400px) {
       .head { grid-template-columns: 1fr auto; grid-template-areas: 'me side' 'ranks ranks'; row-gap: 14px; }
     }
     @media (max-width: 760px) {
       .head { grid-template-columns: 1fr; grid-template-areas: 'me' 'ranks' 'side'; }
       .side { justify-content: center; flex-wrap: wrap; }
     }
-    .avatar { width: 64px; height: 64px; border-radius: 50%; border: 2px solid var(--accent); background: var(--bg-sunken); box-shadow: 0 0 22px var(--accent-glow); }
+    .avatar { width: clamp(60px, 5.5vw, 84px); height: clamp(60px, 5.5vw, 84px); border-radius: 50%; border: 2px solid var(--accent); background: var(--bg-sunken); box-shadow: 0 0 22px var(--accent-glow); }
     .who { min-width: 0; }
-    .who h2 { font-size: 24px; }
+    /* Shrinks with the window so a long Name#TAG fits before it gets cut with "…". */
+    .who h2 { font-size: clamp(18px, 1.7vw, 26px); letter-spacing: -0.02em; }
     .ranks { display: flex; gap: 36px; flex-wrap: wrap; }
     .rank { display: flex; align-items: center; gap: 12px; }
     .rank-text { display: flex; flex-direction: column; gap: 2px; }
-    .crest { width: 44px; height: 44px; object-fit: contain; flex: none; }
+    .rank-text > :nth-child(2) { font: 700 19px var(--display); letter-spacing: -0.01em; }
+    .crest { width: 56px; height: 56px; filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.5)); object-fit: contain; flex: none; }
     .crest.unranked { opacity: 0.45; }
     .cap { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; }
     .small { font-size: 12.5px; margin: 0; }
     .note { margin-top: 8px; }
-    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 12px; margin-top: 12px; }
-    .tile { background: var(--glass), var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
-    .big { font: 800 22px var(--display); }
+    /* The numbers as one strip instead of seven boxes. */
+    .tiles {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); margin-top: 12px;
+      background: var(--glass), var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+    }
+    .tile { padding: 16px 18px; border-left: 1px solid var(--line); }
+    .tile:first-child { border-left: none; }
+    .big { font: 700 27px/1 var(--display); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; margin-bottom: 6px; }
     .modes { margin-top: 12px; flex-wrap: wrap; border-radius: 18px; }
     .modes .count { opacity: 0.6; margin-left: 4px; }
     .now { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--win); margin-right: 5px; vertical-align: 1px; }
@@ -393,7 +409,8 @@ const REGIONS = [
       display: grid; grid-template-columns: 44px minmax(150px, 1.3fr) 92px 40px 64px 76px 68px 190px; align-items: center; gap: 14px;
       padding: 8px 14px; border: 1px solid var(--line); border-left: 3px solid var(--text-faint); border-radius: 12px;
     }
-    .match { width: 100%; text-align: left; background: var(--glass), var(--bg-raised); color: var(--text); }
+    .match { width: 100%; text-align: left; background: var(--glass), var(--bg-raised); color: var(--text); content-visibility: auto; contain-intrinsic-size: auto 58px; transition: transform 0.15s var(--ease-out), border-color 0.15s; }
+    .match:hover:not(.static) { transform: translateX(3px); }
     .match-head {
       padding-top: 0; padding-bottom: 2px; border-color: transparent;
       font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
@@ -592,6 +609,7 @@ export class ProfileView {
       const show = (p: MyProfile) => {
         this.profile.set(p);
         this.rift.profileCache.set(this.rift.profileKey(who), p);
+        if (!who) this.rift.setMyIcon(p.iconId);
         // Found by name: remembered under the puuid too, which a scoreboard link uses.
         if (who && !who.puuid && p.puuid) this.rift.profileCache.set(p.puuid, p);
       };

@@ -39,6 +39,7 @@ const PREVIEW: OverlayState = {
   hasBuild: true,
   skillMax: ['Q', 'W', 'E'],
   nextSkill: 'Q',
+  skillLevels: [4, 2, 1, 1],
   lane: {
     opponent: 'Zed', championId: 238, mine: 5350, theirs: 3967,
     foes: [
@@ -71,19 +72,9 @@ const PREVIEW: OverlayState = {
   template: `
     @if (state(); as o) {
       <div class="panel" [style.opacity]="opacity()">
-        <!-- One line, spread across the width: skill order, item gold diffs, CS/min (each can be off). -->
-        @if (o.skillMax.length || (showLane() && o.lane) || (showTeam() && o.team) || (showCs() && csPerMin(o))) {
+        <!-- One line, spread across the width: item gold diffs, CS/min (each can be off). -->
+        @if ((showLane() && o.lane) || (showTeam() && o.team) || (showCs() && csPerMin(o))) {
           <div class="top">
-            @if (o.skillMax.length) {
-              <div class="skills">
-                @for (k of o.skillMax; track $index; let last = $last) {
-                  <b [class.levelup]="k === o.nextSkill">{{ rift.abilityKey(k) }}</b>@if (!last) { <span class="sep">›</span> }
-                }
-                @if (o.nextSkill && !o.skillMax.includes(o.nextSkill)) {
-                  <b class="levelup">{{ rift.abilityKey(o.nextSkill) }}</b>
-                }
-              </div>
-            }
             <!-- Item gold: you vs an enemy (their icon; your lane opponent unless you picked another), then team vs team, then CS/min. -->
             @if (showLane() && o.lane; as l) {
               @let f = foe();
@@ -109,7 +100,7 @@ const PREVIEW: OverlayState = {
               </div>
             }
             @if (showCs() && csPerMin(o); as cs) {
-              <div class="gold"><span class="cap">CS</span><span class="diff cs" [class.low]="+cs < 5" [class.great]="+cs >= 8">{{ cs }}</span></div>
+              <div class="gold"><span class="cap">CS/min</span><span class="diff cs" [class.low]="+cs < 5" [class.great]="+cs >= 8">{{ cs }}</span></div>
             }
           </div>
           @if (foesOpen() && showLane() && o.lane?.foes?.length) {
@@ -137,6 +128,28 @@ const PREVIEW: OverlayState = {
                 <span class="left">{{ time(t.spawnAt - now()) }}</span>
               </div>
             }
+          </div>
+        }
+        @if (o.skillMax.length) {
+          <!-- The max order with points so far: the skill you're maxing now, the one after it, and a pulse on the one to level when you have a point. -->
+          @let m = maxing(o);
+          <div class="build">
+            <div class="cap">Skill order</div>
+            <div class="maxrow">
+              @for (k of o.skillMax; track k; let i = $index; let last = $last) {
+                <div class="sk" [class.now]="i === m" [class.next]="i === m + 1" [class.done]="points(o, k) >= MAX_RANK" [class.levelup]="k === o.nextSkill">
+                  <b>{{ rift.abilityKey(k) }}</b>
+                  <span class="pips">
+                    @for (p of ranks; track p) { <i [class.on]="p < points(o, k)"></i> }
+                  </span>
+                  @if (i === m) { <span class="tag">Max</span> } @else if (i === m + 1) { <span class="tag">Next</span> }
+                </div>
+                @if (!last) { <span class="sep">›</span> }
+              }
+              @if (o.nextSkill && !o.skillMax.includes(o.nextSkill)) {
+                <div class="sk ult levelup"><b>{{ rift.abilityKey(o.nextSkill) }}</b><span class="tag">Up</span></div>
+              }
+            </div>
           </div>
         }
         @if (o.starter?.length) {
@@ -224,8 +237,10 @@ const PREVIEW: OverlayState = {
     :host { display: block; box-sizing: border-box; padding: 8px; }
     .panel {
       position: relative;
-      background: rgba(15, 13, 20, 0.88);
-      border: 1px solid rgba(255, 79, 163, 0.35);
+      /* Darker, flatter glass with one pink hairline on top, like the app's cards. */
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0) 40%), rgba(11, 10, 16, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      box-shadow: inset 0 1px 0 rgba(255, 79, 163, 0.55);
       border-radius: 14px;
       padding: 10px 12px;
       color: #f1f2f5;
@@ -234,7 +249,7 @@ const PREVIEW: OverlayState = {
     }
     .top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 5px; margin-bottom: 6px; }
     /* Tighter labels so skills, both gold diffs and CS/min fit one line at the default width. */
-    .top .cap { letter-spacing: 0.02em; }
+    .top .cap { font: 500 10.5px var(--font); letter-spacing: 0.02em; }
     /* Sits on the corner, half over the border, in the host's 8px padding. Pink like the app's accents, with the system's pointing hand. */
     .move {
       all: unset; position: absolute; z-index: 11; top: -8px; right: -8px;
@@ -249,7 +264,8 @@ const PREVIEW: OverlayState = {
     .gold .champ { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.15); }
     /* The game's own gold coin (floating text icon), bundled in public/. */
     .gold .coin { width: 14px; height: 14px; margin: 0 1px 0 1px; flex-shrink: 0; }
-    .gold .diff { font: 600 13px var(--mono); color: var(--text-dim); }
+    /* Big glanceable numbers: the app's display face, same-width digits. */
+    .gold .diff { font: 700 14.5px var(--display); font-variant-numeric: tabular-nums; color: var(--text-dim); }
     .gold .diff.ahead { color: var(--win); }
     .gold .diff.behind { color: var(--loss); }
     /* CS/min: red under 5, blue (the situational tags' blue) for 5–7.9, green from 8. */
@@ -266,29 +282,52 @@ const PREVIEW: OverlayState = {
     .foe:hover { background: rgba(255, 255, 255, 0.1); }
     .foe.on { box-shadow: inset 0 0 0 1px rgba(255, 79, 163, 0.6); }
     .foe .champ { width: 20px; height: 20px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.15); }
-    .foe .diff { font: 600 11.5px var(--mono); color: var(--text-dim); }
+    .foe .diff { font: 700 12px var(--display); font-variant-numeric: tabular-nums; color: var(--text-dim); }
     .foe .diff.ahead { color: var(--win); }
     .foe .diff.behind { color: var(--loss); }
-    .skills { display: flex; align-items: center; gap: 2px; font-size: 13px; flex-shrink: 0; }
-    .skills b { color: var(--accent); padding: 0 1px; border-radius: 4px; }
-    .skills .sep { color: var(--text-faint); }
+    /* Skill order: one chip per maxed ability with five pips for its points. The one you're
+       maxing is pink, the next one teal, finished ones fade. */
+    .maxrow { display: flex; align-items: center; gap: 4px; }
+    .maxrow .sep { color: var(--text-faint); font-size: 12px; }
+    .sk {
+      flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 3px 7px; border-radius: 8px;
+      background: rgba(255, 255, 255, 0.035); border: 1px solid transparent;
+    }
+    .sk b { font: 700 14px var(--display); color: var(--text-dim); }
+    .sk .pips { display: flex; gap: 2px; }
+    .sk .pips i { width: 5px; height: 9px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); }
+    .sk .pips i.on { background: var(--text-dim); }
+    .sk .tag { margin-left: auto; font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); }
+    .sk.now { border-color: rgba(255, 79, 163, 0.45); background: rgba(255, 79, 163, 0.1); }
+    .sk.now b, .sk.now .tag { color: var(--accent); }
+    .sk.now .pips i.on { background: var(--accent); box-shadow: 0 0 5px var(--accent-glow); }
+    .sk.next { border-color: rgba(47, 212, 196, 0.35); }
+    .sk.next b, .sk.next .tag { color: var(--accent-2); }
+    .sk.next .pips i.on { background: var(--accent-2); }
+    .sk.done { opacity: 0.5; }
+    .sk.ult { flex: none; }
+    .sk.ult b { color: var(--gold); }
     /* The key to put your next point in. */
-    .levelup { color: #fff; background: rgba(255, 79, 163, 0.35); animation: pulse 1.6s ease-in-out infinite; }
-    @keyframes pulse { 50% { background: rgba(255, 79, 163, 0.1); } }
+    .levelup { animation: pulse 1.6s ease-in-out infinite; }
+    @keyframes pulse { 50% { box-shadow: 0 0 0 2px rgba(255, 79, 163, 0.45), 0 0 12px var(--accent-glow); } }
     .timers { display: flex; flex-direction: column; gap: 3px; }
-    .timer { display: flex; justify-content: space-between; padding: 3px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.04); border-left: 2px solid var(--text-faint); }
+    .timer {
+      display: flex; justify-content: space-between; align-items: center; padding: 2px 9px; border-radius: 8px;
+      background: rgba(255, 255, 255, 0.035); border-left: 2px solid var(--text-faint); font-size: 12.5px; color: var(--text-dim);
+    }
     .timer.ally { border-left-color: var(--ally); }
     .timer.enemy { border-left-color: var(--enemy); }
-    .timer.soon { background: rgba(255, 79, 163, 0.16); }
-    .timer.soon .left { color: var(--accent); }
-    .left { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-    .build { margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 6px; display: flex; flex-direction: column; gap: 4px; }
-    .cap { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-faint); }
+    .timer.soon { background: rgba(255, 79, 163, 0.16); color: var(--text); box-shadow: inset 0 0 0 1px rgba(255, 79, 163, 0.35); }
+    .timer.soon .left { color: var(--accent); text-shadow: 0 0 10px var(--accent-glow); }
+    .left { font: 700 15px var(--display); font-variant-numeric: tabular-nums; color: var(--text); }
+    .build { margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.06); padding-top: 7px; display: flex; flex-direction: column; gap: 5px; }
+    .cap { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-faint); }
+    .build > .cap:first-child::before { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); margin: 0 6px 1px 0; vertical-align: middle; box-shadow: 0 0 6px var(--accent-glow); }
     .center { text-align: center; margin-top: 6px; }
     .item { display: flex; align-items: center; gap: 8px; }
-    .item img { width: 24px; height: 24px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.15); }
-    .item .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .item .price { font: 12px var(--mono); color: var(--text-faint); }
+    .item img { width: 26px; height: 26px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.14); }
+    .item .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+    .item .price { font: 700 12.5px var(--display); font-variant-numeric: tabular-nums; color: var(--text-faint); }
     .item .count { margin-left: 5px; font: 12px var(--mono); color: var(--text-dim); }
     .item.ready .price { color: var(--win); }
     .buy .chips { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -302,6 +341,7 @@ const PREVIEW: OverlayState = {
     .buy .chip .price { font: 11.5px var(--mono); color: var(--win); }
     .buy .chip .count { margin-left: 3px; font: 11.5px var(--mono); color: var(--text-dim); }
     .comp { padding-left: 14px; font-size: 12px; color: var(--text-dim); }
+    .comp .name { font-weight: 400; }
     .comp img { width: 20px; height: 20px; }
     .comp .n { width: 10px; margin-left: -14px; font: 10px var(--mono); color: var(--text-faint); text-align: right; }
     /* Blue, not red or green, so it doesn't read like the gold diffs. */
@@ -335,11 +375,23 @@ export class Overlay {
       ...PREVIEW,
       skillMax: opgg && (c?.showSkillHint ?? true) ? PREVIEW.skillMax : [],
       nextSkill: opgg && (c?.showSkillHint ?? true) ? PREVIEW.nextSkill : null,
+      skillLevels: PREVIEW.skillLevels,
       nextItems: build ? PREVIEW.nextItems : [],
       buyNow: build ? PREVIEW.buyNow : [],
       hasBuild: build,
     };
   });
+  protected readonly MAX_RANK = 5;
+  protected readonly ranks = [0, 1, 2, 3, 4];
+  /** Points in one ability (Q, W, E or R). */
+  protected points(o: OverlayState, key: string): number {
+    return o.skillLevels?.['QWER'.indexOf(key)] ?? 0;
+  }
+  /** Index in the max order of the ability you're maxing now: the first one not at rank 5. */
+  protected maxing(o: OverlayState): number {
+    const i = o.skillMax.findIndex((k) => this.points(o, k) < this.MAX_RANK);
+    return i < 0 ? o.skillMax.length : i;
+  }
   protected readonly opacity = computed(() => this.rift.config()?.overlayOpacity ?? 0.9);
   protected readonly width = computed(() => this.rift.config()?.overlayWidth ?? 340);
   protected readonly scale = computed(() => this.rift.config()?.overlayScale ?? 1);

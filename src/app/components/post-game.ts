@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { RiftService } from '../core/rift.service';
-import { championIcon, clock, kdaRatio } from '../core/assets';
+import { championIcon, clock, kdaRatio, queueLabel } from '../core/assets';
 import { PostGame, PostPlayer, PostTeam } from '../core/models';
 import { Grade, review, reviewText } from '../core/roast';
 import { GoldGraph } from './gold-graph';
@@ -27,7 +27,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
             @if (g.lpChange; as lp) {
               <rl-lp-change class="lp" [change]="lp" [showRank]="true" />
             }
-            <span class="muted">{{ rift.champName(m.championId) }} · {{ g.queueName || mode(g.gameMode) }} · {{ time(g.duration) }}</span>
+            <span class="muted">{{ rift.champName(m.championId) }} · {{ queue(g.queueId, g.gameMode) }} · {{ time(g.duration) }}</span>
           </div>
           <div class="line">
             <div><b class="mono">{{ m.kills }} / {{ m.deaths }} / {{ m.assists }}</b><span class="faint">{{ kda(m) }} KDA</span></div>
@@ -89,8 +89,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
           <div class="team-head" [class.ally]="t.isMine" [class.enemy]="!t.isMine">
             <h3>{{ t.isMine ? 'Your team' : 'Enemy team' }}</h3>
             @if (g.result !== 'remake') { <span [class]="t.win ? 'win' : 'loss'">{{ t.win ? 'Victory' : 'Defeat' }}</span> }
-            <span class="faint mono">{{ t.kills }} kills · {{ k(t.gold) }} gold</span>
-            <span class="faint mono">{{ objectives(t) }}</span>
+            <span class="faint mono stats" [title]="t.kills + ' kills · ' + k(t.gold) + ' gold · ' + objectives(t)">{{ t.kills }} kills · {{ k(t.gold) }} gold · {{ objectives(t) }}</span>
           </div>
           <div class="board" [class.clickable]="roastsOn()">
             <div class="row-p head" aria-hidden="true">
@@ -304,23 +303,26 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .roast-line.good .stat { color: var(--win); background: rgba(60, 207, 142, 0.1); border-color: rgba(60, 207, 142, 0.35); }
     @media (prefers-reduced-motion: reduce) { .roast-line, .tone-top .grade { animation: none; } }
 
-    .hero { position: relative; display: flex; align-items: center; gap: 20px; padding: 24px; border-left: 3px solid var(--text-faint); }
+    .hero { position: relative; display: flex; align-items: center; gap: 24px; padding: 30px 28px; min-height: 200px; overflow: hidden; border-left: 3px solid var(--text-faint); }
+    .hero .splash img { opacity: 0.75; }
     .hero > :not(.splash) { position: relative; }
     .hero > .close { position: absolute; top: 10px; right: 10px; }
     .hero.win { border-left-color: var(--win); }
     .hero.loss { border-left-color: var(--loss); }
     .hero.win .big { border-color: var(--win); box-shadow: 0 0 22px rgba(60, 207, 142, 0.35); }
     .hero.loss .big { border-color: var(--loss); box-shadow: 0 0 22px rgba(255, 90, 78, 0.35); }
-    .big { width: 80px; height: 80px; border-radius: 18px; border: 2px solid var(--accent); }
+    .big { width: 96px; height: 96px; border-radius: 22px; border: 2px solid var(--accent); }
     .grow { flex: 1; gap: 10px; min-width: 0; }
     .title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-    .title h2 { font-size: 28px; }
+    .title h2 { font-size: 44px; font-weight: 700; letter-spacing: -0.015em; line-height: 1; }
+    .hero.win h2 { text-shadow: 0 0 36px rgba(60, 207, 142, 0.45); }
+    .hero.loss h2 { text-shadow: 0 0 36px rgba(255, 90, 78, 0.4); }
     .title .lp { font-size: 18px; }
     .hero.win h2 { color: var(--win); }
     .hero.loss h2 { color: var(--loss); }
-    .line { display: flex; gap: 26px; flex-wrap: wrap; }
+    .line { display: flex; gap: 34px; flex-wrap: wrap; }
     .line div { display: flex; flex-direction: column; gap: 1px; }
-    .line b { font-size: 16px; font-weight: 600; }
+    .line b { font: 700 23px/1.1 var(--display); letter-spacing: -0.005em; font-variant-numeric: tabular-nums; }
     .line .faint { font-size: 11.5px; }
     .items { display: flex; gap: 4px; }
     .items .slot {
@@ -338,7 +340,10 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
       .teams:not(.solo) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     .team { min-width: 0; }
-    .team-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin: 22px 0 8px; font-size: 13px; }
+    /* Name and result on one line, the numbers on the next, never wrapping: both teams' headers
+       stay the same height, so the two scoreboards start level. */
+    .team-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 12px; margin: 22px 0 8px; font-size: 13px; }
+    .team-head .stats { flex-basis: 100%; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .team-head h3 { margin: 0; }
     .team-head.ally h3 { color: var(--ally); }
     .team-head.enemy h3 { color: var(--enemy); }
@@ -524,9 +529,8 @@ export class PostGameView {
     const n = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
     return [n(t.towers, 'tower'), n(t.dragons, 'dragon'), n(t.barons, 'baron')].join(' · ');
   }
-  mode(m: string): string {
-    return m ? m.charAt(0) + m.slice(1).toLowerCase() : 'Game';
-  }
+  /** The queue's name, like "Normal (Draft Pick)" (the client's own names vary and the raw game mode says "Classic"). */
+  queue = queueLabel;
 }
 
 /** A round gridline step giving about 3–5 lines up to `max`. */

@@ -1,11 +1,11 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { RiftService } from '../core/rift.service';
 import { championIcon, positionLabel } from '../core/assets';
 import { championSplit, teamSplit } from '../core/damage';
-import { answers, enemyTraits } from '../core/comp';
+import { EnemyTrait, answers, enemyTraits } from '../core/comp';
 import { demoPickSuggestions } from '../core/demo';
 import { PickSuggestions, SuggestedPick } from '../core/models';
 import { Loader } from './loader';
@@ -20,6 +20,21 @@ const PLAYED = 10_000;
 const NUDGE = 0.01;
 const MAX_NUDGES = 2;
 
+/** The enemy trait, as the locked-in view names it. */
+const THREAT: Record<EnemyTrait, (n: number) => string> = {
+  tanks: (n) => `${n} tanks`,
+  dive: (n) => `${n} divers`,
+  poke: (n) => `${n} poke champions`,
+  squishy: () => 'No tank',
+};
+/** What answers it, for "Nobody on your team …" lines. */
+const ANSWER: Record<EnemyTrait, string> = {
+  tanks: 'shreds tanks',
+  dive: 'stops dive',
+  poke: 'engages on poke',
+  squishy: 'bursts squishies',
+};
+
 interface Shown extends SuggestedPick {
   /** Gives your team the damage it lacks ("AP" / "AD"), or ''. */
   adds: string;
@@ -31,14 +46,60 @@ interface Shown extends SuggestedPick {
  * Champions to consider before you lock in, at the top of champ select:
  * counters to your lane opponent once they're picked, the lane's strongest
  * picks before that (OP.GG, `picks.rs`). Nudged toward the damage your team
- * lacks and picks that answer the enemy comp (`comp.ts`). Gone once you lock in.
+ * lacks and picks that answer the enemy comp (`comp.ts`). Once you lock in it stays
+ * for the rest of champ select as "your team vs theirs": your pick's lane numbers and
+ * which of your champions answer what the enemy comp is built around.
  */
 @Component({
   selector: 'rl-pick-suggest',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DecimalPipe, NgTemplateOutlet, Loader],
   template: `
-    @if (visible() && state(); as s) {
+    @if (locked()) {
+      <section class="card picks">
+        <div class="head">
+          <h3>Your team vs their team</h3>
+          @if (laneOpponent(); as o) { <span class="faint small">{{ pos(state()?.position ?? kept()?.position ?? '') }} vs {{ rift.champName(o) }}</span> }
+        </div>
+        @if (myPick(); as p) {
+          <div class="mine">
+            <img class="champ-icon" [src]="icon(p.championId)" alt="" />
+            <div class="info">
+              <div class="name">Your pick: {{ rift.champName(p.championId) }}</div>
+              @if (p.vsGames > 0 && laneOpponent(); as o) {
+                <div class="small"><span class="mono" [class.win]="p.vsWinRate >= 0.515" [class.loss]="p.vsWinRate <= 0.485">{{ p.vsWinRate * 100 | number: '1.1-1' }}%</span> <span class="faint">against {{ rift.champName(o) }} over {{ games(p.vsGames) }}</span></div>
+              } @else {
+                <div class="small"><span class="mono">{{ p.winRate * 100 | number: '1.1-1' }}%</span> <span class="faint">in lane overall, tier {{ p.tier }}</span></div>
+              }
+            </div>
+          </div>
+        }
+        @if (cover().length) {
+          <div class="cover">
+            @for (c of cover(); track c.trait) {
+              <div class="row-c">
+                <span class="threat">Enemy: {{ c.title }}</span>
+                @if (c.by.length) {
+                  <span class="by">
+                    @for (b of c.by; track b.id) {
+                      <span class="ally" [title]="rift.champName(b.id) + ': ' + b.tag"><img [src]="icon(b.id)" alt="" />{{ rift.champName(b.id) }}</span>
+                    }
+                    <span class="faint small">{{ c.by.length === 1 ? 'answers' : 'answer' }} it</span>
+                  </span>
+                } @else {
+                  <span class="gap">Nobody on your team {{ c.answer }}. Play around it, or itemize for it.</span>
+                }
+              </div>
+            }
+          </div>
+        } @else {
+          <p class="faint small">Nothing stands out in the enemy comp yet: no pair of tanks, divers or poke. This updates as they pick.</p>
+        }
+        @if (teamMostly(); as m) {
+          <p class="faint small">Your team is mostly {{ m }} damage, so they can stack {{ m === 'AD' ? 'armor' : 'magic resist' }} against you. {{ m === 'AD' ? 'Armor' : 'Magic' }} penetration helps.</p>
+        }
+      </section>
+    } @else if (visible() && state(); as s) {
       <section class="card picks">
         <div class="head">
           <h3>
@@ -146,6 +207,16 @@ interface Shown extends SuggestedPick {
     .tag::before { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: currentColor; margin: 0 6px 1px 0; vertical-align: middle; }
     .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
     .small { font-size: 12.5px; margin: 0; }
+    .mine { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 12px; background: var(--bg-sunken); }
+    .mine .champ-icon { width: 40px; height: 40px; border-radius: 10px; }
+    .mine .small .faint { margin-left: 4px; }
+    .cover { display: flex; flex-direction: column; gap: 6px; }
+    .row-c { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+    .threat { font-weight: 600; color: var(--enemy); min-width: 150px; }
+    .by { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .ally { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px 2px 2px; border-radius: 999px; background: var(--accent-2-soft); color: var(--accent-2); font-weight: 600; font-size: 12.5px; }
+    .ally img { width: 20px; height: 20px; border-radius: 50%; }
+    .gap { color: var(--gold); }
     .tiny { font-size: 11.5px; white-space: nowrap; }
   `,
 })
@@ -177,10 +248,52 @@ export class PickSuggest {
     return o === null ? s : { ...s, opponentId: o, guessed: false, picks: o ? s.picks : s.picks.map((p) => ({ ...p, vsGames: 0, score: p.winRate })) };
   });
 
-  /** Only while you're still picking. */
+  /** While you're still picking. */
   protected readonly visible = computed(() => {
     const cs = this.rift.champSelect();
     return !!cs && !cs.locked;
+  });
+  /** Locked in: the card turns into your team vs theirs until champ select ends. */
+  protected readonly locked = computed(() => !!this.rift.champSelect()?.locked);
+
+  /** The last suggestions seen this champ select: the engine stops sending them once you lock in. */
+  protected readonly kept = signal<PickSuggestions | null>(null);
+  private readonly keep = effect(() => {
+    const s = this.state();
+    const cs = this.rift.champSelect();
+    if (!cs) this.kept.set(null);
+    else if (s) this.kept.set(s);
+  });
+
+  protected readonly laneOpponent = computed(() => this.kept()?.opponentId || 0);
+
+  /** Your locked champion's numbers, if it was among the suggestions. */
+  protected readonly myPick = computed(() => {
+    const id = this.rift.champSelect()?.myChampionId ?? 0;
+    return id > 0 ? (this.kept()?.picks.find((p) => p.championId === id) ?? null) : null;
+  });
+
+  /** "AD" or "AP" when your whole team (you included) is 70%+ one kind of damage, else ''. */
+  protected readonly teamMostly = computed(() => {
+    const ids = (this.rift.champSelect()?.allies ?? []).map((p) => p.championId || p.pickIntent).filter((id) => id > 0);
+    const s = teamSplit(ids.map((id) => this.split(id)).filter((x) => !!x));
+    if (!s || s.counted < 3) return '';
+    return s.ad >= 70 ? 'AD' : s.ap >= 70 ? 'AP' : '';
+  });
+
+  /** Each enemy trait and which of your team's champions answer it. */
+  protected readonly cover = computed(() => {
+    const allies = (this.rift.champSelect()?.allies ?? []).map((p) => p.championId || p.pickIntent).filter((id) => id > 0);
+    return this.traits().map((t) => ({
+      trait: t.trait,
+      title: THREAT[t.trait](t.count),
+      answer: ANSWER[t.trait],
+      by: allies.flatMap((id) => {
+        const alias = this.champs().get(id)?.alias ?? '';
+        const tag = alias ? answers(t.trait, alias) : '';
+        return tag ? [{ id, tag }] : [];
+      }),
+    }));
   });
 
   protected readonly enemies = computed(() => (this.rift.champSelect()?.enemies ?? []).map((e) => e.championId).filter((id) => id > 0));

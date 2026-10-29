@@ -139,6 +139,7 @@ export function demoSnapshot(): Snapshot {
       hasBuild: true,
       skillMax: ['Q', 'W', 'E'],
       nextSkill: 'Q',
+      skillLevels: [4, 2, 1, 1],
       lane: {
         opponent: 'Zed', championId: 238, mine: 5350, theirs: 3967,
         foes: [
@@ -165,7 +166,7 @@ export function demoSnapshot(): Snapshot {
   };
 }
 
-/** The demo snapshot for `?scene=` (champselect, pick, swiftplay, postgame, postgame-bad, early-back); in game otherwise. */
+/** The demo snapshot for `?scene=` (champselect, pick, swiftplay, bots, postgame, postgame-bad, early-back, idle, queue, offline); in game otherwise. */
 export function demoScene(scene: string | null): Snapshot {
   const snap = demoSnapshot();
   const away = { loading: null, overlay: null };
@@ -180,8 +181,25 @@ export function demoScene(scene: string | null): Snapshot {
     }
     case 'champselect':
       return { ...snap, ...away, status: { ...snap.status, phase: 'ChampSelect' }, champSelect: demoChampSelect(), situational: demoSituational(false) };
+    case 'idle':
+    case 'queue':
+      // Nothing on the Live tab: the radar, saying what it's waiting on.
+      return { ...snap, ...away, status: { ...snap.status, phase: scene === 'queue' ? 'Matchmaking' : 'None' }, rec: null, lastImport: null };
+    case 'offline':
+      return { ...snap, ...away, status: { ...snap.status, connected: false, phase: 'None', summoner: null }, rec: null, lastImport: null };
     case 'swiftplay':
       return { ...snap, ...away, status: { ...snap.status, phase: 'Lobby' }, rec: null, lastImport: null, swiftplay: demoSwiftplay() };
+    case 'bots':
+      // A custom game: the loading screen list only has you; the rest come from the scoreboard (friends by name, bots as "Bot").
+      return {
+        ...snap,
+        loading: snap.loading && { ...snap.loading, allies: snap.loading.allies.filter((p) => p.isMe), enemies: [] },
+        overlay: snap.overlay && {
+          ...snap.overlay,
+          playerNames: { 516: 'hubcus#NA1', 64: 'urbanfox#8108', 222: 'Jinxed#EUW', 412: 'hookcity#NA1' },
+          bots: snap.overlay.enemyChampions ?? [],
+        },
+      };
     case 'postgame':
     case 'postgame-bad':
       return { ...snap, ...away, status: { ...snap.status, phase: 'EndOfGame' }, rec: null, postGame: demoPostGame(scene === 'postgame-bad') };
@@ -399,18 +417,34 @@ function demoGoldLead(duration: number, final: number): GoldPoint[] {
 /** The post-game summary demo: a good game, or with `bad`, one worth roasting. */
 export function demoPostGame(bad = false): PostGame {
   const lanes = ['top', 'jungle', 'mid', 'adc', 'support'] as const;
-  let seat = 0;
   const p = (
     puuid: string, name: string | null, championId: number, k: number, d: number, a: number,
     cs: number, gold: number, damage: number, vision: number, items: number[], isMe = false,
   ): PostPlayer => ({
-    puuid, name, isMe, position: lanes[seat++ % 5], championId, level: 13 + ((k + a) % 5), kills: k, deaths: d, assists: a, cs, gold, damage, vision,
+    puuid, name, isMe, position: null, championId, level: 13 + ((k + a) % 5), kills: k, deaths: d, assists: a, cs, gold, damage, vision,
     items: [...items, 0, 0, 0, 0, 0, 0].slice(0, 6).concat(3340), spells: [4, 14],
   });
   const me = bad
     ? p('me', 'Dom#NA1', 103, 2, 11, 3, 128, 8400, 9100, 41, [3118, 3020, 1058], true)
     : p('me', 'Dom#NA1', 103, 11, 2, 9, 226, 14650, 32400, 22, [3118, 3020, 4645, 3157, 1058], true);
   const [mineKills, theirKills] = bad ? [22, 31] : [31, 20];
+  const mine = [
+    p('a1', 'TreeHugger#NA1', 516, 2, 4, 9, 198, 10900, 14200, 18, [3020, 1058]),
+    p('a2', 'Gank Plank#0001', 64, 7, 5, 12, 41, 11800, 17600, 39, [3135]),
+    me,
+    p('a4', 'Cannon Minion#7777', 222, 10, 3, 8, 245, 14100, 29800, 14, [3089, 3020]),
+    p('', null, 412, 1, 6, 21, 33, 9750, 6100, 71, [2003]),
+  ];
+  const theirs = [
+    p('e1', 'Noxian Pride#EUW', 122, 6, 7, 3, 201, 11200, 21900, 12, [3020]),
+    p('e2', 'Punch First#NA1', 254, 4, 8, 8, 52, 9900, 15300, 33, []),
+    p('e3', 'Shadow Step#ZED', 238, 7, 6, 4, 188, 11000, 23700, 17, [1058]),
+    p('e4', 'Void Hunter#NA1', 145, 3, 6, 6, 214, 11400, 19800, 11, [3135]),
+    p('e5', 'Hook City#NA1', 555, 0, 4, 11, 29, 8800, 7400, 58, [2003]),
+  ];
+  // Team gold is the players' gold added up, and the lead graph ends on the difference, like the real summary.
+  const gold = (ps: PostPlayer[]) => ps.reduce((a, x) => a + x.gold, 0);
+  for (const team of [mine, theirs]) team.forEach((x, i) => (x.position = lanes[i]));
   return {
     gameId: bad ? 2 : 1,
     queueId: 420,
@@ -418,28 +452,16 @@ export function demoPostGame(bad = false): PostGame {
     gameMode: 'CLASSIC',
     duration: 1834,
     result: bad ? 'loss' : 'win',
-    goldLead: demoGoldLead(1834, bad ? -8900 : 8900),
+    goldLead: demoGoldLead(1834, gold(mine) - gold(theirs)),
     lpChange: bad ? { delta: -19, tier: 'GOLD', division: 'II', lp: 47, moved: '' } : { delta: 22, tier: 'GOLD', division: 'I', lp: 3, moved: 'up' },
     teams: [
       {
-        teamId: 100, win: !bad, isMine: true, kills: mineKills, gold: 61200, dragons: 3, barons: 1, towers: 9,
-        players: [
-          p('a1', 'TreeHugger#NA1', 516, 2, 4, 9, 198, 10900, 14200, 18, [3020, 1058]),
-          p('a2', 'Gank Plank#0001', 64, 7, 5, 12, 41, 11800, 17600, 39, [3135]),
-          me,
-          p('a4', 'Cannon Minion#7777', 222, 10, 3, 8, 245, 14100, 29800, 14, [3089, 3020]),
-          p('', null, 412, 1, 6, 21, 33, 9750, 6100, 71, [2003]),
-        ],
+        teamId: 100, win: !bad, isMine: true, kills: mineKills, gold: gold(mine), dragons: 3, barons: 1, towers: 9,
+        players: mine,
       },
       {
-        teamId: 200, win: bad, isMine: false, kills: theirKills, gold: 52300, dragons: 1, barons: 0, towers: 3,
-        players: [
-          p('e1', 'Noxian Pride#EUW', 122, 6, 7, 3, 201, 11200, 21900, 12, [3020]),
-          p('e2', 'Punch First#NA1', 254, 4, 8, 8, 52, 9900, 15300, 33, []),
-          p('e3', 'Shadow Step#ZED', 238, 7, 6, 4, 188, 11000, 23700, 17, [1058]),
-          p('e4', 'Void Hunter#NA1', 145, 3, 6, 6, 214, 11400, 19800, 11, [3135]),
-          p('e5', 'Hook City#NA1', 555, 0, 4, 11, 29, 8800, 7400, 58, [2003]),
-        ],
+        teamId: 200, win: bad, isMine: false, kills: theirKills, gold: gold(theirs), dragons: 1, barons: 0, towers: 3,
+        players: theirs,
       },
     ],
   };

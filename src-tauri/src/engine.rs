@@ -1103,7 +1103,8 @@ impl Engine {
             None => {
                 let path = format!("/lol-match-history/v1/games/{}", p.game_id);
                 let Ok(Some(game)) = lcu.get(&path).await else { return };
-                let Some(mut summary) = postgame::parse(&game, &self.my_puuid, &p.queue_name) else { return };
+                let lanes = postgame::lane_games(&self.app.state::<AppState>()).await;
+                let Some(mut summary) = postgame::parse(&game, &self.my_puuid, &p.queue_name, &lanes) else { return };
                 if let (Ok(Some(t)), Some(mine)) = (lcu.get(&postgame::timeline_path(p.game_id)).await, summary.teams.first().map(|t| t.team_id)) {
                     summary.gold_lead = postgame::gold_lead(&game, &t, mine);
                 }
@@ -1475,13 +1476,15 @@ impl Engine {
             let ids = |t: &[(String, String)]| t.iter().filter_map(|(k, n)| sh.live_champion(k, n)).map(|c| c.id).collect();
             st.ally_champions = ids(&ours);
             st.enemy_champions = ids(&theirs);
-            sh.overlay = Some(st.clone());
+            st.bots = ids(&live::bot_champions(&data));
             // The client's session can come without names (seen in ranked, October 2026);
             // the game has them.
             let names: Vec<(i64, String)> = live::riot_ids(&data)
                 .into_iter()
                 .filter_map(|(k, n, id)| Some((sh.live_champion(&k, &n)?.id, id)))
                 .collect();
+            st.player_names = names.iter().filter(|(c, _)| !st.bots.contains(c)).cloned().collect();
+            sh.overlay = Some(st.clone());
             if let Some(view) = sh.loading.as_mut() {
                 if fill_names(view, &names) {
                     let _ = self.app.emit("loading", Some(view.clone()));

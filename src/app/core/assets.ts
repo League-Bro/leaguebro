@@ -17,13 +17,16 @@ export function profileIcon(id: number): string {
 }
 
 const QUEUE_LABELS: Record<number, string> = {
-  420: 'Ranked Solo/Duo', 440: 'Ranked Flex', 400: 'Normal Draft', 430: 'Normal Blind', 490: 'Quickplay',
-  480: 'Swiftplay', 450: 'ARAM', 900: 'URF', 1900: 'URF', 1300: 'Nexus Blitz', 1700: 'Arena', 1710: 'Arena',
+  420: 'Ranked Solo/Duo', 440: 'Ranked Flex', 400: 'Normal (Draft Pick)', 430: 'Normal (Blind Pick)', 490: 'Normal (Quickplay)',
+  480: 'Normal (Swiftplay)', 450: 'ARAM', 900: 'URF', 1900: 'URF', 1300: 'Nexus Blitz', 1700: 'Arena', 1710: 'Arena',
   830: 'Co-op vs AI', 840: 'Co-op vs AI', 850: 'Co-op vs AI', 870: 'Co-op vs AI', 880: 'Co-op vs AI', 890: 'Co-op vs AI',
 };
 
 export function queueLabel(id: number, gameMode = ''): string {
-  return QUEUE_LABELS[id] ?? (gameMode ? gameMode.charAt(0) + gameMode.slice(1).toLowerCase() : `Queue ${id}`);
+  if (QUEUE_LABELS[id]) return QUEUE_LABELS[id];
+  // CLASSIC is the client's name for a Summoner's Rift game, not something players know.
+  if (gameMode === 'CLASSIC') return "Summoner's Rift";
+  return gameMode ? gameMode.charAt(0) + gameMode.slice(1).toLowerCase() : `Queue ${id}`;
 }
 
 /** Converts a client asset path like /lol-game-data/assets/ASSETS/Items/... */

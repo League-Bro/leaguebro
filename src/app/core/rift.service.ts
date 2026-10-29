@@ -379,6 +379,13 @@ export class RiftService {
 
   /** Profiles shown this session, by `profileKey`, so going back to one shows it at once while it refreshes. */
   readonly profileCache = new Map<string, MyProfile>();
+  /** Your profile icon for the side rail's "you" card: set when your profile loads, remembered for the next start. */
+  readonly myIconId = signal<number>(Number(readLocal('lb.myIconId')) || 0);
+  setMyIcon(id: number): void {
+    if (!id || id === this.myIconId()) return;
+    this.myIconId.set(id);
+    writeLocal('lb.myIconId', String(id));
+  }
   profileKey(who: PlayerRef | null): string {
     return who ? (who.puuid || (who.riotId ?? '').toLowerCase()) : 'me';
   }
@@ -552,5 +559,21 @@ export class RiftService {
       .catch(() => {
         this.lastOverlaySize = [0, 0];
       });
+  }
+}
+
+function readLocal(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeLocal(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Storage off: the icon just shows after the profile loads next time.
   }
 }

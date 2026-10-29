@@ -7,19 +7,21 @@ import { PostGameView } from './post-game';
 import { FullscreenHint } from './fullscreen-hint';
 import { TeamDamage } from './team-damage';
 import { PickSuggest } from './pick-suggest';
+import { LiveRadar } from './live-radar';
 import { championIcon, clock, positionLabel } from '../core/assets';
-import { ImportEvent, RecChoice, RecState, SwiftplaySlot } from '../core/models';
+import { ImportEvent, LoadPlayer, OverlayState, RecChoice, RecState, SwiftplaySlot } from '../core/models';
 
 @Component({
   selector: 'rl-live',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [PlayerCard, RecCard, MatchupCard, PostGameView, FullscreenHint, TeamDamage, PickSuggest],
+  imports: [PlayerCard, RecCard, MatchupCard, PostGameView, FullscreenHint, TeamDamage, PickSuggest, LiveRadar],
   template: `
     @if (rift.fullscreenHint()) {
       <rl-fullscreen-hint class="top-hint" />
     }
     @if (!rift.status().connected) {
       <div class="empty card">
+        <rl-live-radar label="Looking for League" [dim]="true" />
         <h2>Waiting for League</h2>
         <p class="muted">Open the League client and League Bro will connect on its own. If it never connects, set your install folder under Settings.</p>
         <p class="faint">These work without the client:</p>
@@ -96,36 +98,50 @@ import { ImportEvent, RecChoice, RecState, SwiftplaySlot } from '../core/models'
       </div>
     } @else if (rift.loading(); as l) {
       @if (rift.overlay(); as o) {
-        <section class="ingame card row">
-          <div class="clock mono">{{ time(o.gameTime) }}</div>
-          <div class="mono">{{ o.kills }}/{{ o.deaths }}/{{ o.assists }} <span class="faint">KDA</span></div>
-          <div class="spacer"></div>
-          @for (t of o.timers; track t.key) {
-            <div class="timer"><span class="muted">{{ t.label }}</span> <span class="mono">{{ time(t.spawnAt - o.gameTime) }}</span></div>
+        <section class="ingame card">
+          @if (myChamp(l); as id) {
+            @if (rift.champSplash(id); as splash) { <div class="splash"><img [src]="splash" alt="" /></div> }
           }
+          <div class="game-meta">
+            <span class="live-pill">LIVE</span>
+            <span class="muted">{{ l.queueName || 'Game' }}</span>
+            @if (myChamp(l); as id) { <span class="faint">· {{ rift.champName(id) }}</span> }
+          </div>
+          <div class="ingame-row">
+            <div class="clock num">{{ time(o.gameTime) }}</div>
+            <div class="kda">
+              <div class="num">{{ o.kills }}<i>/</i><span class="loss">{{ o.deaths }}</span><i>/</i>{{ o.assists }}</div>
+              <div class="faint cap">K / D / A</div>
+            </div>
+            <div class="spacer"></div>
+            @for (t of o.timers; track t.key) {
+              <div class="timer"><span class="faint cap">{{ t.label }}</span> <span class="num">{{ time(t.spawnAt - o.gameTime) }}</span></div>
+            }
+          </div>
         </section>
       }
       <!-- Team vs team first: what the game looks like, then who's in it, then your own lane and build. -->
       <rl-team-damage [allies]="loadAllyIds()" [enemies]="loadEnemyIds()" [showGold]="true" />
-      <div class="row head">
-        <h3 class="section">{{ l.queueName || 'Game' }}</h3>
-        <div class="spacer"></div>
-        <span class="faint">{{ scoutedCount() }} of {{ lookupCount() }} players looked up</span>
-      </div>
+      <!-- Both team headings on one line; the queue name is already in the game card above. -->
       <div class="teams">
-        <h3 class="section ally">Your team</h3>
-        @for (p of l.allies; track $index) {
+        <div class="team-head">
+          <h3 class="section ally">Your team</h3>
+          @if (lookupCount() > 0 && scoutedCount() < lookupCount()) {
+            <span class="faint small">Looking up players… {{ scoutedCount() }} of {{ lookupCount() }}</span>
+          }
+        </div>
+        @for (p of loadAllies(); track $index) {
           <rl-player [name]="p.name" [puuid]="p.isMe ? null : p.puuid" [championId]="p.championId" [position]="p.position"
-            [isMe]="p.isMe" [hiddenLabel]="'Hidden player'" [hiddenNote]="'This player has streamer mode on'" />
+            [isMe]="p.isMe" [hiddenLabel]="p.label ?? 'Hidden player'" [hiddenNote]="p.note ?? 'This player has streamer mode on'" />
         }
-        <h3 class="section enemy">Enemy team</h3>
-        @for (p of l.enemies; track $index) {
+        @if (loadEnemies().length) { <h3 class="section enemy team-head">Enemy team</h3> }
+        @for (p of loadEnemies(); track $index) {
           <rl-player class="foe" [name]="p.name" [puuid]="p.puuid" [championId]="p.championId" [position]="p.position" side="enemy"
-            [hiddenLabel]="'Hidden player'" [hiddenNote]="'This player has streamer mode on'" />
+            [hiddenLabel]="p.label ?? 'Hidden player'" [hiddenNote]="p.note ?? 'This player has streamer mode on'" />
         }
       </div>
       <rl-matchup />
-      <rl-rec-card />
+      <rl-rec-card [inGame]="true" />
     } @else if (visiblePostGame(); as pg) {
       <rl-post-game [game]="pg" (closed)="rift.closedPostGame.set(pg.gameId)" />
     } @else if (postGamePhase() && !rift.postGame()) {
@@ -183,7 +199,8 @@ import { ImportEvent, RecChoice, RecState, SwiftplaySlot } from '../core/models'
           <h2>Swiftplay</h2>
           <p class="muted">Pick your champions in the lobby and their runes show up here.</p>
         } @else {
-          <h2>Nothing going on yet</h2>
+          <rl-live-radar [label]="idleLabel()" />
+          <h2>{{ idleTitle() }}</h2>
           <p class="muted">Queue up. Champ select and the loading screen will show here, and the overlay appears once you're in game.</p>
         }
         @if (rift.lastImport(); as li) {
@@ -200,14 +217,27 @@ import { ImportEvent, RecChoice, RecState, SwiftplaySlot } from '../core/models'
   `,
   styles: `
     .top-hint { display: block; margin-bottom: 14px; }
-    .empty { max-width: 560px; margin: 60px auto; text-align: center; }
+    .empty { max-width: 560px; margin: 60px auto; text-align: center; padding-top: 32px; }
     .empty h2 { font-size: 18px; margin-bottom: 6px; }
     .empty .links { justify-content: center; flex-wrap: wrap; }
     .hero { position: relative; display: flex; align-items: center; gap: 20px; margin-bottom: 8px; padding: 24px; min-height: 132px; }
     .hero > :not(.splash) { position: relative; }
     .hero .big { width: 80px; height: 80px; border-radius: 18px; border: 2px solid var(--accent); background: var(--bg-sunken); box-shadow: 0 0 22px var(--accent-glow); }
-    .hero h2 { font-size: 26px; }
-    .ingame .clock { text-shadow: 0 0 14px var(--accent-glow); }
+    .hero { min-height: 170px; padding: 28px; overflow: hidden; }
+    .hero h2 { font-size: 42px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.05; }
+    .hero .big { width: 96px; height: 96px; border-radius: 22px; }
+    .ingame { position: relative; overflow: hidden; padding: 22px 26px 24px; margin-bottom: 12px; min-height: 168px; }
+    .ingame > :not(.splash) { position: relative; }
+    .ingame .splash img { object-position: 65% 25%; opacity: 0.75; }
+    .game-meta { display: flex; align-items: center; gap: 10px; font-size: 13px; margin-bottom: 10px; }
+    .live-pill { font: 700 10px var(--mono); letter-spacing: 0.1em; color: var(--on-accent); background: var(--accent); padding: 2px 8px; border-radius: 999px; box-shadow: 0 0 14px var(--accent-glow); }
+    .ingame-row { display: flex; align-items: flex-end; gap: 36px; flex-wrap: wrap; }
+    .ingame .clock { font-size: 72px; color: var(--text); text-shadow: 0 0 40px var(--accent-glow); }
+    .kda .num { font-size: 34px; }
+    .kda i { font-style: normal; color: var(--text-faint); margin: 0 4px; font-weight: 400; }
+    .cap { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 6px; }
+    .ingame .timer { flex-direction: column; gap: 0; padding: 10px 14px; border-radius: 14px; background: rgba(9, 8, 12, 0.55); border: 1px solid var(--line); }
+    .ingame .timer .num { font-size: 22px; order: -1; }
     .grow { flex: 1; gap: 6px; }
     .import { font-size: 13px; color: var(--win); }
     .import.bad { color: var(--loss); }
@@ -235,10 +265,12 @@ import { ImportEvent, RecChoice, RecState, SwiftplaySlot } from '../core/models'
       .teams > .enemy, .teams > .foe { grid-column: 1; }
     }
     .banned { filter: grayscale(1) brightness(0.6); }
-    .ingame { gap: 22px; flex-wrap: wrap; }
-    .clock { font-size: 22px; font-weight: 600; color: var(--accent); }
     .timer { font-size: 13px; display: flex; gap: 6px; }
     .head .section { margin-bottom: 0; }
+    .team-head { display: flex; align-items: baseline; gap: 12px; margin: 22px 0 10px; }
+    .team-head .section, .section.team-head { margin: 22px 0 10px; }
+    .team-head .section { margin: 0; }
+    .small { font-size: 12.5px; }
   `,
 })
 export class LiveView {
@@ -394,10 +426,30 @@ export class LiveView {
   protected readonly loadEnemyIds = computed(() =>
     union(this.rift.overlay()?.enemyChampions, this.rift.loading()?.enemies.map((p) => p.championId)),
   );
+  // The loading screen list can leave players out (a custom game showed only you),
+  // so champions the game's scoreboard has and that list doesn't get a row too.
+  protected readonly loadAllies = computed(() => withScoreboard(this.rift.loading()?.allies, this.rift.overlay()?.allyChampions, this.rift.overlay()));
+  protected readonly loadEnemies = computed(() => withScoreboard(this.rift.loading()?.enemies, this.rift.overlay()?.enemyChampions, this.rift.overlay()));
 
   protected icon = championIcon;
   protected pos = positionLabel;
   protected time = clock;
+  protected readonly idleTitle = computed(() => {
+    const phase = this.rift.status().phase;
+    return phase === 'Matchmaking' || phase === 'ReadyCheck' ? 'Finding you a match' : phase === 'Lobby' ? 'In the lobby' : 'Nothing going on yet';
+  });
+  /** What the idle radar says it's waiting on, from the client's phase. */
+  protected readonly idleLabel = computed(() => {
+    switch (this.rift.status().phase) {
+      case 'Lobby': return 'In lobby · waiting for queue';
+      case 'Matchmaking': return 'In queue · finding a match';
+      case 'ReadyCheck': return 'Match found';
+      default: return 'Listening for a game';
+    }
+  });
+  protected myChamp(l: { allies: { isMe: boolean; championId: number }[] }): number {
+    return l.allies.find((p) => p.isMe)?.championId ?? 0;
+  }
 
   /** Imports a slot again with its current picks, after a failed import. */
   async retrySlot(slot: SwiftplaySlot): Promise<void> {
@@ -419,6 +471,18 @@ export class LiveView {
 }
 
 /** Every champion in either list once (the game's own list first). */
+/** The loading screen's players, then a row for each scoreboard champion none of them plays, named from the scoreboard. */
+function withScoreboard(players: LoadPlayer[] | undefined, live: number[] | undefined, o: OverlayState | null): (LoadPlayer & { label?: string; note?: string })[] {
+  const rows: (LoadPlayer & { label?: string; note?: string })[] = [...(players ?? [])];
+  for (const id of live ?? []) {
+    if (id > 0 && !rows.some((p) => p.championId === id)) {
+      const bot = o?.bots?.includes(id) ?? false;
+      rows.push({ puuid: null, name: bot ? null : (o?.playerNames?.[id] ?? null), championId: id, position: '', isMe: false, label: bot ? 'Bot' : undefined, note: '' });
+    }
+  }
+  return rows;
+}
+
 function union(live: number[] | undefined, loading: number[] | undefined): number[] {
   const ids = [...(live ?? [])];
   for (const id of loading ?? []) if (id > 0 && !ids.includes(id)) ids.push(id);

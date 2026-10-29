@@ -5,6 +5,7 @@ use crate::profile;
 use crate::util::{flag, int, list, text};
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -110,7 +111,9 @@ pub fn result(p: &Value) -> &'static str {
     }
 }
 
-pub fn parse(game: &Value, my_puuid: &str, queue_name: &str) -> Option<PostGame> {
+/// `lanes` is OP.GG's games per lane for each champion (`TierLists::lane_games`,
+/// may be empty), for players whose lane the record doesn't say.
+pub fn parse(game: &Value, my_puuid: &str, queue_name: &str, lanes: &HashMap<i64, [i64; 5]>) -> Option<PostGame> {
     let idents = list(game, "participantIdentities");
     let mut players: Vec<(i64, PostPlayer, &Value)> = list(game, "participants")
         .iter()
@@ -143,13 +146,17 @@ pub fn parse(game: &Value, my_puuid: &str, queue_name: &str) -> Option<PostGame>
             let row = list(game, "teams").iter().find(|t| int(t, "teamId") == id).unwrap_or(&Value::Null);
             let rows: Vec<&(i64, PostPlayer, &Value)> = players.iter().filter(|(t, _, _)| *t == id).collect();
             // Positions only mean something in a 5v5 on Summoner's Rift.
-            let lanes = (int(game, "mapId") == 11 && rows.len() == 5 && players.len() == 10)
-                .then(|| profile::positions(&rows.iter().map(|(_, _, raw)| *raw).collect::<Vec<_>>()));
-            let members: Vec<PostPlayer> = rows
+            let raw: Vec<&Value> = rows.iter().map(|(_, _, raw)| *raw).collect();
+            let positions = (int(game, "mapId") == 11 && rows.len() == 5 && players.len() == 10)
+                .then(|| assign_lanes(&raw, &profile::positions(&raw), lanes));
+            let mut members: Vec<PostPlayer> = rows
                 .iter()
                 .enumerate()
-                .map(|(i, (_, p, _))| PostPlayer { position: lanes.as_ref().and_then(|l| l[i]), ..p.clone() })
+                .map(|(i, (_, p, _))| PostPlayer { position: positions.as_ref().and_then(|l| l[i]), ..p.clone() })
                 .collect();
+            // Top to support, so each row sits across from its lane opponent on the other team.
+            // Players without a position keep their order, after the rest.
+            members.sort_by_key(|p| lane_rank(p.position));
             PostTeam {
                 team_id: id,
                 win: text(row, "win") == "Win",
@@ -192,7 +199,7 @@ pub fn gold_lead(game: &Value, timeline: &Value, my_team: i64) -> Vec<GoldPoint>
     if !teams.values().any(|t| *t != my_team) {
         return Vec::new();
     }
-    list(timeline, "frames")
+    let mut points = list(timeline, "frames")
         .iter()
         .map(|f| {
             // An object keyed by participant id ("1".."10"); accept a list too.
@@ -214,7 +221,114 @@ pub fn gold_lead(game: &Value, timeline: &Value, my_team: i64) -> Vec<GoldPoint>
                 .sum();
             GoldPoint { t: int(f, "timestamp") / 1000, lead }
         })
-        .collect()
+        .collect::<Vec<_>>();
+    // Frames come once a minute, so the last one is up to a minute before the
+    // end. The graph ends on the final gold instead (`goldEarned`, what the
+    // team totals add up), so its lead matches the scoreboard.
+    if !points.is_empty() {
+        let end = int(game, "gameDuration");
+        let lead = list(game, "participants")
+            .iter()
+            .map(|p| if int(p, "teamId") == my_team { 1 } else { -1 } * int(p, "/stats/goldEarned"))
+            .sum();
+        if points.last().is_some_and(|l| l.t >= end) {
+            points.pop();
+        }
+        points.push(GoldPoint { t: end, lead });
+    }
+    points
+}
+
+/// Positions in scoreboard order, the same order as `tierlist::LANES`.
+const POSITIONS: [&str; 5] = ["top", "jungle", "mid", "adc", "support"];
+
+/// Puts each of a team's five players in a different lane, so every row on the
+/// scoreboard faces its lane opponent. The record's `timeline.lane`/`role` is
+/// often missing (custom games, and unreliable elsewhere), so `guess`
+/// (`profile::positions`) only weighs in, next to Smite, the support item, CS
+/// and how often OP.GG sees each champion in each lane. Tries all 120 ways.
+fn assign_lanes(team: &[&Value], guess: &[Option<&'static str>], lanes: &HashMap<i64, [i64; 5]>) -> Vec<Option<&'static str>> {
+    let minions = |p: &Value| int(p, "/stats/totalMinionsKilled");
+    let fewest_minions = team.iter().map(|p| minions(p)).min().unwrap_or(0);
+    let score = |i: usize, lane: usize| -> f64 {
+        let p = team[i];
+        let mut s = 0.0;
+        if guess[i] == Some(POSITIONS[lane]) {
+            s += 3.0;
+        }
+        let smite = int(p, "spell1Id") == 11 || int(p, "spell2Id") == 11;
+        s += match (smite, lane) {
+            (true, 1) => 6.0,
+            (true, _) | (false, 1) => -6.0,
+            _ => 0.0,
+        };
+        // World Atlas and its upgrades.
+        let support_item = (0..=6).any(|k| (3865..=3877).contains(&int(p, &format!("/stats/item{k}"))));
+        if support_item && lane == 4 {
+            s += 5.0;
+        }
+        if lane == 4 && minions(p) == fewest_minions {
+            s += 1.5;
+        }
+        if let Some(games) = lanes.get(&int(p, "championId")) {
+            let total: i64 = games.iter().sum();
+            if total > 0 {
+                s += (games[lane] as f64 / total as f64 + 0.01).ln();
+            }
+        }
+        s
+    };
+    let mut best = (f64::NEG_INFINITY, [0usize; 5]);
+    let mut lane_of = [0usize; 5];
+    fn search(i: usize, used: &mut [bool; 5], lane_of: &mut [usize; 5], total: f64, score: &dyn Fn(usize, usize) -> f64, best: &mut (f64, [usize; 5])) {
+        if i == 5 {
+            if total > best.0 {
+                *best = (total, *lane_of);
+            }
+            return;
+        }
+        for lane in 0..5 {
+            if !used[lane] {
+                used[lane] = true;
+                lane_of[i] = lane;
+                search(i + 1, used, lane_of, total + score(i, lane), score, best);
+                used[lane] = false;
+            }
+        }
+    }
+    if team.len() != 5 {
+        return guess.to_vec();
+    }
+    search(0, &mut [false; 5], &mut lane_of, 0.0, &score, &mut best);
+    best.1.iter().map(|&l| Some(POSITIONS[l])).collect()
+}
+
+/// OP.GG's games per lane for every champion (for `parse`); empty when it can't be loaded.
+pub async fn lane_games(state: &crate::engine::AppState) -> HashMap<i64, [i64; 5]> {
+    let names: Vec<(i64, String)> = state
+        .shared
+        .lock()
+        .await
+        .statics
+        .as_ref()
+        .map(|s| s.champions.iter().filter(|c| !c.classic).map(|c| (c.id, c.name.clone())).collect())
+        .unwrap_or_default();
+    state.tiers.lane_games(Some(names).filter(|n| !n.is_empty())).await.unwrap_or_else(|e| {
+        eprintln!("post-game lanes: {e:#}");
+        HashMap::new()
+    })
+}
+
+/// Scoreboard order for a position: top, jungle, mid, ADC, support, then unknown.
+fn lane_rank(position: Option<&str>) -> usize {
+    match position {
+        Some("top") => 0,
+        Some("jungle") => 1,
+        Some("mid") => 2,
+        Some("adc") => 3,
+        Some("support") => 4,
+        _ => 5,
+    }
 }
 
 #[cfg(test)]
@@ -228,7 +342,7 @@ mod tests {
 
     #[test]
     fn full_game() {
-        let g = parse(&fixture(), "me-puuid", "Ranked Solo/Duo").unwrap();
+        let g = parse(&fixture(), "me-puuid", "Ranked Solo/Duo", &HashMap::new()).unwrap();
         assert_eq!(g.result, "win");
         assert_eq!(g.duration, 1834);
         assert_eq!(g.queue_name, "Ranked Solo/Duo");
@@ -265,18 +379,41 @@ mod tests {
         }
         let g = serde_json::json!({ "mapId": 11, "gameDuration": 1800, "participants": parts, "participantIdentities": idents,
             "teams": [{ "teamId": 100 }, { "teamId": 200 }] });
-        let pg = parse(&g, "p5", "").unwrap();
+        let pg = parse(&g, "p5", "", &HashMap::new()).unwrap();
         let mine: Vec<_> = pg.teams[0].players.iter().map(|p| p.position).collect();
         assert_eq!(mine, [Some("top"), Some("jungle"), Some("mid"), Some("adc"), Some("support")]);
         assert_eq!(pg.teams[1].players[3].position, Some("adc"));
+        // Listed out of lane order, the enemies still come out top to support, facing their lane opponents.
+        let mut shuffled = g.clone();
+        shuffled["participants"].as_array_mut().unwrap()[5..].reverse();
+        let theirs: Vec<_> = parse(&shuffled, "p5", "", &HashMap::new()).unwrap().teams[1].players.iter().map(|p| p.position).collect();
+        assert_eq!(theirs, [Some("top"), Some("jungle"), Some("mid"), Some("adc"), Some("support")]);
+        // No lane in the record (seen in custom games): Smite, the support item, CS and OP.GG's lane stats place them.
+        let mut blank = g.clone();
+        for (i, p) in blank["participants"].as_array_mut().unwrap().iter_mut().enumerate() {
+            p["timeline"] = serde_json::json!({ "lane": "NONE", "role": "NONE" });
+            if i % 5 == 4 {
+                p["stats"]["item0"] = serde_json::json!(3867);
+            }
+        }
+        blank["participants"].as_array_mut().unwrap()[5..].reverse();
+        // Champion ids are 1-10: 1/6 top, 3/8 mid, 4/9 bot.
+        let lanes: HashMap<i64, [i64; 5]> = [(1, [900, 0, 100, 0, 0]), (6, [900, 0, 100, 0, 0]), (3, [50, 0, 950, 0, 0]),
+            (8, [50, 0, 950, 0, 0]), (4, [0, 0, 20, 980, 0]), (9, [0, 0, 20, 980, 0])].into();
+        let pg = parse(&blank, "p5", "", &lanes).unwrap();
+        for t in &pg.teams {
+            let champs: Vec<i64> = t.players.iter().map(|p| p.line.champion_id).collect();
+            let base = if t.team_id == 100 { 0 } else { 5 };
+            assert_eq!(champs, [1, 2, 3, 4, 5].map(|c| c + base), "team {}", t.team_id);
+        }
         let mut aram = g.clone();
         aram["mapId"] = serde_json::json!(12);
-        assert!(parse(&aram, "p5", "").unwrap().teams[0].players.iter().all(|p| p.position.is_none()));
+        assert!(parse(&aram, "p5", "", &HashMap::new()).unwrap().teams[0].players.iter().all(|p| p.position.is_none()));
     }
 
     #[test]
     fn loss_from_the_other_side() {
-        let g = parse(&fixture(), "enemy-puuid", "").unwrap();
+        let g = parse(&fixture(), "enemy-puuid", "", &HashMap::new()).unwrap();
         assert_eq!(g.result, "loss");
         assert_eq!(g.teams[0].team_id, 200);
         assert!(g.teams[0].players[0].is_me);
@@ -284,7 +421,7 @@ mod tests {
 
     #[test]
     fn unknown_player_gives_nothing() {
-        assert_eq!(parse(&fixture(), "someone-else", ""), None);
+        assert_eq!(parse(&fixture(), "someone-else", "", &HashMap::new()), None);
     }
 
     #[test]
@@ -297,7 +434,7 @@ mod tests {
                 "stats": { "win": false, "kills": 0, "deaths": 0, "assists": 0, "totalMinionsKilled": 1, "neutralMinionsKilled": 0 } }],
             "teams": [{ "teamId": 100, "win": "Fail" }]
         });
-        let pg = parse(&g, "p", "").unwrap();
+        let pg = parse(&g, "p", "", &HashMap::new()).unwrap();
         assert_eq!(pg.result, "remake");
         assert_eq!(pg.teams.len(), 1);
         assert!(pg.teams[0].players[0].is_me);
@@ -306,15 +443,16 @@ mod tests {
     #[test]
     fn gold_lead_from_timeline() {
         use serde_json::json;
-        let game = json!({ "participants": [
-            { "participantId": 1, "teamId": 100 }, { "participantId": 2, "teamId": 200 }
+        let game = json!({ "gameDuration": 95, "participants": [
+            { "participantId": 1, "teamId": 100, "stats": { "goldEarned": 1700 } }, { "participantId": 2, "teamId": 200, "stats": { "goldEarned": 1300 } }
         ]});
         let timeline = json!({ "frames": [
             { "timestamp": 0, "participantFrames": { "1": { "participantId": 1, "totalGold": 500 }, "2": { "participantId": 2, "totalGold": 500 } } },
             { "timestamp": 60_030, "participantFrames": { "1": { "participantId": 1, "totalGold": 1200 }, "2": { "participantId": 2, "totalGold": 900 } } }
         ]});
+        // Ends on the final gold, the same numbers as the team totals.
         let lead = gold_lead(&game, &timeline, 200);
-        assert_eq!(lead, vec![GoldPoint { t: 0, lead: 0 }, GoldPoint { t: 60, lead: -300 }]);
+        assert_eq!(lead, vec![GoldPoint { t: 0, lead: 0 }, GoldPoint { t: 60, lead: -300 }, GoldPoint { t: 95, lead: -400 }]);
         assert!(gold_lead(&json!({ "participants": [{ "participantId": 1, "teamId": 100 }] }), &timeline, 100).is_empty());
     }
 }

@@ -186,6 +186,8 @@ pub struct OverlayState {
     pub skill_max: Vec<String>,
     /// Ability to put your next point in, when you have one unspent.
     pub next_skill: Option<String>,
+    /// Points in Q, W, E and R right now (see `skill_levels`), for the overlay's skill order row.
+    pub skill_levels: [i64; 4],
     /// Your item value against your lane opponent's; None without roles (ARAM etc.).
     pub lane: Option<LaneDiff>,
     /// Your team's item value against the enemy team's (every mode).
@@ -193,6 +195,11 @@ pub struct OverlayState {
     /// Champion ids on each team (filled in by the engine), for the Live tab's damage bars.
     pub ally_champions: Vec<i64>,
     pub enemy_champions: Vec<i64>,
+    /// Riot ID by champion id (filled in by the engine). The Live tab names
+    /// players the loading screen data left out with these (a custom game listed only you).
+    pub player_names: HashMap<i64, String>,
+    /// Champion ids played by bots (filled in by the engine).
+    pub bots: Vec<i64>,
     /// Situational items for this game, best first (empty when off in Settings).
     pub situational: Vec<SituationalPick>,
 }
@@ -331,6 +338,12 @@ pub fn next_skill(data: &Value, order: &[String]) -> Option<String> {
     order.get(spent as usize).cloned()
 }
 
+/// Points in Q, W, E and R, in that order (zeros without live data).
+pub fn skill_levels(data: &Value) -> [i64; 4] {
+    let Some(abilities) = data.pointer("/activePlayer/abilities") else { return [0; 4] };
+    ["Q", "W", "E", "R"].map(|k| int(abilities, &format!("/{k}/abilityLevel")))
+}
+
 /// An enemy as the scoreboard shows them.
 pub struct ScoreboardEnemy {
     pub champion_name: String,
@@ -369,6 +382,15 @@ pub fn riot_ids(data: &Value) -> Vec<(String, String, String)> {
             let game = id.split('#').next().unwrap_or_default();
             (!game.is_empty()).then(|| (raw_champion_key(p), text(p, "championName").to_string(), id.to_string()))
         })
+        .collect()
+}
+
+/// The champions bots play, as (raw key, display name).
+pub fn bot_champions(data: &Value) -> Vec<(String, String)> {
+    list(data, "allPlayers")
+        .iter()
+        .filter(|p| p.get("isBot").and_then(Value::as_bool).unwrap_or(false))
+        .map(|p| (raw_champion_key(p), text(p, "championName").to_string()))
         .collect()
 }
 
@@ -679,10 +701,13 @@ pub fn overlay_state(
         has_build: build.map(|b| !b.is_empty()).unwrap_or(false),
         skill_max: guide.skill_max.to_vec(),
         next_skill: next_skill(data, guide.skill_order),
+        skill_levels: skill_levels(data),
         lane: lane_diff(data, items),
         team: team_diff(data, items),
         ally_champions: Vec::new(),
         enemy_champions: Vec::new(),
+        player_names: HashMap::new(),
+        bots: Vec::new(),
         situational: Vec::new(),
     }
 }
@@ -718,6 +743,15 @@ mod tests {
             {"riotId": "#", "championName": "Qiyana", "rawChampionName": "game_character_displayname_Qiyana"}
         ]});
         assert_eq!(riot_ids(&data), vec![("Garen".to_string(), "Garen".to_string(), "hubcus#NA1".to_string())]);
+    }
+
+    #[test]
+    fn bots_from_scoreboard() {
+        let data = json!({"allPlayers": [
+            {"riotId": "hubcus#NA1", "isBot": false, "championName": "Garen", "rawChampionName": "game_character_displayname_Garen"},
+            {"riotId": "Annie Bot", "isBot": true, "championName": "Annie", "rawChampionName": "game_character_displayname_Annie"}
+        ]});
+        assert_eq!(bot_champions(&data), vec![("Annie".to_string(), "Annie".to_string())]);
     }
 
     #[test]
@@ -1031,5 +1065,7 @@ mod tests {
         assert_eq!(next_skill(&d, &order).as_deref(), Some("Q"));
         d["activePlayer"]["abilities"]["Q"]["abilityLevel"] = json!(2);
         assert_eq!(next_skill(&d, &order), None);
+        assert_eq!(skill_levels(&d), [2, 1, 1, 0]);
+        assert_eq!(skill_levels(&json!({})), [0; 4]);
     }
 }

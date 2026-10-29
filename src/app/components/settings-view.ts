@@ -94,11 +94,6 @@ type BoolKey =
             <span class="track"></span>
             <span class="label"><b>CS per minute</b><span>From the first minute on. The game only updates CS every 10 minions, so it moves in steps.</span><img class="peek bar" [class.dim]="!(cfg.showCs ?? true)" src="overlay-parts/cs.webp" alt="" /></span>
           </label>
-          <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
-            <input type="checkbox" [checked]="cfg.showSkillHint" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('showSkillHint', $any($event.target).checked)" />
-            <span class="track"></span>
-            <span class="label"><b>Skill order</b><span>Which ability to max, and what to level when you have a point.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span><img class="peek bar" [class.dim]="!(cfg.showSkillHint && cfg.recSource === 'opgg')" src="overlay-parts/skills.webp" alt="" /></span>
-          </label>
         </section>
 
         <section class="card stack">
@@ -107,6 +102,11 @@ type BoolKey =
             <input type="checkbox" [checked]="cfg.showTimers" (change)="setBool('showTimers', $any($event.target).checked)" />
             <span class="track"></span>
             <span class="label"><b>Objective timers</b><span>Dragon, Baron and inhibitor respawns. The Live tab shows them either way.</span><img class="peek" [class.dim]="!cfg.showTimers" src="overlay-parts/timers.webp" alt="" /></span>
+          </label>
+          <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
+            <input type="checkbox" [checked]="cfg.showSkillHint" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('showSkillHint', $any($event.target).checked)" />
+            <span class="track"></span>
+            <span class="label"><b>Skill order</b><span>Which ability you're maxing now, which one is next, and what to level when you have a point.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span><img class="peek" [class.dim]="!(cfg.showSkillHint && cfg.recSource === 'opgg')" src="overlay-parts/skills.webp" alt="" /></span>
           </label>
           <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
             <input type="checkbox" [checked]="cfg.useRecommendedBuilds" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('useRecommendedBuilds', $any($event.target).checked)" />

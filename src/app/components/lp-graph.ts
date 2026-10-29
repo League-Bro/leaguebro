@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 import { formatTier, tierClass } from '../core/assets';
 import { LpPoint, RankLine } from '../core/models';
 
@@ -73,36 +73,50 @@ function smooth(pts: { x: number; y: number }[]): string {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (dots().length > 1) {
-      <svg [attr.viewBox]="'0 0 ' + w + ' ' + h" [attr.width]="w" [attr.height]="h" role="img" [attr.aria-label]="summary()" [class]="trend()">
-        <defs>
-          <linearGradient [attr.id]="gid" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" class="fill-top" />
-            <stop offset="1" class="fill-bottom" />
-          </linearGradient>
-        </defs>
-        @for (g of grid(); track g.y) {
-          <line class="grid" [class]="g.cls" [class.tier-start]="g.tierStart" [attr.x1]="gutter" [attr.x2]="w" [attr.y1]="g.y" [attr.y2]="g.y" />
-          @if (g.labeled) {
-            <text class="div-label" [class]="g.cls" x="0" [attr.y]="g.y + 3">{{ g.short }}</text>
+      <div class="plot" (mousemove)="hover($event)" (mouseleave)="hoverIdx.set(null)">
+        <svg [attr.viewBox]="'0 0 ' + w + ' ' + h" [attr.width]="w" [attr.height]="h" role="img" [attr.aria-label]="summary()" [class]="trend()">
+          <defs>
+            <linearGradient [attr.id]="gid" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" class="fill-top" />
+              <stop offset="1" class="fill-bottom" />
+            </linearGradient>
+          </defs>
+          @for (g of grid(); track g.y) {
+            <line class="grid" [class]="g.cls" [class.tier-start]="g.tierStart" [attr.x1]="gutter" [attr.x2]="w" [attr.y1]="g.y" [attr.y2]="g.y" />
+            @if (g.labeled) {
+              <text class="div-label" [class]="g.cls" x="0" [attr.y]="g.y + 3">{{ g.short }}</text>
+            }
           }
-        }
-        <line class="start" [attr.x1]="gutter" [attr.x2]="dots()[0].x" [attr.y1]="dots()[0].y" [attr.y2]="dots()[0].y" />
-        <path class="area" [attr.d]="area()" [attr.fill]="'url(#' + gid + ')'" />
-        <path class="curve" [attr.d]="curve()" />
-        @for (d of dots(); track $index) {
-          @if (d.moved) {
-            <circle class="moved" [class]="d.cls" [attr.cx]="d.x" [attr.cy]="d.y" r="5.5" />
+          <line class="start" [attr.x1]="gutter" [attr.x2]="dots()[0].x" [attr.y1]="dots()[0].y" [attr.y2]="dots()[0].y" />
+          <path class="area" [attr.d]="area()" [attr.fill]="'url(#' + gid + ')'" />
+          <path class="curve" [attr.d]="curve()" />
+          @for (d of dots(); track $index) {
+            @if (d.moved) {
+              <circle class="moved" [class]="d.cls" [attr.cx]="d.x" [attr.cy]="d.y" r="5.5" />
+            }
+            @if ((showDots() || d.moved) && !$last) {
+              <circle class="dot" [class]="d.cls" [attr.cx]="d.x" [attr.cy]="d.y" r="2.4" />
+            }
           }
-          @if ((showDots() || d.moved) && !$last) {
-            <circle class="dot" [class]="d.cls" [attr.cx]="d.x" [attr.cy]="d.y" r="2.4" />
+          <circle class="pulse" [class]="last().cls" [attr.cx]="last().x" [attr.cy]="last().y" r="4" />
+          <circle class="dot now" [class]="last().cls" [attr.cx]="last().x" [attr.cy]="last().y" r="4" />
+          @if (hovered(); as d) {
+            <line class="cross" [attr.x1]="d.x" [attr.x2]="d.x" y1="0" [attr.y2]="h" />
+            <circle class="dot ring" [class]="d.cls" [attr.cx]="d.x" [attr.cy]="d.y" r="4" />
           }
+        </svg>
+        @if (hovered(); as d) {
+          <!-- Above the point, flipped to its left near the right edge so it stays on the card. -->
+          <div class="tt" [class.flip]="d.x > w * 0.55" [style.left.px]="d.x" [style.top.px]="d.y">
+            <b [class]="d.cls">{{ d.rank }}</b>
+            <span class="mono">{{ d.lp }} LP</span>
+            @if (d.change) {
+              <b class="mono" [class.win]="d.change > 0" [class.loss]="d.change < 0">{{ d.change > 0 ? '+' : '−' }}{{ abs(d.change) }}</b>
+            }
+            <span class="faint">{{ d.date }}</span>
+          </div>
         }
-        <circle class="pulse" [class]="last().cls" [attr.cx]="last().x" [attr.cy]="last().y" r="4" />
-        <circle class="dot now" [class]="last().cls" [attr.cx]="last().x" [attr.cy]="last().y" r="4" />
-        @for (d of dots(); track $index) {
-          <circle class="hit" [attr.cx]="d.x" [attr.cy]="d.y" r="7"><title>{{ d.label }}</title></circle>
-        }
-      </svg>
+      </div>
       <div class="cap mono">
         <b [class.win]="net() > 0" [class.loss]="net() < 0">{{ net() > 0 ? '+' : net() < 0 ? '−' : '±' }}{{ abs(net()) }} LP</b>
         <span class="faint">{{ span() }}</span>
@@ -121,7 +135,17 @@ function smooth(pts: { x: number; y: number }[]): string {
   `,
   styles: `
     :host { display: flex; flex-direction: column; gap: 3px; width: ${W}px; }
+    .plot { position: relative; cursor: crosshair; }
     svg { display: block; overflow: visible; }
+    .cross { stroke: var(--line-strong); stroke-width: 1; }
+    .ring { stroke-width: 2; }
+    .tt {
+      position: absolute; transform: translate(10px, calc(-100% - 8px)); display: flex; align-items: baseline; gap: 7px;
+      padding: 5px 9px; border-radius: 8px; background: var(--bg-sunken); border: 1px solid var(--line-strong);
+      box-shadow: 0 6px 18px rgb(0 0 0 / 0.35); font-size: 12px; white-space: nowrap; pointer-events: none; z-index: 2;
+    }
+    .tt.flip { transform: translate(calc(-100% - 10px), calc(-100% - 8px)); }
+    .tt b { font-weight: 600; }
     .grid { stroke: currentColor; stroke-width: 1; opacity: 0.14; stroke-dasharray: 1 3; }
     .grid.tier-start { opacity: 0.35; stroke-dasharray: none; }
     .div-label { fill: currentColor; font-size: 8px; font-weight: 600; opacity: 0.7; font-family: var(--mono, monospace); }
@@ -140,7 +164,6 @@ function smooth(pts: { x: number; y: number }[]): string {
     .pulse { fill: currentColor; opacity: 0; transform-box: fill-box; transform-origin: center; animation: pulse 2.4s ease-out infinite; }
     @keyframes pulse { 0% { opacity: 0.55; transform: scale(1); } 100% { opacity: 0; transform: scale(2.8); } }
     @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
-    .hit { fill: transparent; cursor: help; }
     .cap { font-size: 11px; display: flex; gap: 0 6px; align-items: baseline; flex-wrap: wrap; }
     .cap > * { white-space: nowrap; }
     .cap b { font-weight: 600; }
@@ -187,17 +210,36 @@ export class LpGraph {
       const prev = pts[i - 1];
       const moved = !!prev && (prev.tier !== p.tier || prev.division !== p.division);
       const change = prev ? scores[i] - scores[i - 1] : 0;
-      const delta = prev && change ? ` (${change > 0 ? '+' : '−'}${Math.abs(change)})` : '';
       return {
         x: x0 + i * step,
         y: this.y(scores[i]),
         cls: tierClass(p.tier),
         moved,
-        label: `${formatTier(p.tier, p.division)} ${p.lp} LP${delta} · ${day(p.at)}`,
+        rank: formatTier(p.tier, p.division),
+        lp: p.lp,
+        change,
+        date: day(p.at),
       };
     });
   });
   protected readonly last = computed(() => this.dots().at(-1)!);
+  /** The point under the mouse (the nearest one across), for the hover card. */
+  protected readonly hoverIdx = signal<number | null>(null);
+  protected readonly hovered = computed(() => {
+    const i = this.hoverIdx();
+    return i === null ? null : (this.dots()[i] ?? null);
+  });
+  protected hover(e: MouseEvent): void {
+    const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = ((e.clientX - box.left) / box.width) * W;
+    const dots = this.dots();
+    let best = 0;
+    dots.forEach((d, i) => {
+      if (Math.abs(d.x - x) < Math.abs(dots[best].x - x)) best = i;
+    });
+    // Left of the first point (the dashed lead-in) shows nothing.
+    this.hoverIdx.set(x < dots[0].x - MAX_STEP / 2 ? null : best);
+  }
   protected readonly showDots = computed(() => this.dots().length <= DOTS_UP_TO);
   protected readonly curve = computed(() => smooth(this.dots()));
   protected readonly area = computed(() => {

@@ -451,6 +451,8 @@ export interface OverlayState {
   hasBuild: boolean;
   skillMax: string[];
   nextSkill: string | null;
+  /** Points in Q, W, E and R right now. */
+  skillLevels?: number[];
   /** Your item value vs your lane opponent's; null without roles (ARAM etc.). */
   lane: LaneDiff | null;
   /** Your team's item value against the enemy team's. */
@@ -458,6 +460,10 @@ export interface OverlayState {
   /** Champion ids on each team, bots included, for the Live tab's damage bars. */
   allyChampions?: number[];
   enemyChampions?: number[];
+  /** Riot ID by champion id from the scoreboard, for players the loading screen data left out. */
+  playerNames?: Record<number, string>;
+  /** Champion ids played by bots. */
+  bots?: number[];
   /** Situational items for this game, best first (empty when off in Settings). */
   situational: SituationalPick[];
 }
