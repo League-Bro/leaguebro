@@ -1,5 +1,7 @@
 //! Your own profile: rank, recent matches and insights, from the League
 //! client's match history (`/lol-match-history/v1/products/lol/{puuid}/matches`).
+//! Other players' profiles come from the same endpoints by their puuid
+//! (`load_player`), found by Riot ID with `find_puuid`.
 //!
 //! Custom and practice games are left out, and so are Brawl and League
 //! Classic games, which Riot's third-party rules don't allow match data for.
@@ -245,9 +247,10 @@ static OPPONENTS: LazyLock<Mutex<HashMap<(String, i64), Opponents>>> = LazyLock:
 /// Fills `lane_opponent` and `enemies` from each game's full record. Games
 /// whose record doesn't load are left as they are and tried again next time.
 /// Remakes are skipped, since insights leave them out. Returns how many
-/// records didn't load.
-async fn fill_opponents(lcu: &Lcu, puuid: &str, matches: &mut [MatchLine]) -> usize {
-    let missing: Vec<i64> = {
+/// records didn't load. With `fetch` false only records already loaded are
+/// used (a quick first look at another player).
+async fn fill_opponents(lcu: &Lcu, puuid: &str, matches: &mut [MatchLine], fetch: bool) -> usize {
+    let missing: Vec<i64> = if !fetch { Vec::new() } else {
         let cache = OPPONENTS.lock().unwrap();
         matches
             .iter()
@@ -267,7 +270,14 @@ async fn fill_opponents(lcu: &Lcu, puuid: &str, matches: &mut [MatchLine]) -> us
     }
     let mut failed = 0;
     while let Some(done) = set.join_next().await {
-        match done.map(|(id, res)| (id, res.ok().flatten().and_then(|g| opponents(&g, puuid)))) {
+        let found = done.map(|(id, res)| {
+            let game = res.ok().flatten();
+            if let Some(g) = &game {
+                remember_players(g);
+            }
+            (id, game.and_then(|g| opponents(&g, puuid)))
+        });
+        match found {
             Ok((id, Some(o))) => {
                 OPPONENTS.lock().unwrap().insert((puuid.to_string(), id), o);
             }
@@ -275,11 +285,12 @@ async fn fill_opponents(lcu: &Lcu, puuid: &str, matches: &mut [MatchLine]) -> us
         }
     }
     let mut cache = OPPONENTS.lock().unwrap();
-    // Only games still in the client's history are kept; the client holds just
-    // a few dozen, so this stops the cache growing with every game played.
-    // An empty history (it failed to load) keeps everything.
+    // Only this player's games still in the client's history are kept; the
+    // client holds just a few dozen, so this stops the cache growing with every
+    // game played. Other players' games stay. An empty history (it failed to
+    // load) keeps everything.
     if !matches.is_empty() {
-        cache.retain(|(p, id), _| p == puuid && matches.iter().any(|m| m.game_id == *id));
+        cache.retain(|(p, id), _| p != puuid || matches.iter().any(|m| m.game_id == *id));
     }
     for m in matches {
         if let Some(o) = cache.get(&(puuid.to_string(), m.game_id)) {
@@ -379,7 +390,7 @@ pub async fn record_against(lcu: &Lcu, opponent_id: i64) -> anyhow::Result<Champ
         .await?
         .ok_or_else(|| anyhow::anyhow!("the client has no match history for you"))?;
     let mut matches = parse_matches(&history);
-    fill_opponents(lcu, &puuid, &mut matches).await;
+    fill_opponents(lcu, &puuid, &mut matches, true).await;
     Ok(lane_record(&matches, opponent_id))
 }
 
@@ -397,23 +408,236 @@ fn lane_record(matches: &[MatchLine], opponent_id: i64) -> ChampStat {
 /// from Riot (the Profile page showed "match history: GET …" until Refresh),
 /// so it goes through `get_slow`.
 fn history_path(puuid: &str) -> String {
-    format!("/lol-match-history/v1/products/lol/{puuid}/matches?begIndex=0&endIndex=99")
+    history_path_upto(puuid, 99)
 }
 
+/// Another player's games aren't on your PC, so the client fetches them from
+/// Riot: asking for 20 keeps that quick.
+fn history_path_upto(puuid: &str, end_index: i64) -> String {
+    format!("/lol-match-history/v1/products/lol/{puuid}/matches?begIndex=0&endIndex={end_index}")
+}
+
+/// Your profile from the client.
 pub async fn load(lcu: &Lcu) -> anyhow::Result<MyProfile> {
     let me = lcu.get_req("/lol-summoner/v1/current-summoner").await?;
-    let puuid = text(&me, "puuid").to_string();
+    let path = history_path(text(&me, "puuid"));
+    let (mut p, session) = tokio::join!(load_summoner(lcu, &me, &path, true), lcu.get("/lol-gameflow/v1/session"));
+    if let Ok(Some(s)) = session {
+        p.current_queue_id = s.pointer("/gameData/queue/id").and_then(Value::as_i64).filter(|q| *q > 0);
+    }
+    Ok(p)
+}
+
+/// Anyone's profile from the client, by puuid: the client answers rank and
+/// match history for any player, not just you. `quick` leaves out the full
+/// game records (enemy and lane-opponent stats), which take a request per
+/// game; the page asks again without it once the rest shows.
+pub async fn load_player(lcu: &Lcu, puuid: &str, quick: bool) -> anyhow::Result<MyProfile> {
+    let paths = [format!("/lol-summoner/v2/summoners/puuid/{puuid}"), format!("/lol-summoner/v1/summoners-by-puuid-cached/{puuid}")];
+    for path in paths {
+        if let Ok(Some(s)) = lcu.get(&path).await {
+            if !text(&s, "puuid").is_empty() {
+                return Ok(load_summoner(lcu, &s, &history_path_upto(puuid, 19), !quick).await);
+            }
+        }
+    }
+    anyhow::bail!("the League client couldn't find this player")
+}
+
+/// A player's puuid from their Riot ID, through the client. Clients have
+/// answered Riot ID lookups at different endpoints over the years, so this
+/// tries each, newest first. A name without a #TAG is tried as a bare name,
+/// then with `default_tag` (the tag most players on the server have).
+pub async fn find_puuid(lcu: &Lcu, riot_id: &str, default_tag: &str) -> anyhow::Result<String> {
+    let riot_id = riot_id.trim();
+    if !riot_id.contains('#') {
+        if let Ok(Some(v)) = lcu.get(&format!("/lol-summoner/v1/summoners?name={}", encode(riot_id))).await {
+            if let Some(p) = first_puuid(&v) {
+                return Ok(p);
+            }
+        }
+    }
+    let tagged = if riot_id.contains('#') { riot_id.to_string() } else { format!("{riot_id}#{default_tag}") };
+    let (name, tag) = crate::opgg_profile::split_riot_id(&tagged)?;
+    let query = format!("gameName={}&tagLine={}", encode(name), encode(tag));
+    if let Ok(Some(v)) = lcu.get(&format!("/lol-summoner/v1/alias/lookup?{query}")).await {
+        if let Some(p) = first_puuid(&v) {
+            return Ok(p);
+        }
+    }
+    let body = serde_json::json!([{ "gameName": name, "tagLine": tag }]);
+    if let Ok(v) = lcu.post("/lol-summoner/v1/summoners/aliases", &body).await {
+        if let Some(p) = first_puuid(&v) {
+            return Ok(p);
+        }
+    }
+    if let Ok(Some(v)) = lcu.get(&format!("/lol-summoner/v1/summoners?name={}", encode(&format!("{name}#{tag}")))).await {
+        if let Some(p) = first_puuid(&v) {
+            return Ok(p);
+        }
+    }
+    anyhow::bail!("no player called {name}#{tag} on your server")
+}
+
+/// Tags many players picked or were given, tried for a name typed without one.
+const COMMON_TAGS: &[&str] = &[
+    "NA1", "EUW", "EUNE", "KR1", "OCE", "BR1", "LAN", "LAS", "TR1", "RU", "JP1", "000", "0001", "001", "01", "1", "2", "123",
+    "1234", "777", "69", "420", "666", "999",
+];
+
+/// Every account called `name` that the client finds, with your server's
+/// usual tag and the common ones (Riot can't list all tags for a name, so
+/// these are guesses checked against the client). One batch lookup
+/// (`summoners/aliases` takes a list); clients without it get one lookup per tag.
+pub async fn players_named(lcu: &Lcu, name: &str, default_tag: &str) -> Vec<PlayerHit> {
+    let name = name.trim();
+    let mut tags = vec![default_tag.to_string()];
+    tags.extend(COMMON_TAGS.iter().map(|t| t.to_string()).filter(|t| t != default_tag));
+    let mut found: Vec<Value> = Vec::new();
+    let body: Value = tags.iter().map(|t| serde_json::json!({ "gameName": name, "tagLine": t })).collect();
+    match lcu.post("/lol-summoner/v1/summoners/aliases", &body).await {
+        Ok(Value::Array(list)) => found = list,
+        _ => {
+            let mut set = tokio::task::JoinSet::new();
+            for t in tags {
+                let (lcu, path) = (lcu.clone(), format!("/lol-summoner/v1/alias/lookup?gameName={}&tagLine={}", encode(name), encode(&t)));
+                set.spawn(async move { lcu.get(&path).await.ok().flatten() });
+            }
+            while let Some(done) = set.join_next().await {
+                found.extend(done.ok().flatten());
+            }
+        }
+    }
+    let mut out: Vec<PlayerHit> = Vec::new();
+    for v in found {
+        let puuid = text(&v, "puuid");
+        if let (false, Some(n)) = (puuid.is_empty(), riot_name(&v).filter(|n| n.contains('#'))) {
+            if !out.iter().any(|h| h.puuid == puuid) {
+                out.push(PlayerHit { puuid: puuid.to_string(), name: n, friend: false });
+            }
+        }
+    }
+    // Your server's usual tag first, then by name.
+    let usual = format!("#{}", default_tag.to_lowercase());
+    out.sort_by_key(|h| (!h.name.to_lowercase().ends_with(&usual), h.name.to_lowercase()));
+    out
+}
+
+/// The puuid in a lookup answer (one summoner, or a list of them).
+fn first_puuid(v: &Value) -> Option<String> {
+    let one = v.as_array().and_then(|a| a.first()).unwrap_or(v);
+    Some(text(one, "puuid").to_string()).filter(|p| !p.is_empty())
+}
+
+/// The #TAG most players on a server have (the one Riot gave everyone when
+/// Riot IDs came in), by OP.GG region code. Used when a search has no tag.
+pub fn default_tag(region: &str) -> String {
+    match region {
+        "na" => "NA1",
+        "euw" => "EUW",
+        "eune" => "EUNE",
+        "kr" => "KR1",
+        "br" => "BR1",
+        "lan" => "LAN",
+        "las" => "LAS",
+        "oce" => "OCE",
+        "tr" => "TR1",
+        "ru" => "RU",
+        "jp" => "JP1",
+        "me" => "ME1",
+        "ph" => "PH2",
+        "sg" => "SG2",
+        "th" => "TH2",
+        "tw" => "TW2",
+        "vn" => "VN2",
+        r => return r.to_ascii_uppercase(),
+    }
+    .to_string()
+}
+
+/// A player the search suggests.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerHit {
+    pub puuid: String,
+    pub name: String,
+    /// On your friends list (else seen in a game this session).
+    pub friend: bool,
+}
+
+/// Players from full game records loaded this session (your games and any
+/// profile you opened), puuid → Riot ID, for the search's suggestions.
+static SEEN_PLAYERS: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(Default::default);
+
+fn remember_players(game: &Value) {
+    let mut seen = SEEN_PLAYERS.lock().unwrap();
+    for i in list(game, "participantIdentities") {
+        let Some(player) = i.get("player") else { continue };
+        let puuid = text(player, "puuid");
+        if let (false, Some(name)) = (puuid.is_empty(), riot_name(player).filter(|n| n.contains('#'))) {
+            seen.insert(puuid.to_string(), name);
+        }
+    }
+}
+
+/// "Hide on bush#KR1" → "hideonbush#kr1": searches ignore case and spaces.
+fn squash(s: &str) -> String {
+    s.chars().filter(|c| !c.is_whitespace()).flat_map(char::to_lowercase).collect()
+}
+
+/// Friends, then players from games seen this session, whose Riot ID contains
+/// `query` (ignoring case and spaces), at most 8, names starting with it first.
+/// The client's friends list (`/lol-chat/v1/friends`) has `gameName`,
+/// `gameTag` and `puuid`.
+pub fn player_hits(friends: &Value, query: &str) -> Vec<PlayerHit> {
+    let seen = SEEN_PLAYERS.lock().unwrap().clone();
+    hits(friends, &seen, query)
+}
+
+fn hits(friends: &Value, seen: &HashMap<String, String>, query: &str) -> Vec<PlayerHit> {
+    let q = squash(query);
+    let friends = friends.as_array().map(Vec::as_slice).unwrap_or_default().iter().filter_map(|f| {
+        let (game, tag, puuid) = (text(f, "gameName"), text(f, "gameTag"), text(f, "puuid"));
+        let name = if tag.is_empty() { game.to_string() } else { format!("{game}#{tag}") };
+        (!game.is_empty() && !puuid.is_empty()).then(|| PlayerHit { puuid: puuid.to_string(), name, friend: true })
+    });
+    let others = seen.iter().map(|(puuid, name)| PlayerHit { puuid: puuid.clone(), name: name.clone(), friend: false });
+    let mut out: Vec<PlayerHit> = Vec::new();
+    for h in friends.chain(others) {
+        if squash(&h.name).contains(&q) && !out.iter().any(|o| o.puuid == h.puuid) {
+            out.push(h);
+        }
+    }
+    out.sort_by_key(|h| (!h.friend, !squash(&h.name).starts_with(&q), h.name.to_lowercase()));
+    out.truncate(8);
+    out
+}
+
+/// Percent-encodes a query value.
+fn encode(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+/// Rank, match history and insights for a summoner from the client
+/// (`current-summoner` or a lookup by puuid).
+async fn load_summoner(lcu: &Lcu, summoner: &Value, history_path: &str, full_records: bool) -> MyProfile {
+    let puuid = text(summoner, "puuid").to_string();
     let mut p = MyProfile {
-        name: riot_name(&me).unwrap_or_default(),
-        icon_id: int(&me, "profileIconId"),
-        level: int(&me, "summonerLevel"),
+        name: riot_name(summoner).unwrap_or_default(),
+        icon_id: int(summoner, "profileIconId"),
+        level: int(summoner, "summonerLevel"),
         puuid: puuid.clone(),
         source: "client".into(),
         ..Default::default()
     };
     let mut errors = Vec::new();
-    let (stats_path, history_path) = (format!("/lol-ranked/v1/ranked-stats/{puuid}"), history_path(&puuid));
-    let (stats, history) = tokio::join!(lcu.get(&stats_path), lcu.get_slow(&history_path));
+    let stats_path = format!("/lol-ranked/v1/ranked-stats/{puuid}");
+    let (stats, history) = tokio::join!(lcu.get(&stats_path), lcu.get_slow(history_path));
     match stats {
         Ok(Some(stats)) => {
             p.solo = scout::parse_rank(&stats, "RANKED_SOLO_5x5");
@@ -428,19 +652,16 @@ pub async fn load(lcu: &Lcu) -> anyhow::Result<MyProfile> {
         // `:#` adds the cause ("operation timed out") to "GET /lol-match-history/…".
         Err(e) => errors.push(format!("match history: {e:#}")),
     }
-    let (failed, session) = tokio::join!(fill_opponents(lcu, &puuid, &mut p.matches), lcu.get("/lol-gameflow/v1/session"));
+    let failed = fill_opponents(lcu, &puuid, &mut p.matches, full_records).await;
     if failed > 0 {
         errors.push(format!("{failed} full game {} (enemy stats)", if failed == 1 { "record" } else { "records" }));
     }
     p.insights = insights(&p.matches);
     p.modes = modes(&p.matches);
-    if let Ok(Some(s)) = session {
-        p.current_queue_id = s.pointer("/gameData/queue/id").and_then(Value::as_i64).filter(|q| *q > 0);
-    }
     if !errors.is_empty() {
         p.error = Some(errors.join("; "));
     }
-    Ok(p)
+    p
 }
 
 #[cfg(test)]
@@ -577,6 +798,31 @@ mod tests {
     fn empty_history() {
         let ins = insights(&[]);
         assert_eq!((ins.games, ins.streak, ins.cs_per_min), (0, 0, 0.0));
+    }
+
+    #[test]
+    fn players_matching_a_search() {
+        let friends = serde_json::json!([
+            { "gameName": "Hubcus", "gameTag": "NA1", "puuid": "a" },
+            { "gameName": "Big Hub", "gameTag": "777", "puuid": "b" },
+            { "gameName": "Tylor", "gameTag": "NA1", "puuid": "c" },
+            { "gameName": "", "gameTag": "", "puuid": "d" },
+        ]);
+        let seen: HashMap<String, String> = [("e", "Hub Shrub#KR1"), ("a", "Hubcus#NA1"), ("f", "Hide on bush#KR1")]
+            .into_iter()
+            .map(|(p, n)| (p.to_string(), n.to_string()))
+            .collect();
+        let names: Vec<_> = hits(&friends, &seen, "HUB").into_iter().map(|h| (h.name, h.friend)).collect();
+        assert_eq!(names, vec![("Hubcus#NA1".into(), true), ("Big Hub#777".into(), true), ("Hub Shrub#KR1".into(), false)]);
+        assert_eq!(hits(&friends, &seen, "hideonbush")[0].name, "Hide on bush#KR1");
+        assert_eq!(default_tag("na"), "NA1");
+        assert_eq!(default_tag("xx"), "XX");
+    }
+
+    #[test]
+    fn query_encoding() {
+        assert_eq!(encode("Hide on bush"), "Hide%20on%20bush");
+        assert_eq!(encode("Né#KR1"), "N%C3%A9%23KR1");
     }
 
     #[test]

@@ -18,6 +18,7 @@ import {
   LpChange,
   LpPoint,
   MyProfile,
+  PlayerRef,
   QueueStat,
   PatchInfo,
   PatchNotes,
@@ -291,6 +292,16 @@ export function demoProfile(): MyProfile {
     matches, insights: demoInsights(matches), modes, currentQueueId: 420, error: null,
     source: 'client', updatedAt: null, renewableAt: null,
     lpHistory: { solo: demoLpHistory(), flex: [] },
+  };
+}
+
+/** Someone else's profile: the demo profile under their name, with no LP tracked. */
+export function demoPlayerProfile(who: PlayerRef): MyProfile {
+  const p = demoProfile();
+  return {
+    ...p, puuid: who.puuid ?? 'demo-player', name: who.riotId ?? 'Gank Plank#0001', iconId: 4568, level: 87, currentQueueId: null,
+    solo: { tier: 'PLATINUM', division: 'III', lp: 12, wins: 51, losses: 44 },
+    matches: p.matches.map((m) => ({ ...m, lpChange: null })), lpHistory: { solo: [], flex: [] },
   };
 }
 

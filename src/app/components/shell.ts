@@ -59,9 +59,9 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
         }
       </nav>
       <div class="spacer"></div>
-      <button class="find" [title]="'Find a champion (' + modKey + 'K, or just start typing)'" (click)="openSearch('')">
+      <button class="find" [title]="'Find a champion, or a player by Name#TAG (' + modKey + 'K, or just start typing)'" (click)="openSearch('')">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-        <span>Find a champion</span>
+        <span>Search</span>
         <kbd>{{ modKey }}K</kbd>
       </button>
       <div class="status" [class.on]="rift.status().connected">
@@ -244,7 +244,7 @@ export class Shell implements OnInit {
       }
       wasQuiet = quiet;
     });
-    // Links between pages (rift.showChampion): open the tab, and Back returns to this one.
+    // Links between pages (rift.showChampion, rift.showPlayer): open the tab, and Back returns to this one.
     effect(() => {
       const to = this.rift.navTo();
       if (!to) return;
@@ -295,12 +295,18 @@ export class Shell implements OnInit {
   protected go(t: Tab): void {
     this.backTo.set(null);
     this.tab.set(t);
+    // The header's Profile buttons always open yours.
+    if (t === 'profile') this.rift.viewedPlayer.set(null);
   }
 
   /** Back to where a link came from, else from a champion's page to the champion list. */
   protected back(): void {
     const b = this.backTo();
-    if (b) this.go(b);
+    // Straight to the tab, so Back to the Profile page keeps the player it showed.
+    if (b) {
+      this.backTo.set(null);
+      this.tab.set(b);
+    }
     else if (this.tab() === 'champions') this.rift.championsPick.set(null);
   }
 

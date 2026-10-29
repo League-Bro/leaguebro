@@ -57,7 +57,8 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
           <h3>The Bro's review</h3>
           @if (!r.player.isMe) {
             <span class="muted">{{ r.player.name ?? rift.champName(r.player.championId) }} · {{ rift.champName(r.player.championId) }}</span>
-            <button class="ghost" (click)="picked.set(null)">Back to you</button>
+            @if (r.player.name) { <button class="ghost" (click)="openPlayer(r.player)">See their profile</button> }
+            <button class="ghost" (click)="picked.set(null)">Your review</button>
           }
         </div>
         @for (x of r.lines; track x.kind) {
@@ -101,7 +102,10 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
                   <span class="lvl mono">{{ p.level }}</span>
                 </span>
                 <span class="name">
-                  @if (p.name) { {{ p.name }} } @else { <span class="faint">{{ rift.champName(p.championId) }}</span> }
+                  @if (p.name && !p.isMe) {
+                    <button class="who" title="Open {{ p.name }}'s profile" (click)="$event.stopPropagation(); openPlayer(p)"
+                            (keydown.enter)="$event.stopPropagation()" (keydown.space)="$event.stopPropagation()">{{ p.name }}</button>
+                  } @else if (p.name) { {{ p.name }} } @else { <span class="faint">{{ rift.champName(p.championId) }}</span> }
                 </span>
                 <span class="mono">{{ p.kills }}/{{ p.deaths }}/{{ p.assists }}</span>
                 <span class="mono muted">{{ p.cs }}</span>
@@ -256,6 +260,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .roast { margin-top: 14px; padding: 14px 18px; display: flex; flex-direction: column; gap: 8px; border-left: 3px solid var(--loss); }
     .roast-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
     .roast-head .ghost { margin-left: auto; }
+    .roast-head .ghost + .ghost { margin-left: 0; }
     .roast .clean { margin: 0; }
     .roast h3 { margin: 0 0 2px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--loss); }
     .roast-line { display: grid; grid-template-columns: 96px 1fr; align-items: baseline; gap: 12px; font-size: 14px; }
@@ -333,6 +338,11 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
       background: var(--bg-sunken); border: 1px solid var(--line-strong);
     }
     .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .who {
+      background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+      text-decoration: underline dotted var(--text-faint); text-underline-offset: 3px;
+    }
+    .who:hover:not(:disabled), .who:focus-visible { color: var(--accent); text-decoration: underline; background: none; border-color: transparent; }
     .dmg { display: flex; flex-direction: column; gap: 3px; }
     .bar { width: 100%; height: 4px; border-radius: 999px; background: var(--bg-sunken); overflow: hidden; }
     .bar span { display: block; height: 100%; background: var(--accent); opacity: 0.75; }
@@ -431,6 +441,12 @@ export class PostGameView {
     const who = p.name ?? this.rift.champName(p.championId);
     const unit = this.charts.find((c) => c.key === key)!.unit;
     return `${who} (${this.rift.champName(p.championId)}): ${p[key].toLocaleString()} ${unit}, ${share}% of ${t.isMine ? 'your' : 'their'} team`;
+  }
+
+  /** Their profile on the Profile page. */
+  openPlayer(p: PostPlayer): void {
+    // No puuid (seen on some players): looked up by Riot ID instead.
+    this.rift.showPlayer({ puuid: p.puuid || null, riotId: p.name });
   }
 
   pick(t: PostTeam, seat: number): void {

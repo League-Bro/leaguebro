@@ -160,6 +160,20 @@ export interface ModeInsights {
   insights: Insights;
 }
 
+/** Another player to show on the Profile page: by puuid (from a scoreboard), Riot ID (from the search), or both. */
+export interface PlayerRef {
+  puuid: string | null;
+  /** Name#TAG; needed to look them up on OP.GG while the client is closed. */
+  riotId: string | null;
+}
+
+/** A player the search suggests: a friend, or someone from a game seen this session. */
+export interface PlayerHit {
+  puuid: string;
+  name: string;
+  friend: boolean;
+}
+
 export interface MyProfile {
   puuid: string;
   name: string;

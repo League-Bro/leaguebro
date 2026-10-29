@@ -89,6 +89,64 @@ async fn get_my_profile(app: AppHandle, state: State<'_, AppState>) -> Result<pr
     Ok(p)
 }
 
+/// Another player's profile (the Profile page, opened from a scoreboard or the
+/// search): from the League client by `puuid`, or by `riot_id` when there's no
+/// puuid yet; while the client is closed, from OP.GG by `riot_id` in your region.
+/// `quick`: without enemy stats, to show the rest sooner (see `load_player`).
+/// Their LP isn't tracked, so there's no LP history or LP change.
+#[tauri::command]
+async fn get_player_profile(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    puuid: Option<String>,
+    riot_id: Option<String>,
+    quick: Option<bool>,
+) -> Result<profile::MyProfile, String> {
+    let puuid = puuid.filter(|p| !p.is_empty());
+    let riot_id = riot_id.map(|id| id.trim().to_string()).filter(|id| !id.is_empty() && !id.ends_with('#'));
+    let region = state.config().region;
+    let tag = profile::default_tag(&region);
+    let lcu = state.shared.lock().await.lcu.clone();
+    if let Some(lcu) = lcu {
+        let puuid = match (puuid, &riot_id) {
+            (Some(p), _) => p,
+            (None, Some(id)) => profile::find_puuid(&lcu, id, &tag).await.map_err(msg)?,
+            (None, None) => return Err("Enter a player's name".into()),
+        };
+        return profile::load_player(&lcu, &puuid, quick.unwrap_or(false)).await.map_err(msg);
+    }
+    client_closed().await?;
+    let riot_id = riot_id.ok_or("Open the League client to see this player")?;
+    // OP.GG needs a tag: a bare name gets the server's usual one.
+    let riot_id = if riot_id.contains('#') { riot_id } else { format!("{riot_id}#{tag}") };
+    load_web_statics(&app, &state).await;
+    opgg_profile::load(&state.opgg, &riot_id, &region).await.map_err(msg)
+}
+
+/// Accounts called exactly `name` (typed without a #TAG) under your server's
+/// usual tag and other common tags, for the search. Empty while the client is closed.
+#[tauri::command]
+async fn players_named(state: State<'_, AppState>, name: String) -> Result<Vec<profile::PlayerHit>, String> {
+    let Some(lcu) = state.shared.lock().await.lcu.clone() else { return Ok(Vec::new()) };
+    if name.trim().is_empty() || name.contains('#') {
+        return Ok(Vec::new());
+    }
+    Ok(profile::players_named(&lcu, &name, &profile::default_tag(&state.config().region)).await)
+}
+
+/// Players whose Riot ID matches the search, for its suggestions: friends,
+/// then players from games seen this session. Riot has no keyless way to
+/// search every player by part of a name, so these are the ones League Bro knows.
+#[tauri::command]
+async fn search_players(state: State<'_, AppState>, query: String) -> Result<Vec<profile::PlayerHit>, String> {
+    let lcu = state.shared.lock().await.lcu.clone();
+    let friends = match lcu {
+        Some(lcu) => lcu.get("/lol-chat/v1/friends").await.ok().flatten().unwrap_or_default(),
+        None => serde_json::Value::Null,
+    };
+    Ok(profile::player_hits(&friends, &query))
+}
+
 /// Has OP.GG fetch your latest games and rank (its "Update" button), then
 /// loads the profile again. `updated_at` is the shown profile's `updatedAt`.
 #[tauri::command]
@@ -160,10 +218,11 @@ async fn load_web_statics(app: &AppHandle, state: &State<'_, AppState>) {
 
 /// The full scoreboard of one of your past games.
 #[tauri::command]
-async fn get_match(state: State<'_, AppState>, game_id: i64, queue_name: String) -> Result<postgame::PostGame, String> {
+async fn get_match(state: State<'_, AppState>, game_id: i64, queue_name: String, puuid: Option<String>) -> Result<postgame::PostGame, String> {
     let lcu = state.shared.lock().await.lcu.clone().ok_or("Open the League client to see this game")?;
     let me = lcu.summoner_ids().await.map_err(msg)?;
-    let puuid = text(&me, "puuid");
+    // Seen from `puuid` (another player's profile) when given, else from you.
+    let puuid = puuid.as_deref().filter(|p| !p.is_empty()).unwrap_or(text(&me, "puuid"));
     let (path, timeline_path) = (format!("/lol-match-history/v1/games/{game_id}"), postgame::timeline_path(game_id));
     let (game, timeline) = tokio::join!(lcu.get(&path), lcu.get(&timeline_path));
     let game = game.map_err(msg)?.ok_or("The League client doesn't have this game anymore")?;
@@ -517,6 +576,9 @@ pub fn run() {
             move_global_item_sets,
             restore_global_item_sets,
             get_my_profile,
+            get_player_profile,
+            search_players,
+            players_named,
             renew_profile,
             get_match,
             preview_overlay,

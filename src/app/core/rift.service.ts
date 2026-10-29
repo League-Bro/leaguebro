@@ -14,6 +14,8 @@ import {
   ImportEvent,
   LoadingView,
   MyProfile,
+  PlayerHit,
+  PlayerRef,
   GoldPoint,
   OverlayState,
   PatchInfo,
@@ -40,6 +42,7 @@ import {
   demoPatchList,
   demoPostGame,
   demoProfile,
+  demoPlayerProfile,
   demoOpggProfile,
   demoMatchup,
   demoGuide,
@@ -88,7 +91,9 @@ export class RiftService {
   /** The Champions tab's view of the picked champion. */
   readonly championsView = signal<'build' | 'guide'>('build');
   /** A page link asks the shell to open this tab (the shell clears it and remembers where you were for Back). */
-  readonly navTo = signal<'champions' | null>(null);
+  readonly navTo = signal<'champions' | 'profile' | null>(null);
+  /** Whose profile the Profile page shows; null = yours. */
+  readonly viewedPlayer = signal<PlayerRef | null>(null);
   readonly overlayPreview = signal(false);
   readonly overlayLocked = signal(false);
   readonly config = signal<Config | null>(null);
@@ -367,9 +372,45 @@ export class RiftService {
     return this.call('renew_profile', { updatedAt }, () => ({ ...demoOpggProfile(), updatedAt: Date.now(), renewableAt: Date.now() + 120_000 }), 1500);
   }
 
-  /** Full scoreboard of one of your past games. */
-  getMatch(gameId: number, queueName: string): Promise<PostGame> {
-    return this.call('get_match', { gameId, queueName }, () => ({ ...demoPostGame(), gameId, queueName }), 300);
+  /** Another player's profile: from the League client, else from OP.GG by Riot ID in your region. */
+  getPlayerProfile(who: PlayerRef, quick = false): Promise<MyProfile> {
+    return this.call('get_player_profile', { puuid: who.puuid, riotId: who.riotId, quick }, () => demoPlayerProfile(who), quick ? 300 : 900);
+  }
+
+  /** Profiles shown this session, by `profileKey`, so going back to one shows it at once while it refreshes. */
+  readonly profileCache = new Map<string, MyProfile>();
+  profileKey(who: PlayerRef | null): string {
+    return who ? (who.puuid || (who.riotId ?? '').toLowerCase()) : 'me';
+  }
+
+  /** Players whose Riot ID contains `query` (case and spaces ignored): friends, then players from games seen this session. */
+  searchPlayers(query: string): Promise<PlayerHit[]> {
+    const known = ['Hubcus#NA1', 'Big Hub#777', 'TreeHugger#NA1', 'Gank Plank#0001', 'Hide on bush#KR1', 'Hide in bush#NA1'];
+    const squash = (s: string) => s.toLowerCase().replace(/\s/g, '');
+    const demo = () =>
+      known.filter((n) => squash(n).includes(squash(query))).map((name) => ({ puuid: `demo-${name}`, name, friend: known.indexOf(name) < 2 }));
+    return this.call('search_players', { query }, demo, 150);
+  }
+
+  /** Accounts called exactly `name` under your server's usual tag and other common ones (the client checks each). */
+  playersNamed(name: string): Promise<PlayerHit[]> {
+    const demo = () =>
+      name.trim().length < 3 ? [] : ['NA1', '000', '777'].map((t) => ({ puuid: `demo-${name}-${t}`, name: `${name.trim()}#${t}`, friend: false }));
+    return this.call('players_named', { name }, demo, 500);
+  }
+
+  /** Opens a player's profile (from a scoreboard or the search). Your own puuid or Riot ID opens yours. */
+  showPlayer(who: PlayerRef): void {
+    const me = this.status().summoner;
+    const myId = (me?.name || this.config()?.riotId || '').toLowerCase();
+    const isMe = (!!who.puuid && who.puuid === me?.puuid) || (!!who.riotId && who.riotId.toLowerCase() === myId);
+    this.viewedPlayer.set(isMe ? null : who);
+    this.navTo.set('profile');
+  }
+
+  /** Full scoreboard of a past game, seen from `puuid` (another player's profile) or else from you. */
+  getMatch(gameId: number, queueName: string, puuid: string | null = null): Promise<PostGame> {
+    return this.call('get_match', { gameId, queueName, puuid }, () => ({ ...demoPostGame(), gameId, queueName }), 300);
   }
 
   listPatches(): Promise<PatchInfo[]> {

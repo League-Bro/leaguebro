@@ -24,6 +24,12 @@ const REGIONS = [
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DecimalPipe, NgTemplateOutlet, PostGameView, ItemTip, LpGraph, LpChangeTag, Loader],
   template: `
+    @if (rift.viewedPlayer(); as v) {
+      <div class="viewing">
+        <button class="ghost" title="Back to your own profile" (click)="backToMe()">← Back to you</button>
+        <span class="faint small">Looking at {{ profile()?.name || v.riotId || 'another player' }}'s profile</span>
+      </div>
+    }
     @if (setup()) {
       <section class="card empty">
         <h2>{{ editing() ? 'Change your Riot ID' : 'See your profile without League running' }}</h2>
@@ -41,14 +47,18 @@ const REGIONS = [
     } @else if (waiting() && !profile()) {
       <section class="card empty"><p class="muted">Waiting for the League client to finish starting…</p></section>
     } @else if (loading() && !profile()) {
-      <section class="card empty"><rl-loader [size]="44" [block]="true" class="muted">Loading your profile from {{ rift.status().connected ? 'the League client' : 'OP.GG' }}…</rl-loader></section>
+      <section class="card empty"><rl-loader [size]="44" [block]="true" class="muted">Loading {{ whose() }} profile from {{ rift.status().connected ? 'the League client' : 'OP.GG' }}…</rl-loader></section>
     } @else if (loadError(); as e) {
       <section class="card empty">
-        <h2>Couldn't load your profile</h2>
+        <h2>Couldn't load {{ viewing() ? 'this player' : 'your profile' }}</h2>
         <p class="muted">{{ e }}</p>
         <div class="row center">
           <button class="ghost icon-btn" (click)="load()" title="Try again" aria-label="Try again"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg></button>
-          @if (!rift.status().connected) { <button class="ghost" (click)="editing.set(true)">Change Riot ID</button> }
+          @if (viewing()) {
+            <button class="ghost" (click)="backToMe()">Back to you</button>
+          } @else if (!rift.status().connected) {
+            <button class="ghost" (click)="editing.set(true)">Change Riot ID</button>
+          }
         </div>
       </section>
     } @else if (profile(); as p) {
@@ -60,8 +70,8 @@ const REGIONS = [
           <div class="muted small">Level {{ p.level }}</div>
           @if (p.source === 'opgg') {
             <div class="faint small">
-              From OP.GG · updated {{ p.updatedAt ? ago(p.updatedAt) : 'a while ago' }} ·
-              <button class="link" (click)="editing.set(true)">Change Riot ID</button>
+              From OP.GG · updated {{ p.updatedAt ? ago(p.updatedAt) : 'a while ago' }}
+              @if (!viewing()) { · <button class="link" (click)="editing.set(true)">Change Riot ID</button> }
             </div>
           }
         </div>
@@ -83,14 +93,15 @@ const REGIONS = [
           }
         </div>
         <div class="side">
-          @for (r of ranked(p); track r.label) {
+          <!-- Only your own LP is tracked. -->
+          @for (r of viewing() ? [] : ranked(p); track r.label) {
             <div class="graph">
               @if (ranked(p).length > 1) { <div class="faint cap">{{ r.label }}</div> }
               <rl-lp-graph [points]="r.history" [rank]="r.line" />
             </div>
           }
         <div class="actions">
-          @if (p.source === 'opgg') {
+          @if (p.source === 'opgg' && !viewing()) {
             <button class="ghost" [disabled]="renewing() || loading()" title="Has OP.GG fetch your latest games and rank from Riot (once every 2 minutes)" (click)="renew(p.updatedAt)">
               {{ renewing() ? 'Updating…' : 'Update on OP.GG' }}
             </button>
@@ -184,16 +195,16 @@ const REGIONS = [
                 @for (c of ins.toughestLanes; track c.championId) {
                   <ng-container *ngTemplateOutlet="vsRow; context: { $implicit: c }" />
                 } @empty {
-                  <p class="faint small">No lane opponent has beaten you more often than not in 2+ games.</p>
+                  <p class="faint small">No lane opponent has won more often than not in 2+ games.</p>
                 }
-                <p class="faint small foot">Your lane opponent is a best guess from the client's lane data, Smite and CS.</p>
+                <p class="faint small foot">The lane opponent is a best guess from the client's lane data, Smite and CS.</p>
               } @else {
                 @for (c of ins.toughestEnemies; track c.championId) {
                   <ng-container *ngTemplateOutlet="vsRow; context: { $implicit: c }" />
                 } @empty {
-                  <p class="faint small">No enemy champion has beaten you more often than not in 2+ games.</p>
+                  <p class="faint small">No enemy champion has won more often than not in 2+ games.</p>
                 }
-                <p class="faint small foot">Anywhere on the enemy team. Your K/D/A in those games.</p>
+                <p class="faint small foot">Anywhere on the enemy team. {{ viewing() ? 'Their' : 'Your' }} K/D/A in those games.</p>
               }
             </section>
           }
@@ -215,7 +226,7 @@ const REGIONS = [
         <h3>Match history</h3>
         <span class="faint small">
           @if (mode() === 'all') {
-            Your last {{ p.matches.length }} games {{ where() }}.
+            {{ viewing() ? 'Their' : 'Your' }} last {{ p.matches.length }} games {{ where() }}.
           } @else {
             {{ matches().length }} {{ modeLabel() }} {{ matches().length === 1 ? 'game' : 'games' }} of your last {{ p.matches.length }} {{ where() }}.
           }
@@ -303,6 +314,8 @@ const REGIONS = [
   `,
   styles: `
     .empty { max-width: 560px; margin: 40px auto; text-align: center; }
+    .viewing { display: flex; align-items: center; gap: 10px; margin: -4px 0 12px; }
+    .viewing button { margin-left: -10px; }
     /* You on the left, your ranks centered, LP graphs and buttons on the right.
        When space runs short a long name is cut with "…" rather than running
        under the ranks; on a narrow window the ranks drop to their own row. */
@@ -431,8 +444,16 @@ export class ProfileView {
   protected readonly renewing = signal(false);
   protected readonly renewError = signal<string | null>(null);
   protected readonly regions = REGIONS;
+  /** Showing another player (from a scoreboard or the search) rather than you. */
+  protected readonly viewing = computed(() => this.rift.viewedPlayer() !== null);
+  /** "your", "Faker#KR1's" or "their", for the loading line. */
+  protected readonly whose = computed(() => {
+    const v = this.rift.viewedPlayer();
+    return !v ? 'your' : v.riotId ? `${v.riotId}'s` : 'their';
+  });
   /** The Riot ID form: asked for, or needed because there's no client and no Riot ID. */
   protected readonly setup = computed(() => {
+    if (this.viewing()) return false;
     const c = this.rift.config();
     return this.editing() || (c !== null && !c.riotId && !this.rift.status().connected && this.profile()?.source !== 'client');
   });
@@ -497,16 +518,41 @@ export class ProfileView {
 
   constructor() {
     inject(DestroyRef).onDestroy(() => (this.destroyed = true));
+    // Opening the page shows the profile from last time at once; the first load below refreshes it.
+    this.profile.set(this.rift.profileCache.get(this.rift.profileKey(this.rift.viewedPlayer())) ?? null);
     // League opened or closed: switch between the client's data and OP.GG's.
     // A load still running was asked of the old source, so it's redone too.
+    let first = true;
     effect(() => {
       const connected = this.rift.status().connected;
       untracked(() => {
         const p = this.profile();
         const stale = p !== null && (p.source === 'opgg') === connected;
-        if (!p || stale || this.loading() || this.waiting()) this.load();
+        if (first || !p || stale || this.loading() || this.waiting()) this.load();
+        first = false;
       });
     });
+    // Another player picked, or back to you: show that profile (from the cache if seen before) and load it.
+    let shown = this.rift.viewedPlayer();
+    effect(() => {
+      const v = this.rift.viewedPlayer();
+      if (v === shown) return;
+      shown = v;
+      untracked(() => {
+        // A profile seen earlier this session shows at once and refreshes underneath.
+        this.profile.set(this.rift.profileCache.get(this.rift.profileKey(v)) ?? null);
+        this.loadError.set(null);
+        this.editing.set(false);
+        this.renewError.set(null);
+        this.mode.set('all');
+        this.openId.set(null);
+        this.load();
+      });
+    });
+  }
+
+  backToMe(): void {
+    this.rift.viewedPlayer.set(null);
   }
 
   async saveRiotId(event: Event, riotId: string, region: string): Promise<void> {
@@ -542,9 +588,23 @@ export class ProfileView {
     const seq = ++this.loadSeq;
     this.loading.set(true);
     try {
-      const p = await this.rift.getMyProfile();
+      const who = this.rift.viewedPlayer();
+      const show = (p: MyProfile) => {
+        this.profile.set(p);
+        this.rift.profileCache.set(this.rift.profileKey(who), p);
+        // Found by name: remembered under the puuid too, which a scoreboard link uses.
+        if (who && !who.puuid && p.puuid) this.rift.profileCache.set(p.puuid, p);
+      };
+      // Another player: rank and games first, then again with the full game records for enemy stats.
+      if (who && !this.profile()) {
+        const quick = await this.rift.getPlayerProfile(who, true);
+        if (seq !== this.loadSeq) return;
+        this.profile.set(quick);
+        this.waiting.set(false);
+      }
+      const p = await (who ? this.rift.getPlayerProfile(who) : this.rift.getMyProfile());
       if (seq !== this.loadSeq) return;
-      this.profile.set(p);
+      show(p);
       this.loadError.set(null);
       this.waiting.set(false);
       // The picked queue is gone from the new data (e.g. switched to OP.GG's).
@@ -577,7 +637,9 @@ export class ProfileView {
     this.detail.set(null);
     this.detailError.set(null);
     try {
-      const d = await this.rift.getMatch(m.gameId, this.queue(m.queueId, m.gameMode));
+      // Another player's games are seen from their side of the scoreboard.
+      const puuid = this.viewing() ? (this.profile()?.puuid ?? null) : null;
+      const d = await this.rift.getMatch(m.gameId, this.queue(m.queueId, m.gameMode), puuid);
       if (this.openId() === m.gameId) this.detail.set(d);
     } catch (e) {
       if (this.openId() === m.gameId) this.detailError.set(String(e));

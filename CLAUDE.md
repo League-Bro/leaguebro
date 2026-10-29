@@ -114,7 +114,8 @@ src-tauri/src/
   postgame.rs   post-game summary from the match-history record
   usage.rs      anonymous daily usage ping to Aptabase ("app_open": random install ID as sessionId, app + Windows version, nothing else). Key baked in at build time from APTABASE_APP_KEY (release workflow secret); no key = sends nothing. At most once per UTC day (usage.json next to settings.json), checked at startup and every 6 h; Settings → Privacy → shareUsageStats off stops it. Don't add feature events without asking Dom.
   feedback.rs   sends the Feedback tab's bug reports and ideas to the feedback Worker (`send_feedback`)
-  profile.rs    your profile: rank, recent matches, insights; the Brawl/League Classic filter
+  profile.rs    your profile: rank, recent matches, insights; the Brawl/League Classic filter. Also anyone else's
+                (`load_player` by puuid, `find_puuid` by Riot ID: tries `alias/lookup`, `summoners/aliases`, then `summoners?name=`)
   opgg_profile.rs  the same profile from OP.GG by Riot ID while the client isn't running; OP.GG's Update (renew)
   guide.rs      champion guides: kit, Riot ability clips, Data Dragon tips (Champions tab → Guide)
   matchup.rs    lane opponent guess (champ select) + matchup lookup onto RecState.matchup
@@ -128,6 +129,9 @@ src/app/components/  shell, live-view, post-game, champions-view, guide-card, pr
                      (the Profile page isn't in the tab bar; the "League Bro" brand and your name in the header open it)
                      champion-search: Ctrl+K / typing a letter anywhere opens a champion's build or guide. Links between
                      pages go through `rift.showChampion` (main lane from OP.GG's tier lists), which sets `navTo` for the shell's Back.
+                     Other players: a name on a scoreboard or Name#TAG in the search calls `rift.showPlayer`, which sets
+                     `viewedPlayer` and opens the Profile page (`get_player_profile`; OP.GG by Riot ID in your region while
+                     the client is closed). "← Back to you" or the header's brand/name clears it. No LP graph for others.
 .github/workflows/build-windows.yml   release workflow: Windows job, then a macOS job (universal .dmg) that adds to the same latest.json
 .github/workflows/pages.yml           publishes site/ to GitHub Pages (https://doliaro.github.io/leaguebro/)
 .github/ISSUE_TEMPLATE/               bug report + feature request issue forms (for people on GitHub; the app no longer opens them)
@@ -176,6 +180,7 @@ Working on it: `cd feedback-worker; npm install`, then `npm run dev` (Vite + wor
   - Lane item-value diff: that `position` matches up with the right enemy in ranked/normal draft.
   - Lane matchup: how often the lane-opponent guess is right in ranked draft, that the MCP guide answers for most champions, and importing the "vs" build.
   - Profile page against real data (icon, level, ranks, a match's full scoreboard).
+  - Other players' profiles: which Riot ID lookup endpoint the client answers (`profile::find_puuid`), and that another player's match history and ranks load (a private or other-region player may not).
   - Situational items: that `item_tags` reads real client tooltips right (Mortal Reminder → anti-heal + armor pen, Banshee's → MR + survive), that the picks make sense in real games, and that the overlay's "more counters" button takes clicks while locked.
   - Profile lane opponents: how often the `timeline.lane`/`role` guess finds one in real games, and that it's the right champion. Also how long the first load takes with ~32 full-record fetches.
 - Known gap: blind pick with no assigned role has no OP.GG position. The UI shows an error and runes fall back to the client.
