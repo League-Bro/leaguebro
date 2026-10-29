@@ -114,12 +114,17 @@ impl LpHistory {
         change_for(self.queue(queue_id)?, created)
     }
 
-    /// Puts the LP change on each ranked match. Two games of that queue
-    /// between the same points (a remake, which doesn't count as a game) get
-    /// none, since it isn't clear which one the LP belongs to.
+    /// Puts the LP change on each ranked match. Remakes get none and don't
+    /// count (they aren't in the game count either), and two games of that
+    /// queue between the same points get none, since it isn't clear which one
+    /// the LP belongs to.
     pub fn fill(&self, matches: &mut [MatchLine]) {
-        let starts: Vec<(i64, i64)> = matches.iter().map(|m| (m.queue_id, m.created)).collect();
+        let starts: Vec<(i64, i64)> = matches.iter().filter(|m| m.result != "remake").map(|m| (m.queue_id, m.created)).collect();
         for m in matches.iter_mut() {
+            if m.result == "remake" {
+                m.lp_change = None;
+                continue;
+            }
             m.lp_change = self.queue(m.queue_id).and_then(|points| {
                 let c = change_for(points, m.created)?;
                 let i = points.iter().rposition(|p| p.at < m.created)?;
@@ -302,6 +307,11 @@ mod tests {
         let mut two = vec![m(30), m(20)];
         h.fill(&mut two);
         assert!(two.iter().all(|m| m.lp_change.is_none()));
+        // A remake between the same points doesn't hide the real game's LP.
+        let mut remake = vec![m(30), m(20)];
+        remake[1].result = "remake".into();
+        h.fill(&mut remake);
+        assert_eq!(remake.iter().map(|m| m.lp_change.as_ref().map(|c| c.delta)).collect::<Vec<_>>(), [Some(20), None]);
     }
 
     #[test]
