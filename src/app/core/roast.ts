@@ -38,6 +38,8 @@ interface Pool {
   leads: string[];
   jabs: string[];
   whole?: string[];
+  /** No sign-off tails: they're too strong for the mild fallback lines. */
+  noTails?: boolean;
 }
 
 const BAD_TAILS = [
@@ -574,6 +576,43 @@ const POOLS: Record<string, Pool> = {
     ],
   },
 
+  // ---- Fallbacks, so every review has at least one of each ----
+  nitpick: {
+    noTails: true,
+    leads: ['{stat}.', '{stat}, your weakest stat.'],
+    jabs: [
+      'The Bro had to squint to find something to roast. This is it.',
+      'Not bad, technically. But the Bro needs something to roast.',
+      'The worst thing about your game, and honestly? Could be worse.',
+      'Nitpicking, sure. That\'s the Bro\'s whole job.',
+      'The Bro is legally required to roast something.',
+      'Room for improvement, says the Bro, stroking an imaginary beard.',
+      'Fine. Just fine. The Bro expected more.',
+      'Not a crime, just a misdemeanor.',
+      'Your teammates won\'t mention it. The Bro will.',
+      'The weakest link, by a small margin.',
+      'Even a good game has a dusty corner. Here it is.',
+      'Polish this and there\'s nothing left to roast. The Bro would hate that.',
+    ],
+  },
+  brightSide: {
+    noTails: true,
+    leads: ['{stat}.', '{stat}, your best stat.'],
+    jabs: [
+      'It\'s not much, but it\'s honest work.',
+      'Small win. The Bro is counting it.',
+      'The one bright spot. Hold on to it.',
+      'Look, the Bro has to say something nice. This is it.',
+      'Silver lining located.',
+      'Not everything went wrong. This, for example.',
+      'Celebrate the small things. This is a small thing.',
+      'A participation trophy, but a shiny one.',
+      'Proof that you were trying. A little.',
+      'The Bro found a positive. It took a while.',
+      'Something to build on. Tiny foundation, but a foundation.',
+    ],
+  },
+
   // ---- Verdicts, one per grade ----
   verdictSS: {
     leads: [''],
@@ -815,21 +854,38 @@ export function review(game: PostGame, team: PostTeam, me: PostPlayer, champName
     add(good, 'game', 'comeback', `−${k(-worstLead)} comeback`, 'Won after being 5k+ gold behind', { lead: k(-worstLead) });
   }
 
+  // The grade: each stat scored 0 to 1 against what the role should hit.
+  const parts: { kind: Roast['kind']; stat: string; v: number; w: number }[] = [
+    { kind: 'fight', stat: `${vars['kda']} KDA`, v: ramp(kda, 1, 6), w: 1.2 },
+    { kind: 'fight', stat: `${kp}% KP`, v: ramp(kp, kpBar - 10, 70), w: 1 },
+    { kind: 'damage', stat: `${dmg}% dmg`, v: ramp(dmg, dmgLow - 4, dmgHigh + 2), w: support ? 0.6 : 1 },
+    { kind: 'deaths', stat: vars['deathsText'] as string, v: 1 - ramp(deathsPer10, aram ? 2 : 1, aram ? 6.5 : 4.5), w: 1.2 },
+  ];
+  if (pos && !support) parts.push({ kind: 'cs', stat: `${vars['cs']} CS/min`, v: ramp(csMin, csLow - 1.5, csHigh), w: 1 });
+  if (pos) parts.push({ kind: 'vision', stat: `${me.vision} vision`, v: ramp(vpm, visLow - (support ? 0.3 : 0.1), visHigh), w: support ? 1 : 0.4 });
+  if (opp) {
+    const stat = `${goldDiff >= 0 ? '+' : '−'}${vars['goldDiff']} vs ${vars['opp']}`;
+    parts.push({ kind: 'lane', stat, v: ramp(goldDiff, -100 * min, 100 * min), w: 0.8 });
+  }
+
+  // Always at least one roast and one highlight: when no stat crossed a bar,
+  // the weakest stat gets roasted and the best one praised.
+  const used = (kind: Roast['kind']) => [...bad, ...good].some((r) => r.kind === kind);
+  const byScore = [...parts].sort((a, b) => a.v - b.v);
+  if (!bad.length) {
+    const p = byScore.find((x) => !used(x.kind));
+    if (p) add(bad, p.kind, 'nitpick', p.stat, 'Your weakest stat this game', { stat: p.stat });
+  }
+  if (!good.length) {
+    const p = byScore.reverse().find((x) => !used(x.kind));
+    if (p) add(good, p.kind, 'brightSide', p.stat, 'Your best stat this game', { stat: p.stat });
+  }
+
   const rank = (r: Roast) => ORDER.indexOf(r.kind);
   const lines = [...bad.sort((a, b) => rank(a) - rank(b)).slice(0, MAX_BAD), ...good.sort((a, b) => rank(a) - rank(b)).slice(0, MAX_GOOD)];
 
-  // The grade: each stat scored 0 to 1 against what the role should hit.
-  const parts: [number, number][] = [
-    [ramp(kda, 1, 6), 1.2],
-    [ramp(kp, kpBar - 10, 70), 1],
-    [ramp(dmg, dmgLow - 4, dmgHigh + 2), support ? 0.6 : 1],
-    [1 - ramp(deathsPer10, aram ? 2 : 1, aram ? 6.5 : 4.5), 1.2],
-  ];
-  if (pos && !support) parts.push([ramp(csMin, csLow - 1.5, csHigh), 1]);
-  if (pos) parts.push([ramp(vpm, visLow - (support ? 0.3 : 0.1), visHigh), support ? 1 : 0.4]);
-  if (opp) parts.push([ramp(goldDiff, -100 * min, 100 * min), 0.8]);
-  const weight = parts.reduce((a, [, w]) => a + w, 0);
-  const raw = parts.reduce((a, [v, w]) => a + v * w, 0) / weight + (team.win ? 0.06 : 0);
+  const weight = parts.reduce((a, p) => a + p.w, 0);
+  const raw = parts.reduce((a, p) => a + p.v * p.w, 0) / weight + (team.win ? 0.06 : 0);
   const score = Math.round(Math.min(1, Math.max(0, raw)) * 100);
   const grade: Grade = score >= 88 ? 'S+' : score >= 77 ? 'S' : score >= 64 ? 'A' : score >= 50 ? 'B' : score >= 36 ? 'C' : 'D';
   const verdictPool = VERDICT_POOL[grade];
@@ -883,7 +939,7 @@ function pickLine(name: string, key: string, good: boolean): string {
   const id = any(ids.filter((i) => !recent.includes(i))) ?? ids[0];
   const at = Number(id.slice(1));
   let line = id[0] === 'w' ? pool.whole![at] : `${any(pool.leads)} ${pool.jabs[at]}`.trim();
-  if (id[0] === 'j' && pool.leads[0] && Math.random() < 0.35) line += ` ${any(good ? GOOD_TAILS : BAD_TAILS)}`;
+  if (id[0] === 'j' && pool.leads[0] && !pool.noTails && Math.random() < 0.35) line += ` ${any(good ? GOOD_TAILS : BAD_TAILS)}`;
   mem.picks[key] = line;
   mem.recent[name] = [...recent, id];
   const keys = Object.keys(mem.picks);
