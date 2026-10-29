@@ -28,6 +28,7 @@ npm run build                # Angular production build (check this compiles)
 cd src-tauri; cargo test     # Rust unit tests (fixtures in src-tauri/tests/fixtures)
 npm run tauri build          # local NSIS installer (needs the updater signing key in env; normally CI does this)
 .\release                    # from main: bump, commit, push, start the release + website workflows (asks first; `.\release 0.2.0`)
+                             #   same as ./release in Git Bash / zsh (the extensionless `release` sh script)
 ```
 
 Before handing work back: `cargo test` and `npm run build` must pass with no warnings. For UI changes, check the browser demo, and update `src/app/core/demo.ts` when data shapes change.

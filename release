@@ -1,0 +1,14 @@
+#!/bin/sh
+# Shortcut for release.cmd from Git Bash / zsh, run from the project folder.
+# Usage: ./release            (next patch version)
+#        ./release 0.2.0      (a specific version)
+#        ./release -Yes       (no question before pushing)
+cd "$(dirname "$0")" || exit 1
+if command -v powershell.exe >/dev/null 2>&1; then
+  exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1 "$@"
+elif command -v pwsh >/dev/null 2>&1; then
+  exec pwsh -NoProfile -File scripts/release.ps1 "$@"
+else
+  echo "release: needs PowerShell (powershell.exe, or pwsh on macOS/Linux)." >&2
+  exit 1
+fi
