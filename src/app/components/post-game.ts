@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, injec
 import { RiftService } from '../core/rift.service';
 import { championIcon, clock, kdaRatio } from '../core/assets';
 import { PostGame, PostPlayer, PostTeam } from '../core/models';
-import { Roast, roasts } from '../core/roast';
+import { Grade, rerollReview, review, reviewText } from '../core/roast';
 import { GoldGraph } from './gold-graph';
 import { ItemTip } from './item-tip';
 import { LpChangeTag } from './lp-change';
@@ -52,23 +52,38 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     }
 
     @if (review(); as r) {
-      <section #reviewCard class="roast card" [class.all-good]="allGood(r.lines)" aria-live="polite">
+      <section #reviewCard class="roast card" [class]="'tone-' + tone(r.review.grade)" aria-live="polite">
         <div class="roast-head">
-          <h3>The Bro's review</h3>
-          @if (!r.player.isMe) {
-            <span class="muted">{{ r.player.name ?? rift.champName(r.player.championId) }} · {{ rift.champName(r.player.championId) }}</span>
-            @if (r.player.name) { <button class="ghost" (click)="openPlayer(r.player)">See their profile</button> }
-            <button class="ghost" (click)="picked.set(null)">Your review</button>
+          <span class="grade" [title]="'Bro score: ' + r.review.score + ' out of 100'">{{ r.review.grade }}</span>
+          <div class="verdict">
+            <h3>
+              The Bro's review
+              @if (!r.player.isMe) { <span class="whom">{{ r.player.name ?? rift.champName(r.player.championId) }} · {{ rift.champName(r.player.championId) }}</span> }
+            </h3>
+            <p>{{ r.review.verdict }}</p>
+          </div>
+          <div class="actions">
+            <button class="ghost" (click)="reroll()" title="Let the Bro try again with new lines">
+              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="2" /><circle cx="9" cy="9" r="1.4" fill="currentColor" /><circle cx="15" cy="15" r="1.4" fill="currentColor" /><circle cx="15" cy="9" r="1.4" fill="currentColor" /><circle cx="9" cy="15" r="1.4" fill="currentColor" /></svg>
+              New lines
+            </button>
+            <button class="ghost" (click)="copy()" [title]="'Copy the review to send to your friends'">{{ copied() ? 'Copied' : 'Copy' }}</button>
+            @if (!r.player.isMe) {
+              @if (r.player.name) { <button class="ghost" (click)="openPlayer(r.player)">See their profile</button> }
+              <button class="ghost" (click)="picked.set(null)">Your review</button>
+            }
+          </div>
+        </div>
+        <div class="lines">
+          @for (x of r.review.lines; track x.kind + x.line) {
+            <div class="roast-line" [class.good]="x.good" [style.animation-delay.ms]="$index * 60">
+              <span class="stat mono" [title]="x.why">{{ x.stat }}</span>
+              <span>{{ x.line }}</span>
+            </div>
+          } @empty {
+            <p class="muted clean">Nothing to roast. {{ r.player.isMe ? 'You' : 'They' }} actually showed up this game.</p>
           }
         </div>
-        @for (x of r.lines; track x.kind) {
-          <div class="roast-line" [class.good]="x.good">
-            <span class="stat mono" [title]="x.why">{{ x.stat }}</span>
-            <span>{{ x.line }}</span>
-          </div>
-        } @empty {
-          <p class="muted clean">Nothing to roast. {{ r.player.isMe ? 'You' : 'They' }} actually showed up this game.</p>
-        }
       </section>
     }
 
@@ -257,21 +272,42 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .gval { font-size: 11.5px; color: var(--text-dim); flex: none; }
     .bar-row.me .gval { color: var(--text); }
 
-    .roast { margin-top: 14px; padding: 14px 18px; display: flex; flex-direction: column; gap: 8px; border-left: 3px solid var(--loss); }
-    .roast-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
-    .roast-head .ghost { margin-left: auto; }
-    .roast-head .ghost + .ghost { margin-left: 0; }
+    .roast { --tone: var(--loss); margin-top: 14px; padding: 14px 18px; display: flex; flex-direction: column; gap: 8px; border-left: 3px solid var(--tone); }
+    .roast.tone-top { --tone: var(--gold); }
+    .roast.tone-good { --tone: var(--win); }
+    .roast.tone-mid { --tone: var(--accent-2); }
+    .roast.tone-meh { --tone: #ff9a4e; }
+    .roast-head { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
+    .grade {
+      flex: none; display: grid; place-items: center; width: 50px; height: 50px; border-radius: 14px; cursor: help;
+      font: 800 24px/1 var(--display); letter-spacing: -0.03em; color: var(--tone);
+      background: color-mix(in srgb, var(--tone) 12%, transparent); border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
+      box-shadow: 0 0 18px color-mix(in srgb, var(--tone) 22%, transparent);
+    }
+    .tone-top .grade { animation: shine 2.4s ease-in-out infinite; }
+    @keyframes shine { 50% { box-shadow: 0 0 28px color-mix(in srgb, var(--tone) 50%, transparent); } }
+    .verdict { flex: 1; min-width: 0; }
+    .verdict p { margin: 2px 0 0; font-size: 15px; font-weight: 600; font-style: italic; }
+    .whom { margin-left: 6px; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--text-dim); }
+    .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px; align-self: flex-start; }
+    .actions button { display: inline-flex; align-items: center; gap: 6px; }
     .roast .clean { margin: 0; }
-    .roast h3 { margin: 0 0 2px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--loss); }
-    .roast-line { display: grid; grid-template-columns: 96px 1fr; align-items: baseline; gap: 12px; font-size: 14px; }
+    /* One stat column as wide as the widest chip, shared by every line. */
+    .lines { display: grid; grid-template-columns: minmax(96px, max-content) 1fr; gap: 8px 12px; }
+    .lines .clean { grid-column: 1 / -1; }
+    .roast h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--tone); }
+    .roast-line {
+      display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: baseline; font-size: 14px;
+      padding-top: 8px; border-top: 1px solid var(--line); animation: line-in 0.3s ease-out both;
+    }
+    @keyframes line-in { from { opacity: 0; transform: translateY(4px); } }
     .roast-line .stat {
       justify-self: start; padding: 1px 7px; border-radius: 6px; font-size: 12px; white-space: nowrap; cursor: help;
       color: var(--loss); background: rgba(255, 90, 78, 0.1); border: 1px solid rgba(255, 90, 78, 0.35);
     }
     /* Highlights (praise) in green, against the red for bad play. */
     .roast-line.good .stat { color: var(--win); background: rgba(60, 207, 142, 0.1); border-color: rgba(60, 207, 142, 0.35); }
-    .roast.all-good { border-left-color: var(--win); }
-    .roast.all-good h3 { color: var(--win); }
+    @media (prefers-reduced-motion: reduce) { .roast-line, .tone-top .grade { animation: none; } }
 
     .hero { position: relative; display: flex; align-items: center; gap: 20px; padding: 24px; border-left: 3px solid var(--text-faint); }
     .hero > :not(.splash) { position: relative; }
@@ -378,9 +414,13 @@ export class PostGameView {
     const team = at ? g.teams.find((t) => t.teamId === at.teamId) : this.myTeam();
     const player = at ? team?.players[at.seat] : this.me();
     if (!team || !player) return null;
-    const lines = roasts(g, team, player, this.rift.champName(player.championId));
-    return lines.length || !player.isMe ? { player, lines } : null;
+    this.rerolls();
+    const r = review(g, team, player, (id) => this.rift.champName(id));
+    return r ? { player, team, review: r } : null;
   });
+  /** Bumped by "New lines", so the review is built again. */
+  private readonly rerolls = signal(0);
+  protected readonly copied = signal(false);
   protected readonly maxDamage = computed(() =>
     Math.max(1, ...this.game().teams.flatMap((t) => t.players.map((p) => p.damage))),
   );
@@ -456,8 +496,29 @@ export class PostGameView {
     // The card sits above the scoreboard, so bring it into view.
     setTimeout(() => this.reviewCard()?.nativeElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
   }
-  allGood(lines: Roast[]): boolean {
-    return lines.length > 0 && lines.every((x) => x.good);
+  /** Lets the Bro write this review again from scratch. */
+  reroll(): void {
+    const r = this.review();
+    if (!r) return;
+    rerollReview(this.game(), r.team, r.player);
+    this.rerolls.update((n) => n + 1);
+  }
+  /** The review as text on the clipboard, for the group chat. */
+  copy(): void {
+    const r = this.review();
+    if (!r) return;
+    const champ = this.rift.champName(r.player.championId);
+    const who = r.player.isMe ? `my ${champ}` : `${r.player.name ?? champ} (${champ})`;
+    navigator.clipboard?.writeText(reviewText(r.review, who)).then(
+      () => {
+        this.copied.set(true);
+        setTimeout(() => this.copied.set(false), 1500);
+      },
+      () => undefined,
+    );
+  }
+  tone(g: Grade): string {
+    return g === 'S+' || g === 'S' ? 'top' : g === 'A' ? 'good' : g === 'B' ? 'mid' : g === 'C' ? 'meh' : 'bad';
   }
   isPicked(t: PostTeam, seat: number): boolean {
     const at = this.picked();
