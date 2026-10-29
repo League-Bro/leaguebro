@@ -355,6 +355,19 @@ pub fn enemies(data: &Value) -> Vec<ScoreboardEnemy> {
         .collect()
 }
 
+/// Each player's Riot ID with their champion as (raw key, display name, Riot ID).
+/// Players in streamer mode come with an empty name ("#") and are left out.
+pub fn riot_ids(data: &Value) -> Vec<(String, String, String)> {
+    list(data, "allPlayers")
+        .iter()
+        .filter_map(|p| {
+            let id = text(p, "riotId");
+            let game = id.split('#').next().unwrap_or_default();
+            (!game.is_empty()).then(|| (raw_champion_key(p), text(p, "championName").to_string(), id.to_string()))
+        })
+        .collect()
+}
+
 /// Every player's champion as (raw key, display name): your team, then the other.
 /// Bots are in here too, unlike the client's loading screen data.
 pub fn team_champions(data: &Value) -> (Vec<(String, String)>, Vec<(String, String)>) {
@@ -692,6 +705,15 @@ mod tests {
             "events": {"Events": events},
             "gameData": {"gameTime": now, "gameMode": "CLASSIC"}
         })
+    }
+
+    #[test]
+    fn riot_ids_skip_streamer_mode() {
+        let data = json!({"allPlayers": [
+            {"riotId": "hubcus#NA1", "championName": "Garen", "rawChampionName": "game_character_displayname_Garen"},
+            {"riotId": "#", "championName": "Qiyana", "rawChampionName": "game_character_displayname_Qiyana"}
+        ]});
+        assert_eq!(riot_ids(&data), vec![("Garen".to_string(), "Garen".to_string(), "hubcus#NA1".to_string())]);
     }
 
     #[test]

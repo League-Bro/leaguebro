@@ -385,13 +385,14 @@ export class LiveView {
   /** Champions for the damage bars. In champ select an ally's hover counts until they lock in. */
   protected readonly csAllyIds = computed(() => this.rift.champSelect()?.allies.map((p) => p.championId || p.pickIntent) ?? []);
   protected readonly csEnemyIds = computed(() => this.rift.champSelect()?.enemies.map((p) => p.championId) ?? []);
-  // Once the game runs, its own player list wins: the loading screen data can miss
-  // champions (bots, or picks it hadn't caught yet).
-  protected readonly loadAllyIds = computed(
-    () => nonEmpty(this.rift.overlay()?.allyChampions) ?? this.rift.loading()?.allies.map((p) => p.championId) ?? [],
+  // Both lists together: the loading screen data can miss champions (bots, or picks
+  // it hadn't caught yet), and the game's own list can miss some while it loads or
+  // when a name doesn't match a champion, so neither replaces the other.
+  protected readonly loadAllyIds = computed(() =>
+    union(this.rift.overlay()?.allyChampions, this.rift.loading()?.allies.map((p) => p.championId)),
   );
-  protected readonly loadEnemyIds = computed(
-    () => nonEmpty(this.rift.overlay()?.enemyChampions) ?? this.rift.loading()?.enemies.map((p) => p.championId) ?? [],
+  protected readonly loadEnemyIds = computed(() =>
+    union(this.rift.overlay()?.enemyChampions, this.rift.loading()?.enemies.map((p) => p.championId)),
   );
 
   protected icon = championIcon;
@@ -417,6 +418,9 @@ export class LiveView {
   }
 }
 
-function nonEmpty(ids: number[] | undefined): number[] | undefined {
-  return ids?.length ? ids : undefined;
+/** Every champion in either list once (the game's own list first). */
+function union(live: number[] | undefined, loading: number[] | undefined): number[] {
+  const ids = [...(live ?? [])];
+  for (const id of loading ?? []) if (id > 0 && !ids.includes(id)) ids.push(id);
+  return ids;
 }

@@ -424,10 +424,22 @@ pub fn parse_loading(session: &Value, my_puuid: &str) -> Option<LoadingView> {
             })
             .collect()
     };
-    let one = team("teamOne");
-    let two = team("teamTwo");
+    let mut one = team("teamOne");
+    let mut two = team("teamTwo");
     if one.is_empty() && two.is_empty() {
         return None;
+    }
+    // Players in streamer mode are left out of the teams but still have their
+    // champion in `playerChampionSelections` (seen in ranked, October 2026). They go
+    // to the short team with only the champion: their name and puuid stay hidden.
+    for sel in list(gd, "playerChampionSelections") {
+        let champion_id = int(sel, "championId");
+        let listed = one.iter().chain(two.iter()).any(|p| p.champion_id == champion_id);
+        if champion_id == 0 || listed || one.len() == two.len() {
+            continue;
+        }
+        let short = if one.len() < two.len() { &mut one } else { &mut two };
+        short.push(LoadPlayer { champion_id, ..Default::default() });
     }
     let (allies, enemies) = if two.iter().any(|p| p.is_me) { (two, one) } else { (one, two) };
     Some(LoadingView {
@@ -436,6 +448,70 @@ pub fn parse_loading(session: &Value, my_puuid: &str) -> Option<LoadingView> {
         allies,
         enemies,
     })
+}
+
+/// A later read of the loading-screen teams on top of what's known. The
+/// client's session can drop players, or their names and ids, as the game
+/// loads, so nothing known is lost: missing fields come from the earlier read
+/// and players the new read left out are kept. A read without you in it can
+/// come with the teams the wrong way round, so it's lined up by overlap first.
+pub fn merge_loading(old: &LoadingView, mut new: LoadingView) -> LoadingView {
+    if old.game_id != 0 && new.game_id != 0 && old.game_id != new.game_id {
+        return new;
+    }
+    let same = |a: &LoadPlayer, b: &LoadPlayer| match (&a.puuid, &b.puuid) {
+        (Some(x), Some(y)) => x == y,
+        _ => a.champion_id != 0 && a.champion_id == b.champion_id,
+    };
+    let overlap = |a: &[LoadPlayer], b: &[LoadPlayer]| a.iter().filter(|p| b.iter().any(|q| same(p, q))).count();
+    if !new.allies.iter().any(|p| p.is_me)
+        && overlap(&new.allies, &old.enemies) + overlap(&new.enemies, &old.allies)
+            > overlap(&new.allies, &old.allies) + overlap(&new.enemies, &old.enemies)
+    {
+        std::mem::swap(&mut new.allies, &mut new.enemies);
+    }
+    let merge = |old: &[LoadPlayer], new: Vec<LoadPlayer>| {
+        let mut out = new;
+        for p in &mut out {
+            if let Some(o) = old.iter().find(|o| same(o, p)) {
+                p.puuid = p.puuid.take().or_else(|| o.puuid.clone());
+                p.name = p.name.take().or_else(|| o.name.clone());
+                if p.champion_id == 0 {
+                    p.champion_id = o.champion_id;
+                }
+                if p.position.is_empty() {
+                    p.position = o.position.clone();
+                }
+                p.is_me |= o.is_me;
+            }
+        }
+        let missing: Vec<LoadPlayer> = old.iter().filter(|o| !out.iter().any(|p| same(o, p))).cloned().collect();
+        out.extend(missing);
+        out
+    };
+    LoadingView {
+        game_id: if new.game_id != 0 { new.game_id } else { old.game_id },
+        queue_name: if new.queue_name.is_empty() { old.queue_name.clone() } else { new.queue_name },
+        allies: merge(&old.allies, new.allies),
+        enemies: merge(&old.enemies, new.enemies),
+    }
+}
+
+/// Gives players without a name their Riot ID from the live game, matched by
+/// champion. Only players the client listed (they have a puuid): ones added
+/// for streamer mode stay hidden. True when a name was added.
+pub fn fill_names(view: &mut LoadingView, names: &[(i64, String)]) -> bool {
+    let mut changed = false;
+    for p in view.allies.iter_mut().chain(view.enemies.iter_mut()) {
+        if p.name.is_some() || p.puuid.is_none() || p.champion_id == 0 {
+            continue;
+        }
+        if let Some((_, id)) = names.iter().find(|(c, _)| *c == p.champion_id) {
+            p.name = Some(id.clone());
+            changed = true;
+        }
+    }
+    changed
 }
 
 async fn load_statics(lcu: &Lcu) -> anyhow::Result<StaticData> {
@@ -1280,14 +1356,13 @@ impl Engine {
         }
         self.last_loading_read = Some(Instant::now());
         let Ok(Some(session)) = lcu.get("/lol-gameflow/v1/session").await else { return };
-        let Some(view) = parse_loading(&session, &self.my_puuid) else { return };
+        let Some(mut view) = parse_loading(&session, &self.my_puuid) else { return };
         {
             let state = self.state();
             let mut sh = state.shared.lock().await;
             if let Some(old) = &sh.loading {
-                // Same game: only take a read that adds players, never one that drops them.
-                let count = |v: &LoadingView| v.allies.len() + v.enemies.len();
-                if old.game_id == view.game_id && (old == &view || count(&view) < count(old)) {
+                view = merge_loading(old, view);
+                if old == &view {
                     return;
                 }
             }
@@ -1401,6 +1476,17 @@ impl Engine {
             st.ally_champions = ids(&ours);
             st.enemy_champions = ids(&theirs);
             sh.overlay = Some(st.clone());
+            // The client's session can come without names (seen in ranked, October 2026);
+            // the game has them.
+            let names: Vec<(i64, String)> = live::riot_ids(&data)
+                .into_iter()
+                .filter_map(|(k, n, id)| Some((sh.live_champion(&k, &n)?.id, id)))
+                .collect();
+            if let Some(view) = sh.loading.as_mut() {
+                if fill_names(view, &names) {
+                    let _ = self.app.emit("loading", Some(view.clone()));
+                }
+            }
             let enemies: Vec<EnemySeen> = live::enemies(&data)
                 .into_iter()
                 .filter_map(|e| {
@@ -2196,6 +2282,69 @@ mod tests {
         assert!(v.allies[0].is_me);
         assert!(v.allies[1].puuid.is_none());
         assert_eq!(v.enemies[0].name.as_deref(), Some("A#1"));
+    }
+
+    #[test]
+    fn loading_adds_streamer_mode_players() {
+        // A real ranked session: an enemy in streamer mode is missing from teamOne
+        // but still in playerChampionSelections.
+        let s = json!({"gameData": {"gameId": 5669226741i64,
+            "teamOne": [{"puuid": "a", "championId": 498}, {"puuid": "b", "championId": 103}],
+            "teamTwo": [{"puuid": "me", "championId": 31}, {"puuid": "c", "championId": 555}, {"puuid": "d", "championId": 157}],
+            "playerChampionSelections": [{"championId": 103, "puuid": "b"}, {"championId": 246, "puuid": "hidden"},
+                                         {"championId": 31, "puuid": "me"}, {"championId": 498, "puuid": "a"}]}});
+        let v = parse_loading(&s, "me").unwrap();
+        assert_eq!(v.enemies.iter().map(|e| e.champion_id).collect::<Vec<_>>(), vec![498, 103, 246]);
+        assert!(v.enemies[2].puuid.is_none() && v.enemies[2].name.is_none());
+        assert_eq!(v.allies.len(), 3);
+    }
+
+    #[test]
+    fn names_from_the_live_game() {
+        let p = |puuid: Option<&str>, champ: i64| LoadPlayer { puuid: puuid.map(Into::into), champion_id: champ, ..Default::default() };
+        let mut v = LoadingView { allies: vec![p(Some("a"), 31)], enemies: vec![p(Some("b"), 498), p(None, 246)], ..Default::default() };
+        let names = [(31, "pynkrobot#4580".to_string()), (498, "Foe#NA1".to_string()), (246, "Leak#NA1".to_string())];
+        assert!(fill_names(&mut v, &names));
+        assert_eq!(v.allies[0].name.as_deref(), Some("pynkrobot#4580"));
+        assert_eq!(v.enemies[0].name.as_deref(), Some("Foe#NA1"));
+        // Added for streamer mode: stays hidden.
+        assert!(v.enemies[1].name.is_none());
+        assert!(!fill_names(&mut v, &names));
+    }
+
+    #[test]
+    fn loading_reads_never_lose_players() {
+        let p = |puuid: &str, champ: i64, me: bool| LoadPlayer {
+            puuid: Some(puuid.into()).filter(|p: &String| !p.is_empty()),
+            name: Some(format!("{puuid}#1")).filter(|_| !puuid.is_empty()),
+            champion_id: champ,
+            position: String::new(),
+            is_me: me,
+        };
+        let old = LoadingView {
+            game_id: 0,
+            queue_name: "Ranked".into(),
+            allies: vec![p("me", 103, true), p("b", 64, false)],
+            enemies: vec![p("x", 1, false), p("y", 2, false), p("z", 3, false)],
+        };
+        // In game: one enemy missing, another without name or id, and you not in the
+        // list, so the teams come the wrong way round.
+        let new = LoadingView {
+            game_id: 77,
+            queue_name: String::new(),
+            allies: vec![p("x", 1, false), p("", 2, false)],
+            enemies: vec![p("b", 64, false)],
+        };
+        let v = merge_loading(&old, new);
+        assert_eq!(v.game_id, 77);
+        assert_eq!(v.queue_name, "Ranked");
+        assert_eq!(v.enemies.iter().map(|e| e.champion_id).collect::<Vec<_>>(), vec![1, 2, 3]);
+        assert_eq!(v.enemies[1].name.as_deref(), Some("y#1"));
+        assert_eq!(v.allies.len(), 2);
+        assert!(v.allies.iter().any(|a| a.is_me));
+        // Another game replaces it.
+        let other = LoadingView { game_id: 5, ..Default::default() };
+        assert_eq!(merge_loading(&v, other.clone()), other);
     }
 
     #[test]
