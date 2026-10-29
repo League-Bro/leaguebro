@@ -62,7 +62,7 @@ pub const CDRAGON_GAME_DATA: &str = "https://raw.communitydragon.org/latest/plug
 pub fn web_client(timeout_secs: u64) -> reqwest::Client {
     use_ring();
     reqwest::Client::builder()
-        .user_agent(concat!("LeagueBro/", env!("CARGO_PKG_VERSION"), " (+https://github.com/doliaro/leaguebro)"))
+        .user_agent(concat!("LeagueBro/", env!("CARGO_PKG_VERSION"), " (+https://github.com/league-bro/leaguebro)"))
         .timeout(Duration::from_secs(timeout_secs))
         .build()
         .expect("http client")

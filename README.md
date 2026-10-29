@@ -4,9 +4,9 @@ A small, ad-free League of Legends companion for Windows and Mac. It imports you
 
 ## Install
 
-Download it from **[doliaro.github.io/leaguebro](https://doliaro.github.io/leaguebro/)**, the League Bro website, which always links the newest installer. Or:
+Download it from **[league-bro.github.io/leaguebro](https://league-bro.github.io/leaguebro/)**, the League Bro website, which always links the newest installer. Or:
 
-1. Go to the **[latest release](https://github.com/doliaro/leaguebro/releases/latest)** and download `League.Bro_x.y.z_x64-setup.exe`.
+1. Go to the **[latest release](https://github.com/league-bro/leaguebro/releases/latest)** and download `League.Bro_x.y.z_x64-setup.exe`.
 2. Run it. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**. That warning appears because the app isn't code-signed, not because something is wrong with it.
 3. Open League Bro, then open League. It connects on its own.
 
@@ -106,7 +106,7 @@ Built with [Tauri 2](https://tauri.app) (Rust) and Angular 21.
 Clone the repo, then run the setup script from the project folder:
 
 ```powershell
-git clone https://github.com/doliaro/leaguebro.git
+git clone https://github.com/league-bro/leaguebro.git
 cd leaguebro
 scripts\setup-dev.cmd
 ```
@@ -170,7 +170,7 @@ Don't run a dev copy and an installed copy of League Bro at the same time; both 
 
 ### Website
 
-The download site is a single static page, `site/index.html`, published to GitHub Pages at https://doliaro.github.io/leaguebro/ by `.github/workflows/pages.yml` whenever `site/` changes on `main`. The page asks GitHub's API for the latest release in the visitor's browser, so a new release shows up on the site without republishing. To preview it locally, open `site/index.html` in a browser.
+The download site is a single static page, `site/index.html`, published to GitHub Pages at https://league-bro.github.io/leaguebro/ by `.github/workflows/pages.yml` whenever `site/` changes on `main`. The page asks GitHub's API for the latest release in the visitor's browser, so a new release shows up on the site without republishing. To preview it locally, open `site/index.html` in a browser.
 
 One-time setup: in the repo's **Settings → Pages**, set **Source** to **GitHub Actions**.
 

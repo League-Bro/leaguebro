@@ -14,7 +14,7 @@ export default defineConfig(({ mode }) => ({
       DB: bindings.d1({ name: "leaguebro-feedback" }),
       /** Password for the inbox page, shared by the devs. */
       ADMIN_PASSWORD: bindings.secret(),
-      /** Fine-grained GitHub token, Issues: read and write on doliaro/leaguebro only. */
+      /** Fine-grained GitHub token, Issues: read and write on league-bro/leaguebro only. */
       GITHUB_TOKEN: bindings.secret(),
       /** Where issues are made. `GITHUB_API=http://localhost:8798 npm run dev` points a local run at a fake; deploys (production mode) always use GitHub. */
       GITHUB_API: bindings.text((mode === "development" && process.env["GITHUB_API"]) || "https://api.github.com"),

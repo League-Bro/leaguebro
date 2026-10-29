@@ -15,7 +15,7 @@
 // `Env` (DB, ADMIN_PASSWORD, GITHUB_TOKEN, GITHUB_API) is generated from cloudflare.config.ts: `cf workers types`.
 import { INBOX_HTML } from "./inbox.ts";
 
-const REPO = "doliaro/leaguebro";
+const REPO = "league-bro/leaguebro";
 /** Labels on every issue made from the app (GitHub creates missing ones for tokens with push access). */
 const FROM_APP = "from-app";
 /** Reports one IP may send per hour. */

@@ -32,7 +32,7 @@ param(
   [switch]$Yes
 )
 
-$repo = 'doliaro/leaguebro'
+$repo = 'league-bro/leaguebro'
 $root = Split-Path -Parent $PSScriptRoot
 $versionFiles = @('src-tauri/tauri.conf.json', 'package.json', 'src-tauri/Cargo.toml', 'package-lock.json', 'src-tauri/Cargo.lock')
 
