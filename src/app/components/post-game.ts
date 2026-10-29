@@ -25,7 +25,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
           <div class="title">
             <h2>{{ label() }}</h2>
             @if (g.lpChange; as lp) {
-              <rl-lp-change class="lp" [change]="lp" />
+              <rl-lp-change class="lp" [change]="lp" [showRank]="true" />
             }
             <span class="muted">{{ rift.champName(m.championId) }} · {{ g.queueName || mode(g.gameMode) }} · {{ time(g.duration) }}</span>
           </div>

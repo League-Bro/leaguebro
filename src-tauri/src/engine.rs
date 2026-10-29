@@ -763,6 +763,8 @@ struct Engine {
     /// before it doesn't put its old profile back.
     scout_round: Arc<AtomicU64>,
     loading_game_id: Option<i64>,
+    /// Last read of the loading-screen teams (`LOADING_RECHECK`).
+    last_loading_read: Option<Instant>,
     overlay_shown: bool,
     /// Live game API reads that failed in a row while in game.
     live_misses: u32,
@@ -799,6 +801,9 @@ struct EnemySeen {
 const POST_GAME_RETRY: Duration = Duration::from_secs(3);
 const POST_GAME_GIVE_UP: Duration = Duration::from_secs(180);
 const WEB_STATICS_RETRY: Duration = Duration::from_secs(60);
+/// How often the loading-screen teams are read again during a game: the
+/// session can come without some players at first, and they're added later.
+const LOADING_RECHECK: Duration = Duration::from_secs(5);
 /// The live game API answers in milliseconds when it's up.
 const LIVE_TIMEOUT: Duration = Duration::from_secs(2);
 /// Failed live API reads (a second apart) before the overlay is put away: the
@@ -1267,18 +1272,32 @@ impl Engine {
     }
 
     async fn loading(&mut self, lcu: &Lcu) {
-        if self.loading_game_id.is_some() {
+        // The first read can miss players (seen: 3 enemies), so keep reading
+        // every few seconds and send the teams again when they change.
+        if self.loading_game_id.is_some() && self.last_loading_read.is_some_and(|t| t.elapsed() < LOADING_RECHECK) {
             return;
         }
+        self.last_loading_read = Some(Instant::now());
         let Ok(Some(session)) = lcu.get("/lol-gameflow/v1/session").await else { return };
         let Some(view) = parse_loading(&session, &self.my_puuid) else { return };
-        self.loading_game_id = Some(view.game_id);
-        if let Some(me) = view.allies.iter().find(|p| p.is_me) {
-            if me.champion_id != 0 {
-                self.state().shared.lock().await.my_champion_id = me.champion_id;
+        {
+            let state = self.state();
+            let mut sh = state.shared.lock().await;
+            if let Some(old) = &sh.loading {
+                // Same game: only take a read that adds players, never one that drops them.
+                let count = |v: &LoadingView| v.allies.len() + v.enemies.len();
+                if old.game_id == view.game_id && (old == &view || count(&view) < count(old)) {
+                    return;
+                }
             }
+            if let Some(me) = view.allies.iter().find(|p| p.is_me) {
+                if me.champion_id != 0 {
+                    sh.my_champion_id = me.champion_id;
+                }
+            }
+            sh.loading = Some(view.clone());
         }
-        self.state().shared.lock().await.loading = Some(view.clone());
+        self.loading_game_id = Some(view.game_id);
         let _ = self.app.emit("loading", Some(view.clone()));
         if self.state().config().scout_on_loading {
             for p in view.allies.iter().chain(view.enemies.iter()) {
@@ -1995,6 +2014,7 @@ pub async fn run(app: AppHandle) {
         requested: HashSet::new(),
         scout_round: Arc::new(AtomicU64::new(0)),
         loading_game_id: None,
+        last_loading_read: None,
         overlay_shown: false,
         live_misses: 0,
         pending_post_game: None,
