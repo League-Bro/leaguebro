@@ -478,6 +478,12 @@ export class RiftService {
     invoke('set_overlay_buttons', { rects }).catch(() => (this.lastButtonRects = ''));
   }
 
+  /** Moves the unlocked overlay with the cursor: `start` on press, then on each move (see `drag_overlay`). */
+  dragOverlay(start: boolean): void {
+    if (this.demo || this.windowLabel() !== 'overlay') return;
+    invoke('drag_overlay', { start }).catch(() => undefined);
+  }
+
   private lastOverlaySize = [0, 0];
   private fitting: Promise<void> = Promise.resolve();
   /**

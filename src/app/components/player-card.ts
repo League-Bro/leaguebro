@@ -61,17 +61,6 @@ import { Loader } from './loader';
             <span class="faint">No recent games</span>
           }
         </div>
-        <div class="mains">
-          @for (c of p.topChamps; track c.championId) {
-            <div class="main" [title]="rift.champName(c.championId) + ': ' + c.wins + 'W ' + (c.games - c.wins) + 'L'">
-              <img class="champ-icon sm" [src]="icon(c.championId)" alt="" />
-              <span class="mono faint">{{ c.games }}</span>
-            </div>
-          }
-          @if (onChampGames(); as n) {
-            <span class="otp" title="Games on this champion in their recent history">{{ n }} on champ</span>
-          }
-        </div>
       } @else if (puuid()) {
         <rl-loader [size]="22" class="loading muted">Looking up…</rl-loader>
       } @else if (!isMe()) {
@@ -83,7 +72,7 @@ import { Loader } from './loader';
     :host { display: block; container-type: inline-size; }
     .player {
       display: grid;
-      grid-template-columns: minmax(180px, 1.4fr) 1fr 1fr 1fr;
+      grid-template-columns: minmax(180px, 1.4fr) 1fr 1fr;
       align-items: center;
       gap: 14px;
       padding: 10px 14px;
@@ -108,14 +97,10 @@ import { Loader } from './loader';
     .strip { display: flex; gap: 2px; margin-top: 3px; }
     .strip span { width: 9px; height: 5px; border-radius: 2px; background: var(--loss); opacity: 0.85; }
     .strip span.w { background: var(--win); }
-    .mains { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .main { display: flex; align-items: center; gap: 3px; font-size: 12px; }
-    .otp { font-size: 11px; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; }
     .loading { grid-column: 2 / -1; font-size: 13px; }
-    /* Half-width card (champ select teams side by side): top champs drop under rank and form. */
+    /* Half-width card (teams side by side): narrower name column. */
     @container (max-width: 640px) {
       .player { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 4px 12px; }
-      .mains { grid-column: 2 / -1; }
     }
   `,
 })
@@ -139,12 +124,6 @@ export class PlayerCard {
   protected readonly recentWr = computed(() => {
     const p = this.profile();
     return p && p.recentGames ? (100 * p.recentWins) / p.recentGames : 50;
-  });
-  protected readonly onChampGames = computed(() => {
-    const p = this.profile();
-    const c = this.championId();
-    if (!p || c <= 0) return 0;
-    return p.lastGames.filter((g) => g.championId === c).length;
   });
 
   protected icon = championIcon;

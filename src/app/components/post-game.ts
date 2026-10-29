@@ -5,13 +5,14 @@ import { PostGame, PostPlayer, PostTeam } from '../core/models';
 import { Roast, roasts } from '../core/roast';
 import { GoldGraph } from './gold-graph';
 import { ItemTip } from './item-tip';
+import { LpChangeTag } from './lp-change';
 
 const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as const;
 
 @Component({
   selector: 'rl-post-game',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ItemTip, GoldGraph],
+  imports: [ItemTip, GoldGraph, LpChangeTag],
   template: `
     @let g = game();
     @if (me(); as m) {
@@ -23,6 +24,9 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
         <div class="stack grow">
           <div class="title">
             <h2>{{ label() }}</h2>
+            @if (g.lpChange; as lp) {
+              <rl-lp-change class="lp" [change]="lp" [showRank]="true" />
+            }
             <span class="muted">{{ rift.champName(m.championId) }} · {{ g.queueName || mode(g.gameMode) }} · {{ time(g.duration) }}</span>
           </div>
           <div class="line">
@@ -275,6 +279,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .grow { flex: 1; gap: 10px; min-width: 0; }
     .title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
     .title h2 { font-size: 28px; }
+    .title .lp { font-size: 18px; }
     .hero.win h2 { color: var(--win); }
     .hero.loss h2 { color: var(--loss); }
     .line { display: flex; gap: 26px; flex-wrap: wrap; }

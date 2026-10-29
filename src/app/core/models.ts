@@ -103,6 +103,19 @@ export interface MatchLine {
   laneOpponent: number | null;
   /** Enemy champion ids; empty if the game's full record didn't load. */
   enemies: number[];
+  /** LP gained or lost in a ranked game, when League Bro saw your rank before and after it. */
+  lpChange: LpChange | null;
+}
+
+/** The LP one ranked game gained or lost, and the rank it left you at. */
+export interface LpChange {
+  /** Each division counts as 100 LP across a promotion or demotion. */
+  delta: number;
+  tier: string;
+  division: string;
+  lp: number;
+  /** 'up' or 'down' when the game changed your division or tier. */
+  moved: '' | 'up' | 'down';
 }
 
 /** Games and your wins/KDA with a champion, or against one. */
@@ -546,6 +559,8 @@ export interface PostGame {
   teams: PostTeam[];
   /** Your team's gold lead each minute, from the client's timeline; empty when it had none. */
   goldLead?: GoldPoint[];
+  /** LP gained or lost, for ranked games League Bro saw your rank around. */
+  lpChange?: LpChange | null;
 }
 
 export interface ChampInfo {

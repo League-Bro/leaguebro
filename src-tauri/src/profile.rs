@@ -36,6 +36,9 @@ pub struct MatchLine {
     pub lane_opponent: Option<i64>,
     /// Enemy champion ids; empty if the game's full record didn't load.
     pub enemies: Vec<i64>,
+    /// LP gained or lost in a ranked game, when League Bro saw your rank
+    /// before and after it (see `lp_history`).
+    pub lp_change: Option<crate::lp_history::LpChange>,
 }
 
 /// Games and your wins/KDA with a champion, or against one.
@@ -149,6 +152,7 @@ pub fn parse_matches(history: &Value) -> Vec<MatchLine> {
                 line,
                 lane_opponent: None,
                 enemies: Vec::new(),
+                lp_change: None,
             })
         })
         .collect();

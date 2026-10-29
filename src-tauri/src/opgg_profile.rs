@@ -213,6 +213,7 @@ pub fn parse_matches(v: &Value, puuid: &str) -> Vec<MatchLine> {
                 line,
                 lane_opponent: None,
                 enemies: Vec::new(),
+                lp_change: None,
             })
         })
         .collect();

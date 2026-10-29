@@ -28,6 +28,8 @@
 param(
   [Parameter(Position = 0)]
   [string]$Version,
+  # Leaves out the "Next: commit..." hint (release.ps1 does those steps itself).
+  [switch]$NoNextSteps,
   # Project folder; defaults to the one above this script. Used by tests.
   [string]$Root
 )
@@ -125,5 +127,6 @@ if (($after | Where-Object { $_ -ne $Version }).Count -gt 0) {
 
 Write-Host "League Bro $current -> $Version" -ForegroundColor Green
 Write-Host "Updated tauri.conf.json, package.json, Cargo.toml, package-lock.json and Cargo.lock."
+if ($NoNextSteps) { exit 0 }
 Write-Host ""
 Write-Host "Next: commit those five files, push, then run Actions -> Release Windows installer."

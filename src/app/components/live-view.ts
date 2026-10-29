@@ -112,17 +112,15 @@ import { ImportEvent, RecChoice, RecState, SwiftplaySlot } from '../core/models'
         <div class="spacer"></div>
         <span class="faint">{{ scoutedCount() }} of {{ lookupCount() }} players looked up</span>
       </div>
-      <h3 class="section ally">Your team</h3>
-      <div class="stack tight">
+      <div class="teams">
+        <h3 class="section ally">Your team</h3>
         @for (p of l.allies; track $index) {
           <rl-player [name]="p.name" [puuid]="p.isMe ? null : p.puuid" [championId]="p.championId" [position]="p.position"
             [isMe]="p.isMe" [hiddenLabel]="'Hidden player'" [hiddenNote]="'This player has streamer mode on'" />
         }
-      </div>
-      <h3 class="section enemy">Enemy team</h3>
-      <div class="stack tight">
+        <h3 class="section enemy">Enemy team</h3>
         @for (p of l.enemies; track $index) {
-          <rl-player [name]="p.name" [puuid]="p.puuid" [championId]="p.championId" [position]="p.position" side="enemy"
+          <rl-player class="foe" [name]="p.name" [puuid]="p.puuid" [championId]="p.championId" [position]="p.position" side="enemy"
             [hiddenLabel]="'Hidden player'" [hiddenNote]="'This player has streamer mode on'" />
         }
       </div>
@@ -216,7 +214,6 @@ import { ImportEvent, RecChoice, RecState, SwiftplaySlot } from '../core/models'
     .section { margin: 22px 0 10px; }
     .section.ally { color: var(--ally); }
     .section.enemy { color: var(--enemy); }
-    .tight { gap: 6px; }
     .swift { padding: 24px; }
     .swift h2 { font-size: 22px; }
     .swift .row { align-items: center; gap: 14px; }
