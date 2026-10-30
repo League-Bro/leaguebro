@@ -38,9 +38,23 @@ pub struct MatchLine {
     pub lane_opponent: Option<i64>,
     /// Enemy champion ids; empty if the game's full record didn't load.
     pub enemies: Vec<i64>,
+    /// Your team then theirs, each top to support where that's clear; empty if
+    /// the game's full record didn't load, and in Arena.
+    pub teams: Vec<Vec<GamePlayer>>,
     /// LP gained or lost in a ranked game, when League Bro saw your rank
     /// before and after it (see `lp_history`).
     pub lp_change: Option<crate::lp_history::LpChange>,
+}
+
+/// One player in a game, for the names beside each match.
+#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GamePlayer {
+    pub champion_id: i64,
+    /// Riot ID ("Name#TAG"), or the summoner name in older records.
+    pub name: String,
+    pub puuid: String,
+    pub is_me: bool,
 }
 
 /// Games and your wins/KDA with a champion, or against one.
@@ -154,6 +168,7 @@ pub fn parse_matches(history: &Value) -> Vec<MatchLine> {
                 line,
                 lane_opponent: None,
                 enemies: Vec::new(),
+                teams: Vec::new(),
                 lp_change: None,
             })
         })
@@ -167,10 +182,11 @@ pub fn parse_matches(history: &Value) -> Vec<MatchLine> {
 pub struct Opponents {
     pub lane: Option<i64>,
     pub enemies: Vec<i64>,
+    pub teams: Vec<Vec<GamePlayer>>,
 }
 
-/// Your lane opponent and the enemy team from a game's full record. None if
-/// you aren't in it.
+/// Your lane opponent, the enemy team and both teams' players from a game's
+/// full record. None if you aren't in it.
 pub fn opponents(game: &Value, my_puuid: &str) -> Option<Opponents> {
     let parts = game.get("participants")?.as_array()?;
     let my_pid = game
@@ -184,7 +200,31 @@ pub fn opponents(game: &Value, my_puuid: &str) -> Option<Opponents> {
     let (mine, theirs): (Vec<&Value>, Vec<&Value>) = parts.iter().partition(|p| int(p, "teamId") == my_team_id);
     // Arena (map 30) pairs players into subteams inside teamId 100/200, so
     // teamId doesn't say who was against you there.
-    let enemies = if int(game, "mapId") == 30 { Vec::new() } else { theirs.iter().map(|p| int(p, "championId")).collect() };
+    let arena = int(game, "mapId") == 30;
+    let enemies = if arena { Vec::new() } else { theirs.iter().map(|p| int(p, "championId")).collect() };
+    let names: HashMap<i64, &Value> =
+        list(game, "participantIdentities").iter().filter_map(|i| Some((int(i, "participantId"), i.get("player")?))).collect();
+    let roster = |team: &[&Value]| {
+        let pos = positions(team);
+        let mut players: Vec<(usize, GamePlayer)> = team
+            .iter()
+            .zip(&pos)
+            .map(|(p, at)| {
+                let id = int(p, "participantId");
+                let who = names.get(&id);
+                let player = GamePlayer {
+                    champion_id: int(p, "championId"),
+                    name: who.and_then(|w| riot_name(w)).unwrap_or_default(),
+                    puuid: who.map(|w| text(w, "puuid").to_string()).unwrap_or_default(),
+                    is_me: id == my_pid,
+                };
+                (postgame::lane_rank(*at), player)
+            })
+            .collect();
+        players.sort_by_key(|(rank, _)| *rank);
+        players.into_iter().map(|(_, p)| p).collect::<Vec<_>>()
+    };
+    let teams = if arena { Vec::new() } else { vec![roster(&mine), roster(&theirs)] };
     // Lanes only mean something in a 5v5 on Summoner's Rift.
     let lane = (int(game, "mapId") == 11 && mine.len() == 5 && theirs.len() == 5)
         .then(|| {
@@ -200,7 +240,7 @@ pub fn opponents(game: &Value, my_puuid: &str) -> Option<Opponents> {
             Some(int(theirs[at], "championId"))
         })
         .flatten();
-    Some(Opponents { lane, enemies })
+    Some(Opponents { lane, enemies, teams })
 }
 
 /// Best guess at each player's position. The client's `timeline.lane`/`role`
@@ -244,7 +284,7 @@ pub fn positions(team: &[&Value]) -> Vec<Option<&'static str>> {
 
 static OPPONENTS: LazyLock<Mutex<HashMap<(String, i64), Opponents>>> = LazyLock::new(Default::default);
 
-/// Fills `lane_opponent` and `enemies` from each game's full record. Games
+/// Fills `lane_opponent`, `enemies` and `teams` from each game's full record. Games
 /// whose record doesn't load are left as they are and tried again next time.
 /// Remakes are skipped, since insights leave them out. Returns how many
 /// records didn't load. With `fetch` false only records already loaded are
@@ -296,6 +336,7 @@ async fn fill_opponents(lcu: &Lcu, puuid: &str, matches: &mut [MatchLine], fetch
         if let Some(o) = cache.get(&(puuid.to_string(), m.game_id)) {
             m.lane_opponent = o.lane;
             m.enemies = o.enemies.clone();
+            m.teams = o.teams.clone();
         }
     }
     failed
@@ -734,20 +775,31 @@ mod tests {
             player(10, 200, 10, "BOTTOM", "DUO_CARRY", false, 210),
         ];
         let idents: Vec<Value> =
-            (1..=10).map(|i| json!({ "participantId": i, "player": { "puuid": format!("p{i}") } })).collect();
+            (1..=10).map(|i| json!({ "participantId": i, "player": { "puuid": format!("p{i}"), "gameName": format!("P{i}"), "tagLine": "NA1" } })).collect();
         json!({ "mapId": 11, "participants": players, "participantIdentities": idents })
     }
 
     #[test]
     fn lane_opponents_from_the_full_record() {
         let g = sr_game();
-        assert_eq!(opponents(&g, "p3").unwrap(), Opponents { lane: Some(8), enemies: vec![6, 7, 8, 9, 10] });
+        let o = opponents(&g, "p3").unwrap();
+        assert_eq!((o.lane, o.enemies), (Some(8), vec![6, 7, 8, 9, 10]));
         assert_eq!(opponents(&g, "p2").unwrap().lane, Some(7));
         // Bot lane without roles: the one with less CS is the support.
         assert_eq!(opponents(&g, "p5").unwrap().lane, Some(9));
         assert_eq!(opponents(&g, "p4").unwrap().lane, Some(10));
         assert_eq!(opponents(&g, "p9").unwrap().lane, Some(5));
         assert_eq!(opponents(&g, "nobody"), None);
+    }
+
+    #[test]
+    fn both_teams_listed_top_to_support() {
+        let o = opponents(&sr_game(), "p3").unwrap();
+        let champs = |t: &[GamePlayer]| t.iter().map(|p| p.champion_id).collect::<Vec<_>>();
+        assert_eq!(champs(&o.teams[0]), vec![1, 2, 3, 4, 5]);
+        assert_eq!(champs(&o.teams[1]), vec![6, 7, 8, 10, 9]);
+        let me: Vec<_> = o.teams.concat().into_iter().filter(|p| p.is_me).collect();
+        assert_eq!((me.len(), me[0].name.as_str(), me[0].puuid.as_str()), (1, "P3#NA1", "p3"));
     }
 
     #[test]

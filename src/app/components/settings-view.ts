@@ -1,8 +1,6 @@
 import { ChangeDetectionStrategy, Component, effect, inject, signal, untracked } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { UpdateService } from '../core/update.service';
-import { FullscreenHint } from './fullscreen-hint';
-import { Overlay } from './overlay';
 import { IS_MAC } from '../core/platform';
 import { AbilityKeys, CacheInfo, CacheName, Config, GlobalSets } from '../core/models';
 
@@ -11,120 +9,16 @@ type BoolKey =
   | 'scoutOnLoading'
   | 'showRoasts'
   | 'shareUsageStats'
-  | 'overlayEnabled'
   | 'autoImportRunes'
   | 'importOnHover'
-  | 'keepMyPagesWhenFull'
-  | 'showTimers'
-  | 'showLaneDiff'
-  | 'showSituational'
-  | 'showCs'
-  | 'overlayGrowUp'
-  | 'showTeamDiff'
-  | 'showBuyNow';
+  | 'keepMyPagesWhenFull';
 
 @Component({
   selector: 'rl-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FullscreenHint, Overlay],
   template: `
     @if (rift.config(); as cfg) {
       <div class="grid">
-        <section class="card stack">
-          <h2>Overlay</h2>
-          <label class="toggle">
-            <input type="checkbox" [checked]="cfg.overlayEnabled" (change)="setBool('overlayEnabled', $any($event.target).checked)" />
-            <span class="track"></span>
-            <span class="label"><b>Show the in-game overlay</b><span>Needs League in Borderless or Windowed mode. Fullscreen draws over it.</span><img class="peek big" [class.dim]="!cfg.overlayEnabled" src="overlay-parts/overlay.webp" alt="" /></span>
-          </label>
-          <rl-fullscreen-hint />
-          <div class="field">
-            <span>Opacity</span>
-            <input type="range" min="0.4" max="1" step="0.05" [value]="cfg.overlayOpacity"
-              (change)="setNum('overlayOpacity', +$any($event.target).value)" />
-            <span class="mono faint">{{ (cfg.overlayOpacity * 100).toFixed(0) }}%</span>
-          </div>
-          <div class="field">
-            <span>Width</span>
-            <input type="range" min="260" max="480" step="10" [value]="cfg.overlayWidth"
-              (change)="setNum('overlayWidth', +$any($event.target).value)" />
-            <span class="mono faint">{{ cfg.overlayWidth }} px</span>
-          </div>
-          <div class="field">
-            <span>Size</span>
-            <input type="range" min="0.8" max="1.5" step="0.05" [value]="cfg.overlayScale"
-              (change)="setNum('overlayScale', +$any($event.target).value)" />
-            <span class="mono faint">{{ (cfg.overlayScale * 100).toFixed(0) }}%</span>
-            <button class="ghost icon-btn" [disabled]="cfg.overlayWidth === 340 && cfg.overlayScale === 1" (click)="resetSize()" title="Reset width and size" aria-label="Reset width and size"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.34-5.66M4 4v5h5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg></button>
-          </div>
-          <p class="faint small">The height follows what's on the overlay. Size scales text and icons.</p>
-          <label class="toggle">
-            <input type="checkbox" [checked]="cfg.overlayGrowUp ?? false" (change)="setBool('overlayGrowUp', $any($event.target).checked)" />
-            <span class="track"></span>
-            <span class="label"><b>Grow upward</b><span>For an overlay at the bottom of your screen: the bottom edge stays put and new rows push the top up.</span></span>
-          </label>
-          <div class="field">
-            <span>Position</span>
-            <input type="number" placeholder="auto" [value]="cfg.overlayX ?? ''" (change)="setPos('overlayX', $any($event.target).value)" />
-            <input type="number" placeholder="auto" [value]="cfg.overlayY ?? ''" (change)="setPos('overlayY', $any($event.target).value)" />
-            <button class="ghost icon-btn" (click)="resetPos()" title="Reset position" aria-label="Reset position"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.34-5.66M4 4v5h5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg></button>
-          </div>
-          <p class="faint small">Screen pixels from the top-left. Leave empty for the top-right corner, or drag the overlay by its corner handle during a game.</p>
-          <div class="row">
-            <button (click)="previewOpen.set(!previewOpen())">
-              {{ previewOpen() ? 'Hide preview' : 'Preview overlay' }}
-            </button>
-          </div>
-        </section>
-
-        <section class="card stack">
-          <h2>Overlay top bar</h2>
-          <label class="toggle">
-            <input type="checkbox" [checked]="cfg.showLaneDiff" (change)="setBool('showLaneDiff', $any($event.target).checked)" />
-            <span class="track"></span>
-            <span class="label"><b>Item gold vs your lane opponent</b><span>The total cost of your items against theirs. Not shown in modes without roles, like ARAM.</span><img class="peek bar" [class.dim]="!cfg.showLaneDiff" src="overlay-parts/lane.webp" alt="" /></span>
-          </label>
-          <label class="toggle">
-            <input type="checkbox" [checked]="cfg.showTeamDiff ?? true" (change)="setBool('showTeamDiff', $any($event.target).checked)" />
-            <span class="track"></span>
-            <span class="label"><b>Item gold vs the enemy team</b><span>Your team's item value against theirs.</span><img class="peek bar" [class.dim]="!(cfg.showTeamDiff ?? true)" src="overlay-parts/team.webp" alt="" /></span>
-          </label>
-          <label class="toggle">
-            <input type="checkbox" [checked]="cfg.showCs ?? true" (change)="setBool('showCs', $any($event.target).checked)" />
-            <span class="track"></span>
-            <span class="label"><b>CS per minute</b><span>From the first minute on. The game only updates CS every 10 minions, so it moves in steps.</span><img class="peek bar" [class.dim]="!(cfg.showCs ?? true)" src="overlay-parts/cs.webp" alt="" /></span>
-          </label>
-        </section>
-
-        <section class="card stack">
-          <h2>Overlay sections</h2>
-          <label class="toggle">
-            <input type="checkbox" [checked]="cfg.showTimers" (change)="setBool('showTimers', $any($event.target).checked)" />
-            <span class="track"></span>
-            <span class="label"><b>Objective timers</b><span>Dragon, Baron and inhibitor respawns. The Live tab shows them either way.</span><img class="peek" [class.dim]="!cfg.showTimers" src="overlay-parts/timers.webp" alt="" /></span>
-          </label>
-          <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
-            <input type="checkbox" [checked]="cfg.showSkillHint" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('showSkillHint', $any($event.target).checked)" />
-            <span class="track"></span>
-            <span class="label"><b>Skill order</b><span>Which ability you're maxing now (pink), which one is next (teal), and what to level when you have a point.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span><img class="peek" [class.dim]="!(cfg.showSkillHint && cfg.recSource === 'opgg')" src="overlay-parts/skills.webp" alt="" /></span>
-          </label>
-          <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
-            <input type="checkbox" [checked]="cfg.useRecommendedBuilds" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('useRecommendedBuilds', $any($event.target).checked)" />
-            <span class="track"></span>
-            <span class="label"><b>Next items to buy</b><span>Starting items, then OP.GG's next item and the parts left to buy, green when you can afford them.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span><img class="peek" [class.dim]="!(cfg.useRecommendedBuilds && cfg.recSource === 'opgg')" src="overlay-parts/next.webp" alt="" /></span>
-          </label>
-          <label class="toggle" [class.off]="cfg.recSource !== 'opgg' || !cfg.useRecommendedBuilds">
-            <input type="checkbox" [checked]="cfg.showBuyNow ?? true" [disabled]="cfg.recSource !== 'opgg' || !cfg.useRecommendedBuilds" (change)="setBool('showBuyNow', $any($event.target).checked)" />
-            <span class="track"></span>
-            <span class="label"><b>Buy now</b><span>What your gold buys now toward the next item, like a Long Sword before the Noonquiver.@if (cfg.recSource !== 'opgg' || !cfg.useRecommendedBuilds) { Needs Next items to buy. }</span><img class="peek" [class.dim]="!((cfg.showBuyNow ?? true) && cfg.useRecommendedBuilds && cfg.recSource === 'opgg')" src="overlay-parts/buy.webp" alt="" /></span>
-          </label>
-          <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
-            <input type="checkbox" [checked]="cfg.showSituational" [disabled]="cfg.recSource !== 'opgg'" (change)="setBool('showSituational', $any($event.target).checked)" />
-            <span class="track"></span>
-            <span class="label"><b>Situational items</b><span>The best counter item from OP.GG's 4th–6th item options, updated as enemies buy items. The Live tab shows them either way.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span><img class="peek" [class.dim]="!(cfg.showSituational && cfg.recSource === 'opgg')" src="overlay-parts/situational.webp" alt="" /></span>
-          </label>
-        </section>
-
         <section class="card stack">
           <h2>Recommendations</h2>
           <div class="seg">
@@ -278,34 +172,15 @@ type BoolKey =
         </section>
       </div>
       @if (error()) { <p class="loss">{{ error() }}</p> }
-      @if (previewOpen()) {
-        <!-- A copy of the overlay inside this window, with your settings applied as you change them;
-             the real overlay window (and where it sits in game) is left alone. -->
-        <aside class="preview-dock">
-          <div class="dock-head">
-            <span class="faint small">Overlay preview</span>
-            <button class="ghost icon-btn sm" (click)="previewOpen.set(false)" title="Close preview" aria-label="Close preview"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" /></svg></button>
-          </div>
-          <rl-overlay [inline]="true" />
-        </aside>
-      }
     }
   `,
   styles: `
-    /* Columns, not a grid row per pair of cards: a tall card (Overlay) no longer
+    /* Columns, not a grid row per pair of cards: a tall card no longer
        leaves a gap next to a short one, and cards fill each column in order. */
     .grid { columns: 360px 3; column-gap: 16px; }
-    /* Floats over the page so it stays in view while you change the other overlay cards. */
-    .preview-dock {
-      position: fixed; right: 20px; bottom: 20px; z-index: 50; max-height: calc(100vh - 40px); max-width: calc(100vw - 40px); overflow: auto;
-      padding: 6px 6px 2px; border-radius: 16px; border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
-      background: linear-gradient(160deg, #24324a, #2d3b2a 60%, #3a3326); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
-    }
-    .dock-head { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 0 8px; }
     .grid > .card { break-inside: avoid; margin-bottom: 16px; gap: 6px; }
     .field { display: flex; align-items: center; gap: 10px; }
     .field > span:first-child { width: 72px; flex: none; color: var(--text-dim); }
-    .field input[type='range'] { flex: 1; accent-color: var(--accent); }
     .wide { flex: 1; }
     .keybind { display: flex; flex-direction: column; align-items: center; gap: 2px; }
     .key { width: 52px; text-align: center; text-transform: uppercase; }
@@ -315,15 +190,6 @@ type BoolKey =
       font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
     }
     .sub.first { margin-top: 0; padding-top: 0; border-top: none; }
-    .toggle.off { opacity: 0.55; }
-    /* What each switch shows on the overlay (public/overlay-parts, shot from the demo overlay); greyed out while it's off. */
-    .peek {
-      display: block; max-width: 100%; max-height: 120px; margin-top: 6px;
-      border-radius: 6px; border: 1px solid var(--line); transition: filter 0.15s, opacity 0.15s;
-    }
-    .peek.big { max-height: 220px; }
-    .peek.bar { height: 34px; }
-    .peek.dim { filter: grayscale(1); opacity: 0.45; }
     .global-sets {
       display: flex; flex-direction: column; gap: 6px; margin-top: 4px; padding: 10px 12px;
       border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg-sunken);
@@ -341,7 +207,6 @@ export class SettingsView {
   protected readonly rift = inject(RiftService);
   protected readonly updates = inject(UpdateService);
   protected readonly error = signal('');
-  protected readonly previewOpen = signal(false);
   protected readonly abilitySlots: (keyof AbilityKeys)[] = ['q', 'w', 'e', 'r'];
   protected readonly osName = IS_MAC ? 'macOS' : 'Windows';
   protected readonly installHint = IS_MAC ? '/Applications/League of Legends.app/Contents/LoL' : 'C:\\Riot Games\\League of Legends';
@@ -433,23 +298,8 @@ export class SettingsView {
   setSource(v: 'opgg' | 'client'): void {
     this.save((c) => ({ ...c, recSource: v }));
   }
-  setRec(key: 'setSummonerSpells' | 'setItemSets' | 'useRecommendedBuilds' | 'showSkillHint', v: boolean): void {
+  setRec(key: 'setSummonerSpells' | 'setItemSets', v: boolean): void {
     this.save((c) => ({ ...c, [key]: v }));
-  }
-  setNum(key: 'overlayOpacity' | 'overlayWidth' | 'overlayScale', v: number): void {
-    this.save((c) => ({ ...c, [key]: v }));
-  }
-  setPos(key: 'overlayX' | 'overlayY', raw: string): void {
-    const v = raw.trim() === '' ? null : Math.round(Number(raw));
-    // A typed position wins over the saved bottom edge (see overlayGrowUp).
-    this.save((c) => ({ ...c, [key]: Number.isFinite(v as number) ? v : null, overlayBottom: null }));
-  }
-  /** Width and Size back to the defaults (config.rs). */
-  resetSize(): void {
-    this.save((c) => ({ ...c, overlayWidth: 340, overlayScale: 1 }));
-  }
-  resetPos(): void {
-    this.save((c) => ({ ...c, overlayX: null, overlayY: null, overlayBottom: null }));
   }
   setKey(key: keyof AbilityKeys, raw: string): void {
     // Empty is fine: displays fall back to Q/W/E/R (RiftService.abilityKey).

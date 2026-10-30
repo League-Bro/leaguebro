@@ -7,6 +7,7 @@ import { profileIcon } from '../core/assets';
 import { LiveView } from './live-view';
 import { ChampionsView } from './champions-view';
 import { SettingsView } from './settings-view';
+import { OverlaySettingsView } from './overlay-settings';
 import { PatchView } from './patch-view';
 import { ProfileView } from './profile-view';
 import { FeedbackView } from './feedback-view';
@@ -15,7 +16,7 @@ import { ChampionSearch } from './champion-search';
 import { UpdateSplash } from './update-splash';
 
 /** 'profile' isn't in the tab bar; the brand and your name open it. */
-type Tab = 'live' | 'champions' | 'patch' | 'settings' | 'feedback' | 'profile';
+type Tab = 'live' | 'champions' | 'patch' | 'overlay' | 'settings' | 'feedback' | 'profile';
 
 /** A key press aimed at a text field, which typing-to-search must leave alone. */
 function isTyping(target: EventTarget | null): boolean {
@@ -56,7 +57,7 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
 @Component({
   selector: 'rl-shell',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LiveView, ChampionsView, PatchView, SettingsView, FeedbackView, ProfileView, ItemTipPopup, ChampionSearch, UpdateSplash],
+  imports: [LiveView, ChampionsView, PatchView, OverlaySettingsView, SettingsView, FeedbackView, ProfileView, ItemTipPopup, ChampionSearch, UpdateSplash],
   template: `
     <aside data-tauri-drag-region>
       <div class="rail-top" data-tauri-drag-region>
@@ -76,7 +77,7 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
       </button>
       <nav data-tauri-drag-region>
         @for (t of tabs; track t.id) {
-          @if (t.id === 'settings') { <div class="spacer" data-tauri-drag-region></div> }
+          @if (t.id === 'overlay') { <div class="spacer" data-tauri-drag-region></div> }
           <button [class.active]="tab() === t.id" [title]="t.label + ' (' + modKey + ($index + 1) + ')'" (click)="go(t.id)">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="t.icon" /></svg>
             <span class="label">{{ t.label }}</span>
@@ -144,6 +145,7 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
         @case ('live') { <rl-live (open)="go($event)" /> }
         @case ('champions') { <rl-champions /> }
         @case ('patch') { <rl-patch /> }
+        @case ('overlay') { <rl-overlay-settings /> }
         @case ('settings') { <rl-settings /> }
         @case ('feedback') { <rl-feedback /> }
         @case ('profile') { <rl-profile /> }
@@ -279,6 +281,7 @@ export class Shell implements OnInit {
     { id: 'live', label: 'Live', icon: 'M3 12h4l3-8 4 16 3-8h4' },
     { id: 'champions', label: 'Champions', icon: 'M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z M9 12l2 2 4-4' },
     { id: 'patch', label: 'Patch Notes', icon: 'M7 3h7l5 5v13H7z M14 3v5h5 M10 13h6 M10 17h6' },
+    { id: 'overlay', label: 'Overlay', icon: 'M3 5h18v13H3z M8 21h8 M12 18v3 M14 8h4v4h-4z' },
     { id: 'settings', label: 'Settings', icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z' },
     { id: 'feedback', label: 'Feedback', icon: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z' },
   ];
@@ -423,7 +426,7 @@ export class Shell implements OnInit {
     this.search.set({ text });
   }
 
-  /** Ctrl+1…5 (Cmd+1…5 on a Mac) switch tabs; Ctrl+K, or typing a letter outside a text field, finds a champion. */
+  /** Ctrl+1…6 (Cmd+1…6 on a Mac) switch tabs; Ctrl+K, or typing a letter outside a text field, finds a champion. */
   protected tabKey(e: KeyboardEvent): void {
     if (this.search()) return;
     const mod = IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;

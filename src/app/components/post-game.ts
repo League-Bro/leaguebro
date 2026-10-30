@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { RiftService } from '../core/rift.service';
-import { championIcon, clock, kdaRatio, queueLabel } from '../core/assets';
+import { assetUrl, championIcon, clock, kdaRatio, queueLabel } from '../core/assets';
 import { PostGame, PostPlayer, PostTeam } from '../core/models';
 import { Grade, review, reviewText } from '../core/roast';
 import { GoldGraph } from './gold-graph';
@@ -30,8 +30,10 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
             <span class="muted">{{ rift.champName(m.championId) }} · {{ queue(g.queueId, g.gameMode) }} · {{ time(g.duration) }}</span>
           </div>
           <div class="line">
-            <div><b class="mono">{{ m.kills }} / {{ m.deaths }} / {{ m.assists }}</b><span class="faint">{{ kda(m) }} KDA</span></div>
-            <div><b class="mono">{{ m.cs }}</b><span class="faint">{{ perMin(m.cs) }} CS/min</span></div>
+            <div><b class="mono">{{ m.kills }} / {{ m.deaths }} / {{ m.assists }}</b><span class="faint">K / D / A</span></div>
+            <div><b class="mono">{{ kda(m) }}</b><span class="faint">KDA</span></div>
+            <div><b class="mono">{{ m.cs }}</b><span class="faint">CS</span></div>
+            <div><b class="mono">{{ perMin(m.cs) }}</b><span class="faint">CS/min</span></div>
             <div><b class="mono">{{ k(m.damage) }}</b><span class="faint">damage</span></div>
             <div><b class="mono">{{ k(m.gold) }}</b><span class="faint">gold</span></div>
             <div><b class="mono">{{ m.vision }}</b><span class="faint">vision</span></div>
@@ -40,6 +42,9 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
             }
           </div>
           <div class="items">
+            @for (id of m.spells; track $index) {
+              <span class="slot spell" [rlItemTip]="id" tipKind="spell">@if (spellIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }</span>
+            }
             @for (id of m.items; track $index) {
               <span class="slot" [rlItemTip]="id" [attr.aria-label]="rift.itemName(id) || null">
                 @if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
@@ -126,6 +131,9 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
                 <span class="mono muted">{{ k(p.gold) }}</span>
                 <span class="mono muted">{{ p.vision }}</span>
                 <div class="items sm">
+                  @for (id of p.spells; track $index) {
+                    <span class="slot spell" [rlItemTip]="id" tipKind="spell">@if (spellIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }</span>
+                  }
                   @for (id of p.items; track $index) {
                     <span class="slot" [rlItemTip]="id" [attr.aria-label]="rift.itemName(id) || null">
                       @if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
@@ -306,7 +314,13 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .hero { position: relative; display: flex; align-items: center; gap: 24px; padding: 30px 28px; min-height: 200px; overflow: hidden; border-left: 3px solid var(--text-faint); }
     .hero .splash img { opacity: 0.75; }
     .hero > :not(.splash) { position: relative; }
-    .hero > .close { position: absolute; top: 10px; right: 10px; }
+    /* The close button in the same pink ring as your profile picture, so it's easy to find. */
+    .hero > .close {
+      position: absolute; top: 12px; right: 12px; z-index: 1; width: 36px; height: 36px; padding: 0;
+      display: grid; place-items: center; border-radius: 50%; color: var(--accent);
+      border: 2px solid var(--accent); background: rgba(10, 10, 16, 0.6); box-shadow: 0 0 14px var(--accent-glow);
+    }
+    .hero > .close:hover { background: var(--accent); color: var(--on-accent); box-shadow: 0 0 20px var(--accent-glow); }
     .hero.win { border-left-color: var(--win); }
     .hero.loss { border-left-color: var(--loss); }
     .hero.win .big { border-color: var(--win); box-shadow: 0 0 22px rgba(60, 207, 142, 0.35); }
@@ -320,7 +334,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .title .lp { font-size: 18px; }
     .hero.win h2 { color: var(--win); }
     .hero.loss h2 { color: var(--loss); }
-    .line { display: flex; gap: 34px; flex-wrap: wrap; }
+    .line { display: flex; gap: 6px 30px; flex-wrap: wrap; }
     .line div { display: flex; flex-direction: column; gap: 1px; }
     .line b { font: 700 23px/1.1 var(--display); letter-spacing: -0.005em; font-variant-numeric: tabular-nums; }
     .line .faint { font-size: 11.5px; }
@@ -333,6 +347,8 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .items .slot:last-child { margin-left: 4px; border-radius: 50%; }
     .items.sm .slot { width: 22px; height: 22px; border-radius: 4px; }
     .items.sm .slot:last-child { border-radius: 50%; }
+    /* The two summoner spells, set a little apart from the items. */
+    .items .spell + .slot:not(.spell) { margin-left: 6px; }
     /* The two teams sit side by side once there's room, stacked below that. */
     :host { display: block; container-type: inline-size; }
     .teams { display: grid; grid-template-columns: 1fr; gap: 0 18px; }
@@ -515,6 +531,7 @@ export class PostGameView {
     return !!at && at.teamId === t.teamId && at.seat === seat;
   }
 
+  spellIcon = (id: number) => assetUrl(this.rift.spellById().get(id)?.iconPath);
   kda = (p: PostPlayer) => kdaRatio(p.kills, p.deaths, p.assists);
   perMin(n: number): string {
     return (n / Math.max(1, this.game().duration / 60)).toFixed(1);

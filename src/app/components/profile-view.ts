@@ -1,8 +1,9 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, Injector, afterNextRender, computed, effect, inject, signal, untracked } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
-import { championIcon, formatTier, kdaRatio, profileIcon, queueLabel, rankCrest, tierClass, winPct } from '../core/assets';
+import { assetUrl, championIcon, formatTier, kdaRatio, profileIcon, queueLabel, rankCrest, tierClass, winPct } from '../core/assets';
 import { LpPoint, MatchLine, MyProfile, PostGame, RankLine } from '../core/models';
+import { Grade, Review, review } from '../core/roast';
 import { PostGameView } from './post-game';
 import { ItemTip } from './item-tip';
 import { LpGraph } from './lp-graph';
@@ -251,6 +252,7 @@ const REGIONS = [
             <span class="c-dmg">Damage</span>
             <span>Gold</span>
             <span class="c-build">Build</span>
+            <span class="c-players">Players</span>
           </div>
         }
         @for (day of days(); track day.key) {
@@ -259,9 +261,16 @@ const REGIONS = [
             <span class="faint">{{ day.summary }}</span>
           </div>
           @for (m of day.matches; track m.gameId) {
-          <div class="item" [class.open]="openId() === m.gameId">
+          <div class="item" [class.open]="openId() === m.gameId" [class.shown]="openId() === m.gameId && detail()">
           <button class="match" [class]="m.result" [class.static]="p.source === 'opgg'" [attr.aria-expanded]="openId() === m.gameId" (click)="toggle(m, $event)">
-            <img class="champ-icon" [src]="champIcon(m.championId)" [title]="rift.champName(m.championId)" alt="" />
+            <div class="who">
+              <img class="champ-icon" [src]="champIcon(m.championId)" [title]="rift.champName(m.championId)" alt="" />
+              <div class="spells">
+                @for (id of m.spells; track $index) {
+                  <span class="spell" [rlItemTip]="id" tipKind="spell">@if (spellIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }</span>
+                }
+              </div>
+            </div>
             <div class="what">
               <div class="res">
                 {{ resultLabel(m) }}
@@ -276,26 +285,54 @@ const REGIONS = [
                 }
               </div>
             </div>
-            <div>
-              <div class="mono">{{ m.kills }} / {{ m.deaths }} / {{ m.assists }}</div>
-              <div class="faint small mono">{{ ratio(m.kills, m.deaths, m.assists) }} KDA</div>
-            </div>
-            <div class="mono">{{ m.level }}</div>
-            <div>
-              <div class="mono">{{ m.cs }}</div>
-              <div class="faint small mono">{{ m.cs / (m.duration / 60 || 1) | number: '1.1-1' }}/min</div>
-            </div>
-            <div class="c-dmg">
-              <div class="mono">{{ m.damage | number }}</div>
-              <div class="faint small mono">{{ m.damage / (m.duration / 60 || 1) | number: '1.0-0' }}/min</div>
-            </div>
-            <div>
-              <div class="mono">{{ m.gold | number }}</div>
-              <div class="faint small mono">{{ m.gold / (m.duration / 60 || 1) | number: '1.0-0' }}/min</div>
+            <div class="stats">
+              <div class="st">
+                <div class="mono">{{ m.kills }} / {{ m.deaths }} / {{ m.assists }}</div>
+                <div class="faint small mono">{{ ratio(m.kills, m.deaths, m.assists) }} KDA</div>
+              </div>
+              <div class="st">
+                <div class="mono">{{ m.level }}</div>
+                <div class="faint small n">level</div>
+              </div>
+              <div class="st">
+                <div class="mono">{{ m.cs }}</div>
+                <div class="faint small mono">{{ m.cs / (m.duration / 60 || 1) | number: '1.1-1' }}<span class="n"> CS</span>/min</div>
+              </div>
+              <div class="st">
+                <div class="mono">{{ m.damage | number }}</div>
+                <div class="faint small mono w">{{ m.damage / (m.duration / 60 || 1) | number: '1.0-0' }}/min</div>
+                <div class="faint small n">damage</div>
+              </div>
+              <div class="st">
+                <div class="mono">{{ m.gold | number }}</div>
+                <div class="faint small mono w">{{ m.gold / (m.duration / 60 || 1) | number: '1.0-0' }}/min</div>
+                <div class="faint small n">gold</div>
+              </div>
             </div>
             <div class="items c-build">
               @for (id of m.items; track $index) {
                 <span class="slot" [rlItemTip]="id">@if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }</span>
+              }
+            </div>
+            @if (bro()[m.gameId]; as r) {
+              <div class="bro c-bro" [class]="'tone-' + tone(r.grade)">
+                <span class="grade" [title]="'Bro score: ' + r.score + ' out of 100'">{{ r.grade }}</span>
+                <div class="bro-text">
+                  <span class="bro-title">The Bro's review</span>
+                  <span class="verdict">{{ r.verdict }}</span>
+                </div>
+              </div>
+            }
+            <div class="players c-players">
+              @for (team of m.teams; track $index) {
+                <ul>
+                  @for (pl of team; track $index) {
+                    <li [class.me]="pl.isMe" [title]="pl.name + ' · ' + rift.champName(pl.championId)">
+                      <img [src]="champIcon(pl.championId)" alt="" />
+                      <span>{{ shortName(pl.name) }}</span>
+                    </li>
+                  }
+                </ul>
               }
             </div>
           </button>
@@ -397,19 +434,24 @@ const REGIONS = [
     }
     .match-head + .day { margin-top: 2px; }
     .day-label { font-weight: 700; color: var(--text-dim); letter-spacing: 0.02em; }
-    /* An opened match: its row and scoreboard framed as one card. The negative
-       margin keeps the row lined up with the column headers; the frame is an
-       outline so it takes no space and can't throw that off. */
+    /* An opened match: its row and scoreboard framed as one card while the scoreboard
+       loads. The negative margin keeps the row lined up with the column headers; the
+       frame is an outline so it takes no space and can't throw that off. */
     .item.open {
       margin: 4px -8px; padding: 8px; border-radius: 18px;
       outline: 1px solid var(--accent); outline-offset: -1px;
       background: var(--bg-sunken); box-shadow: 0 0 0 4px var(--accent-soft);
     }
+    /* Once it's shown, the summary card repeats everything the row had, so the row
+       and the frame go and the card's own X closes it. */
+    .item.shown { margin: 8px 0; padding: 0; outline: none; background: none; box-shadow: none; }
+    .item.shown > .match { display: none; }
+    .item.shown > .detail { padding: 0; }
     .match, .match-head {
-      display: grid; grid-template-columns: 44px minmax(150px, 1.3fr) 92px 40px 64px 76px 68px 190px; align-items: center; gap: 14px;
+      display: grid; grid-template-columns: 66px minmax(150px, 1.3fr) 92px 40px 64px 76px 68px 190px 300px; align-items: center; gap: 14px;
       padding: 8px 14px; border: 1px solid var(--line); border-left: 3px solid var(--text-faint); border-radius: 12px;
     }
-    .match { width: 100%; text-align: left; background: var(--glass), var(--bg-raised); color: var(--text); content-visibility: auto; contain-intrinsic-size: auto 58px; transition: transform 0.15s var(--ease-out), border-color 0.15s; }
+    .match { width: 100%; text-align: left; background: var(--glass), var(--bg-raised); color: var(--text); content-visibility: auto; contain-intrinsic-size: auto 130px; transition: transform 0.15s var(--ease-out), border-color 0.15s; }
     .match:hover:not(.static) { transform: translateX(3px); }
     .match-head {
       padding-top: 0; padding-bottom: 2px; border-color: transparent;
@@ -435,9 +477,75 @@ const REGIONS = [
     .slot img { display: block; width: 100%; height: 100%; }
     .slot:last-child { border-radius: 50%; margin-left: 3px; }
     .detail { padding: 10px 4px 4px; }
-    @media (max-width: 1000px) {
-      .match, .match-head { grid-template-columns: 44px 1fr 92px 40px 64px 68px; }
-      .match .c-dmg, .match .c-build, .match-head .c-dmg, .match-head .c-build { display: none; }
+    .who { display: flex; align-items: center; gap: 3px; }
+    .spells { display: flex; flex-direction: column; gap: 3px; }
+    .spell { width: 19px; height: 19px; border-radius: 5px; overflow: hidden; border: 1px solid var(--line-strong); background: var(--bg-sunken); }
+    .spell img { display: block; width: 100%; height: 100%; }
+    /* Both teams' champions and names, so a game with a certain player can be found without opening each one. */
+    .players { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; min-width: 0; }
+    .players ul { margin: 0; padding: 0; list-style: none; min-width: 0; }
+    .players li { display: flex; align-items: center; gap: 6px; height: 20px; font-size: 12.5px; line-height: 20px; color: var(--text-dim); min-width: 0; }
+    .players li img { width: 18px; height: 18px; border-radius: 4px; flex: none; }
+    .players li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .players li.me { color: var(--text); font-weight: 600; }
+    /* Wide: one line, every stat in its own column under the headers, and the Bro's
+       preview on a second line under them (champion and players span both). */
+    .stats { display: contents; }
+    .match { row-gap: 0; }
+    .match > .who { grid-row: 1 / span 2; }
+    .match > .c-players { grid-column: 9; grid-row: 1 / span 2; }
+    .match > .c-bro { grid-column: 2 / 9; grid-row: 2; margin-top: 8px; }
+    .match > .what, .match > .c-build, .match > .stats > .st { grid-row: 1; }
+    .bro { --tone: var(--loss); display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .bro.tone-top { --tone: var(--gold); }
+    .bro.tone-good { --tone: var(--win); }
+    .bro.tone-mid { --tone: var(--accent-2); }
+    .bro.tone-meh { --tone: #ff9a4e; }
+    .bro .grade {
+      flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; cursor: help;
+      font: 700 18px/1 var(--display); color: var(--tone);
+      background: color-mix(in srgb, var(--tone) 12%, transparent); border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
+      box-shadow: 0 0 14px color-mix(in srgb, var(--tone) 20%, transparent);
+    }
+    .bro-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .bro-title { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--tone); }
+    .verdict { font-size: 13.5px; font-weight: 600; font-style: italic; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .match .n { display: none; }
+    /* Narrower: the stats move under the result and the build under them, so the
+       players stay on the right instead of being dropped. */
+    @media (max-width: 1500px) {
+      .match-head { display: none; }
+      .match {
+        grid-template-columns: 66px minmax(0, 1fr) minmax(220px, 300px);
+        grid-template-areas: 'who what players' 'who stats players' 'who build players';
+        row-gap: 8px; align-items: start;
+      }
+      .match > .c-bro { display: none; }
+      .match .who { grid-area: who; align-self: center; }
+      .match .what { grid-area: what; }
+      .match .stats { grid-area: stats; display: flex; flex-wrap: wrap; gap: 4px 22px; }
+      .match .c-build { grid-area: build; }
+      .match .c-players { grid-area: players; align-self: center; }
+      .match .n { display: inline; }
+      .match .st > .n { display: block; }
+      .match .w { display: none; }
+    }
+    /* Narrower, but with room to spare: the Bro's grade and verdict fill the gap between the stats and the players. */
+    @media (min-width: 1350px) and (max-width: 1500px) {
+      .match {
+        grid-template-columns: 66px max-content minmax(0, 1fr) minmax(220px, 300px);
+        grid-template-areas: 'who what bro players' 'who stats bro players' 'who build bro players';
+        column-gap: 28px;
+      }
+      .match > .c-bro { display: flex; grid-area: bro; align-self: center; margin-top: 0; }
+      .verdict { white-space: normal; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+    }
+    /* Narrowest: the players go under everything else. */
+    @media (max-width: 900px) {
+      .match {
+        grid-template-columns: 66px minmax(0, 1fr);
+        grid-template-areas: 'who what' 'who stats' 'who build' '. players';
+      }
     }
   `,
 })
@@ -455,6 +563,10 @@ export class ProfileView {
   protected readonly openId = signal<number | null>(null);
   protected readonly detail = signal<PostGame | null>(null);
   protected readonly detailError = signal<string | null>(null);
+  /** Full games loaded this session, by player and game, shared by the row previews and an opened game. */
+  private readonly games = new Map<string, Promise<PostGame>>();
+  /** Each game's Bro review, for the grade and verdict on its row. */
+  protected readonly bro = signal<Record<number, Review>>({});
   /** Changing the Riot ID (the form over a loaded profile). */
   protected readonly editing = signal(false);
   protected readonly formError = signal<string | null>(null);
@@ -547,6 +659,20 @@ export class ProfileView {
         const stale = p !== null && (p.source === 'opgg') === connected;
         if (first || !p || stale || this.loading() || this.waiting()) this.load();
         first = false;
+      });
+    });
+    // The Bro previews for the listed games, redone when the list or the roasts setting changes.
+    effect(() => {
+      const p = this.profile();
+      const on = this.rift.config()?.showRoasts ?? true;
+      const list = this.matches();
+      untracked(() => {
+        // Kept across refreshes of the same player's list; another player's games start over.
+        const whose = `${p?.puuid}:${on}`;
+        if (whose !== this.previewOf) this.bro.set({});
+        this.previewOf = whose;
+        this.previewSeq++;
+        if (p && p.source !== 'opgg' && on) void this.loadPreviews(list);
       });
     });
     // Another player picked, or back to you: show that profile (from the cache if seen before) and load it.
@@ -646,7 +772,7 @@ export class ProfileView {
   async toggle(m: MatchLine, ev?: Event): Promise<void> {
     // OP.GG's match list has no full scoreboards.
     if (this.profile()?.source === 'opgg') return;
-    this.keepInPlace(ev?.currentTarget as HTMLElement | undefined);
+    this.keepInPlace((ev?.currentTarget as HTMLElement | undefined)?.parentElement ?? undefined);
     if (this.openId() === m.gameId) {
       this.openId.set(null);
       return;
@@ -656,16 +782,59 @@ export class ProfileView {
     this.detailError.set(null);
     try {
       // Another player's games are seen from their side of the scoreboard.
-      const puuid = this.viewing() ? (this.profile()?.puuid ?? null) : null;
-      const d = await this.rift.getMatch(m.gameId, this.queue(m.queueId, m.gameMode), puuid);
+      const d = await this.game(m);
       if (this.openId() === m.gameId) this.detail.set(d);
     } catch (e) {
       if (this.openId() === m.gameId) this.detailError.set(String(e));
     }
   }
 
+  /** A game's full record, asked of the client once per session. */
+  private game(m: MatchLine): Promise<PostGame> {
+    // Another player's games are seen from their side of the scoreboard.
+    const puuid = this.viewing() ? (this.profile()?.puuid ?? null) : null;
+    const key = `${puuid ?? 'me'}:${m.gameId}`;
+    let g = this.games.get(key);
+    if (!g) {
+      g = this.rift.getMatch(m.gameId, this.queue(m.queueId, m.gameMode), puuid);
+      // A failed load is asked again next time.
+      g.catch(() => this.games.delete(key));
+      this.games.set(key, g);
+    }
+    return g;
+  }
+
   /**
-   * Keeps a clicked match row where it was on screen. Opening a game closes the
+   * Loads each listed game, one at a time, for its Bro preview (the grade and
+   * the verdict). Only from the client's history: OP.GG's
+   * list has no full games. Roasts off in Settings: no preview.
+   */
+  private async loadPreviews(list: MatchLine[]): Promise<void> {
+    const seq = ++this.previewSeq;
+    for (const m of list) {
+      if (seq !== this.previewSeq || this.destroyed) return;
+      if (m.result === 'remake' || this.bro()[m.gameId]) continue;
+      try {
+        const g = await this.game(m);
+        const team = g.teams.find((t) => t.isMine);
+        const me = team?.players.find((p) => p.isMe);
+        const r = team && me ? review(g, team, me, (id) => this.rift.champName(id)) : null;
+        if (!r || seq !== this.previewSeq) continue;
+        this.bro.update((b) => ({ ...b, [m.gameId]: r }));
+      } catch {
+        // The row just goes without a preview.
+      }
+    }
+  }
+  private previewSeq = 0;
+  /** Same colors as the review card's grades. */
+  tone(g: Grade): string {
+    return g === 'S+' || g === 'S' ? 'top' : g === 'A' ? 'good' : g === 'B' ? 'mid' : g === 'C' ? 'meh' : 'bad';
+  }
+  private previewOf = '';
+
+  /**
+   * Keeps a clicked match (its row's item) where it was on screen. Opening a game closes the
    * one that was open, and when that one is above, the page would otherwise
    * jump by its whole scoreboard's height.
    */
@@ -707,6 +876,9 @@ export class ProfileView {
   }
   pct = winPct;
   ratio = kdaRatio;
+  spellIcon = (id: number) => assetUrl(this.rift.spellById().get(id)?.iconPath);
+  /** "Name#TAG" → "Name"; the full Riot ID is in the hover title. */
+  shortName = (name: string) => name.split('#')[0] || '?';
   queue(id: number, mode = ''): string {
     return queueLabel(id, mode);
   }

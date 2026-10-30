@@ -320,7 +320,7 @@ pub async fn lane_games(state: &crate::engine::AppState) -> HashMap<i64, [i64; 5
 }
 
 /// Scoreboard order for a position: top, jungle, mid, ADC, support, then unknown.
-fn lane_rank(position: Option<&str>) -> usize {
+pub fn lane_rank(position: Option<&str>) -> usize {
     match position {
         Some("top") => 0,
         Some("jungle") => 1,
