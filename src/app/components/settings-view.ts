@@ -106,7 +106,7 @@ type BoolKey =
           <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
             <input type="checkbox" [checked]="cfg.showSkillHint" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('showSkillHint', $any($event.target).checked)" />
             <span class="track"></span>
-            <span class="label"><b>Skill order</b><span>Which ability you're maxing now, which one is next, and what to level when you have a point.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span><img class="peek" [class.dim]="!(cfg.showSkillHint && cfg.recSource === 'opgg')" src="overlay-parts/skills.webp" alt="" /></span>
+            <span class="label"><b>Skill order</b><span>Which ability you're maxing now (pink), which one is next (teal), and what to level when you have a point.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span><img class="peek" [class.dim]="!(cfg.showSkillHint && cfg.recSource === 'opgg')" src="overlay-parts/skills.webp" alt="" /></span>
           </label>
           <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
             <input type="checkbox" [checked]="cfg.useRecommendedBuilds" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('useRecommendedBuilds', $any($event.target).checked)" />

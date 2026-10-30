@@ -133,21 +133,23 @@ const PREVIEW: OverlayState = {
         @if (o.skillMax.length) {
           <!-- The max order with points so far: the skill you're maxing now, the one after it, and a pulse on the one to level when you have a point. -->
           @let m = maxing(o);
-          <div class="build">
-            <div class="cap">Skill order</div>
+          <div class="build skills">
+            <div class="cap">Skills</div>
             <div class="maxrow">
               @for (k of o.skillMax; track k; let i = $index; let last = $last) {
-                <div class="sk" [class.now]="i === m" [class.next]="i === m + 1" [class.done]="points(o, k) >= MAX_RANK" [class.levelup]="k === o.nextSkill">
+                <div class="sk" [class.now]="i === m" [class.next]="i === m + 1" [class.done]="points(o, k) >= MAX_RANK" [class.levelup]="k === o.nextSkill"
+                  [title]="i === m ? 'Maxing now' : i === m + 1 ? 'Max next' : ''">
                   <b>{{ rift.abilityKey(k) }}</b>
                   <span class="pips">
                     @for (p of ranks; track p) { <i [class.on]="p < points(o, k)"></i> }
                   </span>
-                  @if (i === m) { <span class="tag">Max</span> } @else if (i === m + 1) { <span class="tag">Next</span> }
                 </div>
-                @if (!last) { <span class="sep">›</span> }
+                @if (!last) {
+                  <svg class="sep" viewBox="0 0 6 10" width="6" height="10" aria-hidden="true"><path d="M1 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                }
               }
               @if (o.nextSkill && !o.skillMax.includes(o.nextSkill)) {
-                <div class="sk ult levelup"><b>{{ rift.abilityKey(o.nextSkill) }}</b><span class="tag">Up</span></div>
+                <div class="sk ult levelup" title="Level up now"><b>{{ rift.abilityKey(o.nextSkill) }}</b><span class="tag">Up</span></div>
               }
             </div>
           </div>
@@ -201,21 +203,22 @@ const PREVIEW: OverlayState = {
           <div class="build"><div class="cap">Build complete</div></div>
         }
         @if (showSit() && o.situational.length) {
+          <!-- Collapsed until you open it: the header is the dropdown and says how many counters there are. -->
           <div class="build sit">
-            <div class="cap">Situational · vs this team</div>
-            @for (it of expanded() ? o.situational : o.situational.slice(0, 1); track it.id) {
-              <div class="item" [class.ready]="it.affordable" [title]="it.reason">
-                @if (rift.itemIcon(it.id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
-                <span class="name">{{ it.name }}</span>
-                @if (it.price) { <span class="price">{{ it.price }}</span> }
-              </div>
-              <div class="why"><span class="tag">{{ it.label }}</span> · {{ it.reason }}</div>
-            }
-            @if (o.situational.length > 1) {
-              <button #moreBtn class="more" [class.open]="expanded()" (click)="expanded.set(!expanded())">
-                {{ expanded() ? 'Show fewer' : '+' + (o.situational.length - 1) + ' more counter' + (o.situational.length > 2 ? 's' : '') }}
-                <svg viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
-              </button>
+            <button #moreBtn class="cap toggle" [class.open]="expanded()" [attr.aria-expanded]="expanded()" (click)="expanded.set(!expanded())">
+              Situational · vs this team
+              <span class="count">{{ o.situational.length }}</span>
+              <svg viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </button>
+            @if (expanded()) {
+              @for (it of o.situational; track it.id) {
+                <div class="item" [class.ready]="it.affordable" [title]="it.reason">
+                  @if (rift.itemIcon(it.id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+                  <span class="name">{{ it.name }}</span>
+                  @if (it.price) { <span class="price">{{ it.price }}</span> }
+                </div>
+                <div class="why"><span class="tag">{{ it.label }}</span> · {{ it.reason }}</div>
+              }
             }
           </div>
         }
@@ -285,28 +288,31 @@ const PREVIEW: OverlayState = {
     .foe .diff { font: 700 12px var(--display); font-variant-numeric: tabular-nums; color: var(--text-dim); }
     .foe .diff.ahead { color: var(--win); }
     .foe .diff.behind { color: var(--loss); }
-    /* Skill order: one chip per maxed ability with five pips for its points. The one you're
-       maxing is pink, the next one teal, finished ones fade. */
-    .maxrow { display: flex; align-items: center; gap: 4px; }
-    .maxrow .sep { color: var(--text-faint); font-size: 12px; }
+    /* Skill order on one slim line: the label, then a chip per maxed ability with five pips for its
+       points. Colour says which is which: pink is the one you're maxing now, teal the next, finished ones fade. */
+    .build.skills { flex-direction: row; align-items: center; gap: 8px; }
+    .skills .cap { flex: none; }
+    .maxrow { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; }
+    .maxrow .sep { flex: none; color: var(--text-faint); }
     .sk {
-      flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 3px 7px; border-radius: 8px;
-      background: rgba(255, 255, 255, 0.035); border: 1px solid transparent;
+      flex: 1 1 0; min-width: 0; height: 20px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 5px;
+      padding: 0 6px; border-radius: 6px; background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.08);
     }
-    .sk b { font: 700 14px var(--display); color: var(--text-dim); }
+    .sk b { font: 700 12.5px/1 var(--display); color: var(--text-dim); }
     .sk .pips { display: flex; gap: 2px; }
-    .sk .pips i { width: 5px; height: 9px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); }
+    .sk .pips i { width: 3px; height: 8px; border-radius: 1.5px; background: rgba(255, 255, 255, 0.14); }
     .sk .pips i.on { background: var(--text-dim); }
-    .sk .tag { margin-left: auto; font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); }
-    .sk.now { border-color: rgba(255, 79, 163, 0.45); background: rgba(255, 79, 163, 0.1); }
-    .sk.now b, .sk.now .tag { color: var(--accent); }
-    .sk.now .pips i.on { background: var(--accent); box-shadow: 0 0 5px var(--accent-glow); }
-    .sk.next { border-color: rgba(47, 212, 196, 0.35); }
-    .sk.next b, .sk.next .tag { color: var(--accent-2); }
+    .sk.now { border-color: rgba(255, 79, 163, 0.5); background: rgba(255, 79, 163, 0.12); }
+    .sk.now b { color: var(--accent); }
+    .sk.now .pips i.on { background: var(--accent); box-shadow: 0 0 4px var(--accent-glow); }
+    .sk.next { border-color: rgba(47, 212, 196, 0.4); background: rgba(47, 212, 196, 0.07); }
+    .sk.next b { color: var(--accent-2); }
     .sk.next .pips i.on { background: var(--accent-2); }
     .sk.done { opacity: 0.5; }
-    .sk.ult { flex: none; }
-    .sk.ult b { color: var(--gold); }
+    /* R when it's the one to level: a small gold chip on the end. */
+    .sk.ult { flex: none; gap: 4px; }
+    .sk.ult b, .sk.ult .tag { color: var(--gold); }
+    .sk.ult .tag { font-size: 8.5px; font-weight: 700; line-height: 1; letter-spacing: 0.06em; text-transform: uppercase; }
     /* The key to put your next point in. */
     .levelup { animation: pulse 1.6s ease-in-out infinite; }
     @keyframes pulse { 50% { box-shadow: 0 0 0 2px rgba(255, 79, 163, 0.45), 0 0 12px var(--accent-glow); } }
@@ -348,16 +354,20 @@ const PREVIEW: OverlayState = {
     .sit .tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #7cc4ff; }
     /* Wraps instead of cutting off: the click-through overlay can't show a tooltip. */
     .sit .why { margin: -2px 0 2px 32px; font-size: 11.5px; color: var(--text-dim); line-height: 1.3; }
-    /* Same blue as the tags; a real button, with a chevron that flips when open. */
-    .more {
-      all: unset; position: relative; z-index: 11; align-self: flex-start; margin: 2px 0 0 32px;
-      display: inline-flex; align-items: center; gap: 5px;
-      font-size: 11px; color: #7cc4ff; cursor: pointer; padding: 3px 9px; border-radius: 6px;
-      border: 1px solid rgba(124, 196, 255, 0.45); background: rgba(124, 196, 255, 0.1);
+    /* The section header is the dropdown: a real button (kept clickable), with a count and a chevron that flips when open. */
+    .toggle {
+      all: unset; position: relative; z-index: 11; align-self: stretch; display: flex; align-items: center; gap: 6px;
+      font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-faint);
+      cursor: pointer; margin: -2px -4px; padding: 2px 4px; border-radius: 6px;
     }
-    .more:hover { background: rgba(124, 196, 255, 0.22); }
-    .more svg { transition: transform 0.15s; }
-    .more.open svg { transform: rotate(180deg); }
+    .toggle::before { flex: none; margin: 0 !important; }
+    .toggle:hover { color: var(--text-dim); background: rgba(255, 255, 255, 0.05); }
+    .toggle .count {
+      font: 700 10px/1 var(--display); letter-spacing: 0; color: #7cc4ff; padding: 2px 5px; border-radius: 5px;
+      background: rgba(124, 196, 255, 0.12); border: 1px solid rgba(124, 196, 255, 0.35);
+    }
+    .toggle svg { margin-left: auto; color: #7cc4ff; transition: transform 0.15s; }
+    .toggle.open svg { transform: rotate(180deg); }
   `,
 })
 export class Overlay {
