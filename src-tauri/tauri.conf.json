@@ -18,7 +18,8 @@
         "height": 760,
         "minWidth": 860,
         "minHeight": 560,
-        "resizable": true
+        "resizable": true,
+        "decorations": false
       },
       {
         "label": "overlay",

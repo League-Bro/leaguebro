@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, effect, inject, signal, untracked } from '@angular/core';
-import { RiftService } from '../core/rift.service';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { RiftService, inTauri } from '../core/rift.service';
 import { UpdateService } from '../core/update.service';
 import { IS_MAC, MOD_KEY } from '../core/platform';
 import { profileIcon } from '../core/assets';
@@ -36,6 +37,19 @@ const PHASE_LABELS: Record<string, string> = {
   EndOfGame: 'Game over',
 };
 
+const RAIL_KEY = 'leaguebro.railCollapsed';
+
+/** Below this window width the side rail collapses to icons on its own. */
+const narrowQuery = typeof matchMedia === 'function' ? matchMedia('(max-width: 1100px)') : null;
+
+function readRailCollapsed(): boolean {
+  try {
+    return localStorage.getItem(RAIL_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 /** Client phases from joining a lobby to closing the end-of-game screen. */
 const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'));
 
@@ -44,19 +58,25 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [LiveView, ChampionsView, PatchView, SettingsView, FeedbackView, ProfileView, ItemTipPopup, ChampionSearch, UpdateSplash],
   template: `
-    <aside>
-      <button class="brand" [class.active]="tab() === 'profile'" title="Your profile and match history" (click)="go('profile')">
-        <img src="favicon.png" alt="" />
-        <span>League Bro</span>
-      </button>
+    <aside data-tauri-drag-region>
+      <div class="rail-top" data-tauri-drag-region>
+        <button class="brand" [class.active]="tab() === 'profile'" title="Your profile and match history" (click)="go('profile')">
+          <img src="favicon.png" alt="" />
+          <span>League Bro</span>
+        </button>
+        <button class="collapse" [title]="collapsed() ? 'Expand the menu' : 'Collapse the menu'"
+                [attr.aria-label]="collapsed() ? 'Expand the menu' : 'Collapse the menu'" (click)="toggleRail()">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3" /><path d="M9 4v16" /><path [attr.d]="collapsed() ? 'm13 10 2 2-2 2' : 'm16 10-2 2 2 2'" /></svg>
+        </button>
+      </div>
       <button class="find" [title]="'Find a champion, or a player by Name#TAG (' + modKey + 'K, or just start typing)'" (click)="openSearch('')">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
         <span>Search</span>
         <kbd>{{ modKey }}K</kbd>
       </button>
-      <nav>
+      <nav data-tauri-drag-region>
         @for (t of tabs; track t.id) {
-          @if (t.id === 'settings') { <div class="spacer"></div> }
+          @if (t.id === 'settings') { <div class="spacer" data-tauri-drag-region></div> }
           <button [class.active]="tab() === t.id" [title]="t.label + ' (' + modKey + ($index + 1) + ')'" (click)="go(t.id)">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path [attr.d]="t.icon" /></svg>
             <span class="label">{{ t.label }}</span>
@@ -81,6 +101,23 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
       }
     </aside>
     <div class="body">
+    <!-- The window has no Windows title bar (tauri.conf.json): this strip moves it (double-click maximizes)
+         and holds its buttons. A Mac keeps its native title bar, so it's left out there. -->
+    @if (!isMac) {
+      <div class="titlebar" data-tauri-drag-region>
+        <button class="win-btn" title="Minimize" aria-label="Minimize" (click)="minimize()">
+          <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 5h10" /></svg>
+        </button>
+        <button class="win-btn" [title]="maximized() ? 'Restore' : 'Maximize'" [attr.aria-label]="maximized() ? 'Restore' : 'Maximize'" (click)="toggleMaximize()">
+          <svg viewBox="0 0 10 10" aria-hidden="true">
+            @if (maximized()) { <path d="M2.5 2.5V.5h7v7h-2 M.5 2.5h7v7h-7z" /> } @else { <path d="M.5 .5h9v9h-9z" /> }
+          </svg>
+        </button>
+        <button class="win-btn close" title="Close" aria-label="Close" (click)="close()">
+          <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 0l10 10M10 0 0 10" /></svg>
+        </button>
+      </div>
+    }
     @if (rift.demo) {
       <div class="demo-bar">Demo data: this is the browser preview. Run it with <code>npm run tauri dev</code> to connect to League.</div>
     }
@@ -123,6 +160,7 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
     '(document:keydown.alt.arrowleft)': 'back()',
     '(document:mouseup)': 'mouseBack($event)',
     '(document:keydown)': 'tabKey($event)',
+    '[class.collapsed]': 'collapsed()',
   },
   styles: `
     /* A side rail instead of a top bar: the page gets the full window height,
@@ -133,6 +171,16 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
       padding: 18px 12px 14px; background: var(--rail); border-right: 1px solid var(--line);
     }
     .body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    /* Our own title bar: an empty strip over the page, Windows-sized buttons on the right. */
+    .titlebar { flex: none; height: 32px; display: flex; justify-content: flex-end; }
+    .win-btn {
+      width: 46px; height: 100%; display: grid; place-items: center; padding: 0;
+      background: none; border: none; border-radius: 0; color: var(--text-dim);
+    }
+    .win-btn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; shape-rendering: crispEdges; }
+    .win-btn.close svg { shape-rendering: geometricPrecision; }
+    .win-btn:hover:not(:disabled) { color: var(--text); background: var(--bg-hover); }
+    .win-btn.close:hover:not(:disabled) { color: #fff; background: #c42b1c; }
     .brand {
       display: flex; align-items: center; gap: 11px; font: 800 16px var(--display); letter-spacing: 0.01em;
       background: none; border: none; padding: 6px 10px; margin-bottom: 10px; color: var(--text); border-radius: 14px;
@@ -183,15 +231,21 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
     .me-text b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .me-text small { color: var(--text-dim); font-size: 12px; }
     .version { color: var(--text-faint); font: 500 11px var(--mono); padding: 6px 12px 0; }
-    /* Narrow window: icons only. */
-    @media (max-width: 1100px) {
-      aside { width: 72px; align-items: center; padding-inline: 10px; }
-      .brand span, .find span, .find kbd, nav .label, .me-text, .version { display: none; }
-      .brand { padding: 6px; } .find { padding: 10px; } nav button { padding: 11px; }
-      nav button.active::before { left: -10px; }
-      .live-tag, .live-dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; padding: 0; font-size: 0; }
-      .me { padding: 4px; border: none; background: none; }
-    }
+    .rail-top { display: flex; align-items: center; gap: 4px; margin-bottom: 10px; }
+    .rail-top .brand { flex: 1; min-width: 0; margin-bottom: 0; }
+    .collapse { flex: none; display: grid; place-items: center; padding: 6px; background: none; border: none; border-radius: 9px; color: var(--text-faint); }
+    .collapse:hover:not(:disabled) { color: var(--text); background: var(--bg-hover); }
+    .collapse svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    /* Collapsed (a narrow window, or the collapse button): icons only. */
+    :host(.collapsed) aside { width: 72px; align-items: center; padding-inline: 10px; }
+    :host(.collapsed) :is(.brand span, .find span, .find kbd, nav .label, .me-text, .version) { display: none; }
+    :host(.collapsed) .brand { padding: 6px; }
+    :host(.collapsed) .find { padding: 10px; }
+    :host(.collapsed) nav button { padding: 11px; }
+    :host(.collapsed) nav button.active::before { left: -10px; }
+    :host(.collapsed) :is(.live-tag, .live-dot) { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; padding: 0; font-size: 0; }
+    :host(.collapsed) .me { padding: 4px; border: none; background: none; }
+    :host(.collapsed) .rail-top { flex-direction: column; gap: 6px; }
     .demo-bar { background: var(--gold-soft); color: var(--gold); font-size: 12.5px; padding: 6px 28px; }
     .demo-bar code { font-family: var(--mono); }
     .update-bar {
@@ -203,6 +257,8 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
     .update-bar span:first-child { flex: 1; }
     .update-bar.bad { background: rgba(255, 90, 78, 0.14); }
     main { flex: 1; overflow: auto; padding: 28px 32px; }
+    /* The title bar already spaces the page from the top edge. */
+    .titlebar ~ main { padding-top: 8px; }
     main > * { display: block; max-width: 1360px; margin-inline: auto; animation: rise 0.32s var(--ease-out) both; }
     /* Windows' "Animation effects" off skips the slide-in (the Live radar and dots still move). */
     @media (prefers-reduced-motion: reduce) { main > * { animation: none; } }
@@ -228,6 +284,73 @@ export class Shell implements OnInit {
   ];
   ngOnInit(): void {
     this.updates.start();
+    this.watchMaximized();
+    this.watchWidth();
+  }
+
+  protected readonly isMac = IS_MAC;
+
+  /** Collapsed with the button; remembered between runs. */
+  private readonly pinnedCollapsed = signal(readRailCollapsed());
+  /** The window is narrow enough (narrowQuery) that it collapses the rail on its own. */
+  private readonly narrow = signal(narrowQuery?.matches ?? false);
+  /** Expanded with the button while the window is narrow; dropped when the window crosses the width again. */
+  private readonly expandedWhileNarrow = signal(false);
+
+  /** The side rail shrunk to icons: on a narrow window, or when the player collapsed it. */
+  protected readonly collapsed = computed(() => this.pinnedCollapsed() || (this.narrow() && !this.expandedWhileNarrow()));
+
+  private watchWidth(): void {
+    narrowQuery?.addEventListener('change', (e) => {
+      this.narrow.set(e.matches);
+      this.expandedWhileNarrow.set(false);
+    });
+  }
+
+  protected toggleRail(): void {
+    if (this.collapsed()) {
+      this.setPinned(false);
+      if (this.narrow()) this.expandedWhileNarrow.set(true);
+    } else if (this.narrow()) {
+      // Back to the narrow window's own collapse; nothing to remember.
+      this.expandedWhileNarrow.set(false);
+    } else {
+      this.setPinned(true);
+    }
+  }
+
+  private setPinned(on: boolean): void {
+    this.pinnedCollapsed.set(on);
+    try {
+      localStorage.setItem(RAIL_KEY, on ? '1' : '0');
+    } catch {
+      // No storage (private window): the choice just lasts until League Bro closes.
+    }
+  }
+
+  /** Whether the window is maximized, so the title bar shows Restore instead of Maximize. */
+  protected readonly maximized = signal(false);
+
+  private async watchMaximized(): Promise<void> {
+    if (!inTauri()) return;
+    const win = getCurrentWindow();
+    const check = async () => this.maximized.set(await win.isMaximized());
+    // Snapping, double-clicking the title bar and Win+Up all resize the window, so this catches every way in.
+    await win.onResized(check);
+    await check();
+  }
+
+  protected minimize(): void {
+    if (inTauri()) void getCurrentWindow().minimize();
+  }
+
+  protected toggleMaximize(): void {
+    if (inTauri()) void getCurrentWindow().toggleMaximize();
+  }
+
+  /** Same as the old title bar's close: quits the app (lib.rs cleans up on CloseRequested). */
+  protected close(): void {
+    if (inTauri()) void getCurrentWindow().close();
   }
 
   /**

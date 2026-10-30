@@ -536,6 +536,11 @@ pub fn run() {
                 overlay_input: std::sync::Mutex::new(engine::OverlayInput { passthrough: true, ..Default::default() }),
             });
             app.manage(picks::Picks::default());
+            // The main window draws its own title bar (shell.ts) on Windows; a Mac keeps its native one.
+            #[cfg(target_os = "macos")]
+            if let Some(main) = app.get_webview_window("main") {
+                let _ = main.set_decorations(true);
+            }
             if let Some(overlay) = app.get_webview_window("overlay") {
                 let _ = overlay.set_ignore_cursor_events(true);
                 // macOS puts a full-screen game in its own Space; this lets the
