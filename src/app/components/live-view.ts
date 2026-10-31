@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, output, signal, untracked } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { PlayerCard } from './player-card';
@@ -8,13 +9,14 @@ import { FullscreenHint } from './fullscreen-hint';
 import { TeamDamage } from './team-damage';
 import { PickSuggest } from './pick-suggest';
 import { LiveRadar } from './live-radar';
+import { ChampTeams } from './champ-teams';
 import { championIcon, clock, positionLabel } from '../core/assets';
 import { ImportEvent, LoadPlayer, OverlayState, RecChoice, RecState, SwiftplaySlot } from '../core/models';
 
 @Component({
   selector: 'rl-live',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [PlayerCard, RecCard, MatchupCard, PostGameView, FullscreenHint, TeamDamage, PickSuggest, LiveRadar],
+  imports: [PlayerCard, RecCard, MatchupCard, PostGameView, FullscreenHint, TeamDamage, PickSuggest, LiveRadar, ChampTeams, NgTemplateOutlet],
   template: `
     @if (rift.fullscreenHint()) {
       <rl-fullscreen-hint class="top-hint" />
@@ -32,70 +34,51 @@ import { ImportEvent, LoadPlayer, OverlayState, RecChoice, RecState, SwiftplaySl
         </div>
       </div>
     } @else if (rift.champSelect(); as cs) {
-      <!-- Before you lock in: who to pick against your lane opponent. -->
-      <rl-pick-suggest />
-      <section class="hero card">
-        @if (rift.champSplash(cs.myChampionId); as splash) {
-          <div class="splash"><img [src]="splash" alt="" /></div>
-        }
-        @if (cs.myChampionId > 0) {
-          <img class="big" [src]="icon(cs.myChampionId)" alt="" />
-        } @else {
-          <div class="big"></div>
-        }
-        <div class="stack grow">
-          <div>
-            <h2>{{ rift.champName(cs.myChampionId) || 'No champion yet' }}</h2>
-            <div class="muted">
-              {{ pos(cs.myPosition) || 'No assigned role' }} ·
-              {{ cs.locked ? 'Locked in' : cs.myChampionId ? 'Hovering' : 'Picking' }}
-            </div>
-          </div>
-          <div class="import" [class.bad]="rift.lastImport() && !rift.lastImport()!.ok">
-            @if (importMsg()) {
-              {{ importMsg() }}
-            } @else if (rift.config()?.autoImportRunes) {
-              <span class="muted">{{ autoImportText() }}</span>
-            } @else {
-              <span class="muted">Auto-import is off.</span>
+      <!-- Your champion and its build in one card: on top once you hover or lock a champion, under the pick suggestions before that. -->
+      <ng-template #champBlock>
+        <div class="card champ-block">
+          <section class="hero">
+            @if (rift.champSplash(cs.myChampionId); as splash) {
+              <div class="splash"><img [src]="splash" alt="" /></div>
             }
-          </div>
-        </div>
-        <button class="primary" [disabled]="!cs.myChampionId || busy()" (click)="importNow()">{{ busy() ? 'Importing…' : 'Import now' }}</button>
-      </section>
-      <rl-team-damage [allies]="csAllyIds()" [enemies]="csEnemyIds()" />
-      <rl-matchup />
-      <rl-rec-card />
-
-      <!-- Both teams side by side; the grid lines up each ally with the enemy in the same row. -->
-      <div class="teams">
-        <h3 class="section ally">Your team</h3>
-        @for (p of cs.allies; track p.cellId; let i = $index) {
-          <rl-player
-            [name]="p.name" [puuid]="p.isMe ? null : p.puuid" [championId]="p.championId || p.pickIntent"
-            [position]="p.position" [isMe]="p.isMe"
-            [hiddenLabel]="'Ally ' + (i + 1)" [hiddenNote]="'Hidden in ranked champ select · shown on the loading screen'" />
-        }
-        <h3 class="section enemy">Enemy team</h3>
-        @for (e of cs.enemies; track e.cellId; let i = $index) {
-          <rl-player class="foe"
-            [name]="e.name" [puuid]="e.puuid" [championId]="e.championId" [position]="e.position" side="enemy"
-            [hiddenLabel]="'Enemy ' + (i + 1)" [hiddenNote]="'Names show on the loading screen'" />
-        }
-      </div>
-
-      <div class="row picks">
-        @if (cs.bans.length) {
-          <div>
-            <h3 class="section">Bans</h3>
-            <div class="row">
-              @for (b of cs.bans; track $index) {
-                <img class="champ-icon md banned" [src]="icon(b)" [title]="rift.champName(b)" alt="" />
-              }
+            @if (cs.myChampionId > 0) {
+              <img class="big" [src]="icon(cs.myChampionId)" alt="" />
+            } @else {
+              <div class="big"></div>
+            }
+            <div class="stack grow">
+              <div>
+                <h2>{{ rift.champName(cs.myChampionId) || 'No champion yet' }}</h2>
+                <div class="muted">
+                  {{ pos(cs.myPosition) || 'No assigned role' }} ·
+                  {{ cs.locked ? 'Locked in' : cs.myChampionId ? 'Hovering' : 'Picking' }}
+                </div>
+              </div>
+              <div class="import" [class.bad]="rift.lastImport() && !rift.lastImport()!.ok">
+                @if (importMsg()) {
+                  {{ importMsg() }}
+                } @else if (rift.config()?.autoImportRunes) {
+                  <span class="muted">{{ autoImportText() }}</span>
+                } @else {
+                  <span class="muted">Auto-import is off.</span>
+                }
+              </div>
             </div>
-          </div>
-        }
-      </div>
+            <button class="primary" [disabled]="!cs.myChampionId || busy()" (click)="importNow()">{{ busy() ? 'Importing…' : 'Import now' }}</button>
+          </section>
+          <rl-rec-card [bare]="true" />
+        </div>
+      </ng-template>
+      @if (cs.myChampionId > 0) {
+        <ng-container *ngTemplateOutlet="champBlock" />
+        <rl-pick-suggest />
+      } @else {
+        <rl-pick-suggest />
+        <ng-container *ngTemplateOutlet="champBlock" />
+      }
+      <rl-matchup />
+      <!-- Both teams in one card: damage, what each comp is built around, players and bans. -->
+      <rl-champ-teams />
     } @else if (rift.loading(); as l) {
       @if (rift.overlay(); as o) {
         <section class="ingame card">
@@ -220,7 +203,14 @@ import { ImportEvent, LoadPlayer, OverlayState, RecChoice, RecState, SwiftplaySl
     .empty { max-width: 560px; margin: 60px auto; text-align: center; padding-top: 32px; }
     .empty h2 { font-size: 18px; margin-bottom: 6px; }
     .empty .links { justify-content: center; flex-wrap: wrap; }
-    .hero { position: relative; display: flex; align-items: center; gap: 20px; margin-bottom: 8px; padding: 24px; min-height: 132px; }
+    .champ-block { padding: 0; margin-bottom: 8px; }
+    /* The splash only fills the champion header; the build (with its own hairline) sits under it. */
+    .champ-block .hero { border-radius: var(--radius); min-height: 0; padding: 16px 22px; gap: 16px; }
+    .champ-block .hero h2 { font-size: 30px; }
+    .champ-block .hero .big { width: 64px; height: 64px; border-radius: 16px; }
+    .champ-block .hero .grow { gap: 3px; }
+    .champ-block:has(.rec) .hero { border-radius: var(--radius) var(--radius) 0 0; }
+    .hero { position: relative; display: flex; align-items: center; gap: 20px; padding: 24px; min-height: 132px; }
     .hero > :not(.splash) { position: relative; }
     .hero .big { width: 80px; height: 80px; border-radius: 18px; border: 2px solid var(--accent); background: var(--bg-sunken); box-shadow: 0 0 22px var(--accent-glow); }
     .hero { min-height: 170px; padding: 28px; overflow: hidden; }
@@ -256,7 +246,6 @@ import { ImportEvent, LoadPlayer, OverlayState, RecChoice, RecState, SwiftplaySl
     .swift-col .slot .import { overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 60%; }
     @media (max-width: 900px) { .swift-cols { grid-template-columns: minmax(0, 1fr); } }
     .hint { font-size: 12.5px; margin: 12px 0 0; }
-    .picks { align-items: flex-start; gap: 48px; }
     .teams { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: row dense; column-gap: 14px; row-gap: 6px; }
     .teams > * { grid-column: 1; }
     .teams > .enemy, .teams > .foe { grid-column: 2; }
@@ -264,7 +253,6 @@ import { ImportEvent, LoadPlayer, OverlayState, RecChoice, RecState, SwiftplaySl
       .teams { grid-template-columns: minmax(0, 1fr); }
       .teams > .enemy, .teams > .foe { grid-column: 1; }
     }
-    .banned { filter: grayscale(1) brightness(0.6); }
     .timer { font-size: 13px; display: flex; gap: 6px; }
     .head .section { margin-bottom: 0; }
     .team-head { display: flex; align-items: baseline; gap: 12px; margin: 22px 0 10px; }
@@ -414,9 +402,6 @@ export class LiveView {
     return [...l.allies, ...l.enemies].filter((p) => p.puuid && !p.isMe && profiles[p.puuid]).length;
   });
 
-  /** Champions for the damage bars. In champ select an ally's hover counts until they lock in. */
-  protected readonly csAllyIds = computed(() => this.rift.champSelect()?.allies.map((p) => p.championId || p.pickIntent) ?? []);
-  protected readonly csEnemyIds = computed(() => this.rift.champSelect()?.enemies.map((p) => p.championId) ?? []);
   // Both lists together: the loading screen data can miss champions (bots, or picks
   // it hadn't caught yet), and the game's own list can miss some while it loads or
   // when a name doesn't match a champion, so neither replaces the other.

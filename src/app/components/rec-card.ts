@@ -33,9 +33,9 @@ interface ChoiceRow {
   imports: [DecimalPipe, NgTemplateOutlet, SituationalCard, ItemTip, Loader, RuneEditor],
   template: `
     @if (rift.config()?.recSource === 'opgg' && state(); as s) {
-      <section class="card rec">
+      <section class="rec" [class.card]="!bare()" [class.bare]="bare()">
         <div class="head">
-          <h3>{{ inGame() ? 'Build for' : 'Recommended for' }} {{ rift.champName(s.championId) }}</h3>
+          <h3>@if (bare()) { Recommended build } @else { {{ inGame() ? 'Build for' : 'Recommended for' }} {{ rift.champName(s.championId) }} }</h3>
           <div class="spacer"></div>
           @if (s.rec; as r) {
             <span class="faint small">
@@ -222,8 +222,7 @@ interface ChoiceRow {
                 @if (ru.custom) {
                   <button class="ghost reset-runes" [disabled]="pickBusy()" (click)="resetRunes()">Back to OP.GG's page</button>
                 } @else if (runePages(); as rows) {
-                  <div class="divider"></div>
-                  <ng-container *ngTemplateOutlet="choices; context: { $implicit: rows, kind: 'runes', head: keystones() ? 'Secondary tree' : 'Rune pages', sel: s.choice.custom ? -1 : s.choice.runes }" />
+                  <ng-container *ngTemplateOutlet="chips; context: { $implicit: rows, kind: 'runes', head: keystones() ? 'Secondary' : 'Pages', sel: s.choice.custom ? -1 : s.choice.runes }" />
                 }
               </div>
             }
@@ -233,7 +232,7 @@ interface ChoiceRow {
                 <div class="part">
                   <header><h4>Summoner spells</h4></header>
                   @if (spellRows(); as rows) {
-                    <ng-container *ngTemplateOutlet="choices; context: { $implicit: rows, kind: 'spells', head: 'Popular picks', sel: s.choice.spells }" />
+                    <ng-container *ngTemplateOutlet="chips; context: { $implicit: rows, kind: 'spells', head: '', sel: s.choice.spells }" />
                   } @else {
                     <div class="spells">
                       @for (id of r.spells; track $index) {
@@ -264,13 +263,43 @@ interface ChoiceRow {
                   }
                 </div>
               }
+              <!-- In the champion card items sit under the skill order, filling the column next to the runes. -->
+              @if (bare()) {
+                <ng-container *ngTemplateOutlet="itemsPart; context: { $implicit: r, s }" />
+              }
             </div>
               </div>
             </section>
             }
 
-            @if (r.starter || r.buildOrder.length || r.situationalPool.length) {
+            @if (bare() ? r.situationalPool.length : r.starter || r.buildOrder.length || r.situationalPool.length) {
             <section class="panel wide">
+            @if (!bare()) {
+              <ng-container *ngTemplateOutlet="itemsPart; context: { $implicit: r, s }" />
+            }
+            <rl-situational class="bare" [pool]="r.situationalPool" [core]="coreIds(r)" [state]="situational()" [championId]="s.championId" />
+            </section>
+            }
+          </div>
+          @if (pickBusy()) {
+            <p class="muted small">Applying your pick…</p>
+          } @else if (pickMsg(); as m) {
+            <p class="small" [class.loss]="m.bad" [class.picked]="!m.bad">{{ m.text }}</p>
+          }
+
+        }
+      </section>
+    }
+
+    <ng-template #runeRow let-id let-ru="ru" let-i="i">
+      <div class="rune" [rlItemTip]="id" tipKind="rune">
+        @if (perkIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+        <span>{{ perkLabel(id, ru.perkNames[i] ?? '') }}</span>
+      </div>
+    </ng-template>
+
+    <!-- OP.GG's options for one pick (rune page, spells, core items, boots), with win and play rates. -->
+    <ng-template #itemsPart let-r let-s="s">
             @if (r.starter || r.buildOrder.length) {
               <div class="part">
                 <header>
@@ -305,35 +334,38 @@ interface ChoiceRow {
                     @if (coreRows(); as rows) {
                       <ng-container *ngTemplateOutlet="choices; context: { $implicit: rows, kind: 'core', head: 'Core items', sel: s.choice.core }" />
                     }
+                    <!-- Boots as one row of chips under the core builds, not a table of their own. -->
                     @if (bootsRows(); as rows) {
-                      <ng-container *ngTemplateOutlet="choices; context: { $implicit: rows, kind: 'boots', head: 'Boots', sel: s.choice.boots }" />
+                      <ng-container *ngTemplateOutlet="chips; context: { $implicit: rows, kind: 'boots', head: 'Boots', sel: s.choice.boots }" />
                     }
                   </div>
                 }
               </div>
             }
-            <rl-situational class="bare" [pool]="r.situationalPool" [core]="coreIds(r)" [state]="situational()" [championId]="s.championId" />
-            </section>
-            }
-          </div>
-          @if (pickBusy()) {
-            <p class="muted small">Applying your pick…</p>
-          } @else if (pickMsg(); as m) {
-            <p class="small" [class.loss]="m.bad" [class.picked]="!m.bad">{{ m.text }}</p>
+    </ng-template>
+
+    <!-- OP.GG's options as one row of chips: icons, name, win and play rate. -->
+    <ng-template #chips let-rows let-kind="kind" let-head="head" let-sel="sel">
+      <div class="chip-row">
+        @if (head) { <span class="sub">{{ head }}</span> }
+        <div class="keystones" role="radiogroup" [attr.aria-label]="head || kind">
+          @for (p of rows; track $index) {
+            @let i = p.i ?? $index;
+            <button class="ks" role="radio" [attr.aria-checked]="sel === i" [class.on]="sel === i" [disabled]="pickBusy()"
+              [attr.title]="p.tips ? null : p.tip" (click)="sel !== i && pick(kind, i)">
+              <span class="ks-icons">
+                @for (u of p.icons; track $index) { <img [class.round]="p.round" [src]="u" alt="" [rlItemTip]="p.tips?.[$index] ?? 0" [tipKind]="p.tipKind ?? 'item'" (error)="rift.hideImg($event)" /> }
+              </span>
+              <span class="ks-text">
+                <span class="ks-name">{{ p.label }}</span>
+                <span class="ks-stats"><span class="num">{{ pct(p.o.winRate) }}</span> <span class="faint">{{ pct(p.o.pickRate) }} played</span></span>
+              </span>
+            </button>
           }
-
-        }
-      </section>
-    }
-
-    <ng-template #runeRow let-id let-ru="ru" let-i="i">
-      <div class="rune" [rlItemTip]="id" tipKind="rune">
-        @if (perkIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
-        <span>{{ perkLabel(id, ru.perkNames[i] ?? '') }}</span>
+        </div>
       </div>
     </ng-template>
 
-    <!-- OP.GG's options for one pick (rune page, spells, core items, boots), with win and play rates. -->
     <ng-template #choices let-rows let-kind="kind" let-head="head" let-sel="sel">
       <div class="choices" role="radiogroup" [attr.aria-label]="head">
         <div class="choices-head" aria-hidden="true"><span>{{ head }}</span><span>Win</span><span>Played</span></div>
@@ -377,6 +409,15 @@ interface ChoiceRow {
     .small { font-size: 12.5px; margin: 0; }
     .warn { color: var(--gold); }
     .rec { container-type: inline-size; }
+    .rec.bare { margin: 0; padding: 14px 22px 18px; gap: 12px; border-top: 1px solid var(--line); }
+    .rec.bare .part { gap: 10px; }
+    .rec.bare .cols { gap: 20px; }
+    .rec.bare .cols > .stack { padding-left: 20px; }
+    .rec.bare .stack > .part + .part { margin-top: 12px; padding-top: 12px; }
+    /* Inside the champion card the card is the box: runes/spells and items run on as one section, split by a hairline. */
+    .rec.bare .layout { gap: 0; }
+    .rec.bare .panel { background: none; border: 0; border-radius: 0; padding: 0; }
+    .rec.bare .panel + .panel { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
     .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); margin-top: 2px; }
     .picked { color: var(--win); }
     .strong { font-weight: 600; }
@@ -492,8 +533,13 @@ interface ChoiceRow {
     .icons { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .arrow { margin: 0 1px; }
     .chip { font-size: 12px; background: var(--bg-sunken); border-radius: 999px; padding: 3px 8px; }
-    .item-choices { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 24px; padding-top: 14px; border-top: 1px solid var(--line); }
-    @container (max-width: 720px) { .item-choices { grid-template-columns: minmax(0, 1fr); } }
+    .item-choices { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+    .chip-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .chip-row .sub { min-width: 64px; }
+    .ks-icons { display: flex; gap: 3px; flex: none; }
+    .chip-row .ks img { width: 26px; height: 26px; border-radius: 6px; }
+    .chip-row .ks img.round { border-radius: 50%; }
+    .chip-row .ks { padding: 5px 10px 5px 5px; }
     .why-toggle { margin-left: 4px; font-size: 12.5px; color: var(--accent); }
     .why-toggle.on { border-color: var(--line-strong); }
     .why { border-bottom: 1px solid var(--line); padding-bottom: 14px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 10px; }
@@ -541,6 +587,8 @@ export class RecCard {
   protected readonly rift = inject(RiftService);
   /** In game: runes and spells are locked in by then, so only the skill order and items show. */
   readonly inGame = input(false);
+  /** Inside another card (champ select's champion card): no card of its own. */
+  readonly bare = input(false);
   protected readonly minGames = MIN_GAMES;
   protected readonly champIcon = championIcon;
   protected readonly showWhy = signal(false);

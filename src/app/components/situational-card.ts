@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { ItemSet, SituationalState, SituationTag } from '../core/models';
 import { SITUATION_LABEL, SITUATION_WHEN, pct } from '../core/why';
@@ -6,6 +6,12 @@ import { ItemTip } from './item-tip';
 
 /** Other options shown before "Show more". */
 const OTHERS_SHOWN = 3;
+/** Whether the list was left open (localStorage). */
+const OPEN_KEY = 'leaguebro.situationalOpen';
+
+function readOpen(): boolean {
+  try { return localStorage.getItem(OPEN_KEY) === '1'; } catch { return false; }
+}
 
 /**
  * Situational items: OP.GG's 4th–6th item options, ranked against the enemy
@@ -19,14 +25,19 @@ const OTHERS_SHOWN = 3;
   template: `
     @if (picks().length || others().length) {
       <section class="panel">
-        <header>
+        <!-- Closed until clicked: the header is the dropdown. -->
+        <button class="ghost toggle" [attr.aria-expanded]="open()" (click)="open.set(!open())">
+          <svg class="chev" [class.up]="open()" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg>
           <h4>Situational items</h4>
-          @if (state(); as s) {
+          @if (!open()) {
+            <span class="hint">{{ summary() }}</span>
+          } @else if (state(); as s) {
             <span class="hint">{{ s.live ? 'From the scoreboard, updated as enemies buy items' : 'From the enemy picks' }}</span>
           } @else {
             <span class="hint">OP.GG's 4th–6th item options, and when each is worth buying</span>
           }
-        </header>
+        </button>
+        @if (open()) {
 
         @if (state(); as s) {
           @if (s.threats.length) {
@@ -88,6 +99,7 @@ const OTHERS_SHOWN = 3;
             </button>
           }
         }
+        }
       </section>
     }
   `,
@@ -99,7 +111,11 @@ const OTHERS_SHOWN = 3;
     }
     /* Inside another panel (the rec card's items): no panel of its own. */
     :host(.bare) .panel { padding: 0; background: none; border: 0; border-radius: 0; }
-    .panel header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+    .toggle { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 2px 0; margin: 0; background: none; border: 0; text-align: left; color: var(--text-dim); cursor: pointer; }
+    .toggle { align-self: flex-start; }
+    .toggle:hover, .toggle:focus { background: none; color: var(--text); }
+    .chev { flex: none; transition: transform 0.15s ease; }
+    .chev.up { transform: rotate(180deg); }
     .panel h4 { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
     .hint { font-size: 12px; color: var(--text-faint); }
     .sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); margin-top: 6px; }    .small { font-size: 12.5px; margin: 0; line-height: 1.4; }
@@ -137,6 +153,18 @@ export class SituationalCard {
 
   protected readonly othersShown = OTHERS_SHOWN;
   protected readonly expanded = signal(false);
+  /** Closed by default; your last choice is remembered. */
+  protected readonly open = signal(readOpen());
+  private readonly saveOpen = effect(() => {
+    try { localStorage.setItem(OPEN_KEY, this.open() ? '1' : '0'); } catch { /* storage off: just don't remember */ }
+  });
+  /** What's inside while it's closed, e.g. "3 picks for this team". */
+  protected readonly summary = computed(() => {
+    const n = this.picks().length;
+    if (n) return `${n} ${n === 1 ? 'pick' : 'picks'} for this team`;
+    const o = this.others().length;
+    return `${o} ${o === 1 ? 'option' : 'options'}`;
+  });
   protected readonly pct = (x: number) => pct(x, 0);
 
   protected readonly champName = computed(() => this.rift.champName(this.championId()) || 'this champion');
