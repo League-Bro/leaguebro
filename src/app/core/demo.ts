@@ -23,6 +23,7 @@ import {
   QueueStat,
   PatchInfo,
   PatchNotes,
+  PlayerRanks,
   PostGame,
   PostPlayer,
   Profile,
@@ -421,6 +422,23 @@ function demoGoldLead(duration: number, final: number): GoldPoint[] {
   for (let t = 0; t < duration; t += 60) points.push({ t, lead: Math.round(lead(t)) });
   points.push({ t: duration, lead: final });
   return points;
+}
+
+/** Made-up ranks for the demo scoreboard; one player is unranked. */
+export function demoRanks(puuids: string[]): Record<string, PlayerRanks> {
+  const tiers = ['SILVER', 'GOLD', 'GOLD', 'PLATINUM', 'EMERALD', 'GOLD', 'DIAMOND', 'SILVER', 'MASTER'];
+  const divisions = ['IV', 'III', 'II', 'I'];
+  const out: Record<string, PlayerRanks> = {};
+  puuids.forEach((id, i) => {
+    if (id === 'e2') {
+      out[id] = { solo: null, flex: null };
+      return;
+    }
+    const tier = tiers[i % tiers.length];
+    const rank = (division: string, lp: number) => ({ tier, division: tier === 'MASTER' ? '' : division, lp, wins: 40 + i * 7, losses: 38 + i * 5 });
+    out[id] = { solo: rank(divisions[i % 4], (i * 23) % 100), flex: i % 3 ? null : rank(divisions[(i + 1) % 4], 50) };
+  });
+  return out;
 }
 
 /** The post-game summary demo: a good game, or with `bad`, one worth roasting. */

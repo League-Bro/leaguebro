@@ -578,6 +578,12 @@ export interface PostTeam {
   players: PostPlayer[];
 }
 
+/** A player's current Solo/Duo and Flex ranks (post-game scoreboard). */
+export interface PlayerRanks {
+  solo: RankLine | null;
+  flex: RankLine | null;
+}
+
 export interface PostGame {
   gameId: number;
   queueId: number;

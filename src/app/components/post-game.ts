@@ -1,11 +1,17 @@
 import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { RiftService } from '../core/rift.service';
-import { assetUrl, championIcon, clock, kdaRatio, queueLabel } from '../core/assets';
-import { PostGame, PostPlayer, PostTeam } from '../core/models';
+import { assetUrl, championIcon, clock, formatTier, kdaRatio, queueLabel, rankCrest, tierClass, winPct } from '../core/assets';
+import { PlayerRanks, PostGame, PostPlayer, PostTeam, RankLine } from '../core/models';
 import { Grade, review, reviewText } from '../core/roast';
 import { GoldGraph } from './gold-graph';
 import { ItemTip } from './item-tip';
 import { LpChangeTag } from './lp-change';
+
+/** 2 → "2nd", 3 → "3rd", 11 → "11th". */
+function ordinal(n: number): string {
+  const teen = n % 100 >= 11 && n % 100 <= 13;
+  return n + (teen ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th');
+}
 
 const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as const;
 
@@ -96,7 +102,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
             @if (g.result !== 'remake') { <span [class]="t.win ? 'win' : 'loss'">{{ t.win ? 'Victory' : 'Defeat' }}</span> }
             <span class="faint mono stats" [title]="t.kills + ' kills · ' + k(t.gold) + ' gold · ' + objectives(t)">{{ t.kills }} kills · {{ k(t.gold) }} gold · {{ objectives(t) }}</span>
           </div>
-          <div class="board" [class.clickable]="roastsOn()">
+          <div class="board" [class.clickable]="roastsOn()" [class.ranked]="places().size > 0">
             <div class="row-p head" aria-hidden="true">
               <span class="h-who">Player</span>
               <span>KDA</span>
@@ -109,18 +115,47 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
               <div
                 class="row-p" [class.me]="p.isMe" [class.enemy]="!t.isMine" [class.picked]="isPicked(t, $index)"
                 [attr.role]="roastsOn() ? 'button' : null" [attr.tabindex]="roastsOn() ? 0 : null"
-                [attr.title]="roastsOn() ? 'See what the Bro thinks of this player' : null"
                 (click)="pick(t, $index)" (keydown.enter)="pick(t, $index)" (keydown.space)="$event.preventDefault(); pick(t, $index)"
               >
                 <span class="pic" [title]="rift.champName(p.championId) + ' · level ' + p.level">
                   <img class="champ-icon" [src]="icon(p.championId)" alt="" />
                   <span class="lvl mono">{{ p.level }}</span>
                 </span>
+                @if (places().size) {
+                  @if (places().get(t.teamId + ':' + $index); as pl) {
+                    <span class="place has-tip" [class]="pl.cls" tabindex="0">
+                      {{ pl.label }}
+                      <span class="ctip" role="tooltip">
+                        <span class="ctip-head"><span><b>{{ pl.label }}</b><span class="sub">{{ pl.nth }} of {{ pl.of }} players</span></span></span>
+                        <span class="ctip-row"><span>Bro score</span><b class="mono">{{ pl.score }} / 100</b></span>
+                        <span class="ctip-row"><span>Grade</span><b class="mono">{{ pl.grade }}</b></span>
+                        <span class="ctip-note">KDA, kill share, damage, deaths, CS, vision and lane gold, judged for their role.</span>
+                      </span>
+                    </span>
+                  } @else { <span></span> }
+                }
                 <span class="name">
                   @if (p.name && !p.isMe) {
                     <button class="who" title="Open {{ p.name }}'s profile" (click)="$event.stopPropagation(); openPlayer(p)"
                             (keydown.enter)="$event.stopPropagation()" (keydown.space)="$event.stopPropagation()">{{ p.name }}</button>
-                  } @else if (p.name) { {{ p.name }} } @else { <span class="faint">{{ rift.champName(p.championId) }}</span> }
+                  } @else if (p.name) { <span class="nm">{{ p.name }}</span> } @else { <span class="nm faint">{{ rift.champName(p.championId) }}</span> }
+                  @if (rankOf(p); as r) {
+                    <span class="rank has-tip" [class]="r.line ? tierCls(r.line.tier) : 'tier-none'" tabindex="0" (click)="$event.stopPropagation()">
+                      <img [class.unranked]="!r.line" [src]="crest(r.line?.tier)" alt="" (error)="rift.hideImg($event)" />
+                      <span class="rank-text">{{ r.label }}</span>
+                      <span class="ctip" role="tooltip">
+                        <span class="ctip-head">
+                          <img [src]="crest(r.line?.tier)" alt="" (error)="rift.hideImg($event)" />
+                          <span><b [class]="r.line ? tierCls(r.line.tier) : ''">{{ r.label }}</b><span class="sub">{{ r.queue }}</span></span>
+                        </span>
+                        @if (r.line; as l) {
+                          <span class="ctip-row"><span>LP</span><b class="mono">{{ l.lp }}</b></span>
+                          <span class="ctip-row"><span>Record</span><b class="mono">{{ l.wins }}W {{ l.losses }}L · {{ pct(l.wins, l.wins + l.losses) }}%</b></span>
+                        }
+                        <span class="ctip-note">Their rank now, not at the time of this game.</span>
+                      </span>
+                    </span>
+                  }
                 </span>
                 <span class="mono">{{ p.kills }}/{{ p.deaths }}/{{ p.assists }}</span>
                 <span class="mono muted">{{ p.cs }}</span>
@@ -371,7 +406,35 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
       padding: 6px 10px; border-radius: 12px; background: var(--glass), var(--bg-raised); border: 1px solid var(--line);
       border-left: 3px solid var(--ally); font-size: 13px;
     }
-    .row-p > .items { grid-column: 2 / -1; }
+    .row-p > .items { grid-column: 2 / -1; align-items: center; }
+    /* The Bro's ranking of all players: its own column right of the champion. */
+    .board.ranked .row-p { grid-template-columns: 34px 76px minmax(0, 1fr) 60px 30px 50px 40px 26px; }
+    .board.ranked .row-p.head .h-who { grid-column: 1 / 4; }
+    .board.ranked .row-p > .items { grid-column: 3 / -1; }
+    .place {
+      grid-row: span 2; justify-self: start; padding: 3px 7px; border-radius: 999px; white-space: nowrap;
+      font-size: 10.5px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
+      color: var(--text-dim); background: var(--bg-sunken); border: 1px solid var(--line-strong);
+    }
+    .place.goat { color: #f4d27a; border-color: #f4d27a; background: rgba(244, 210, 122, 0.12); box-shadow: 0 0 8px rgba(244, 210, 122, 0.35); }
+    /* Hover cards in the app's tooltip style (like the item and LP cards), not the browser's. */
+    .has-tip { position: relative; cursor: default; }
+    .ctip {
+      display: none; position: absolute; left: 0; top: calc(100% + 8px); z-index: 50; width: max-content; min-width: 190px; max-width: 260px;
+      flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong);
+      background: var(--bg-raised); box-shadow: var(--shadow); color: var(--text); pointer-events: none;
+      font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; line-height: 1.4; white-space: normal; text-align: left;
+    }
+    .has-tip:hover .ctip, .has-tip:focus-visible .ctip { display: flex; }
+    .ctip-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .ctip-head img { width: 30px; height: 30px; object-fit: contain; }
+    .ctip-head > span { display: flex; flex-direction: column; }
+    .ctip-head b { font-size: 14px; font-weight: 600; }
+    .ctip .sub { color: var(--text-dim); font-size: 11.5px; }
+    .ctip-row { display: flex; justify-content: space-between; gap: 16px; color: var(--text-dim); }
+    .ctip-row b { color: var(--text); font-weight: 600; }
+    .ctip-note { margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--text-faint); font-size: 11px; }
+    .place.woat { color: var(--loss); border-color: var(--loss); background: color-mix(in srgb, var(--loss) 12%, transparent); }
     .row-p.head {
       background: none; border-color: transparent; padding-top: 0; padding-bottom: 0;
       font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
@@ -389,9 +452,18 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
       font-size: 10px; line-height: 15px; text-align: center; color: var(--text-dim);
       background: var(--bg-sunken); border: 1px solid var(--line-strong);
     }
-    .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .board { container-type: inline-size; }
+    /* The name gives way (ellipsis) before the rank does. */
+    .name { display: flex; align-items: center; gap: 7px; min-width: 0; white-space: nowrap; }
+    .nm { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .rank { display: inline-flex; align-items: center; gap: 3px; flex: none; font-size: 11.5px; font-weight: 600; }
+    .rank img { width: 18px; height: 18px; object-fit: contain; }
+    .rank img.unranked { opacity: 0.4; }
+    .rank.tier-none .rank-text { font-weight: 400; }
+    /* Narrow boards keep just the crest (the full rank is on hover). */
+    @container (max-width: 540px) { .rank-text { display: none; } }
     .who {
-      background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+      background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       text-decoration: underline dotted var(--text-faint); text-underline-offset: 3px;
     }
     .who:hover:not(:disabled), .who:focus-visible { color: var(--accent); text-decoration: underline; background: none; border-color: transparent; }
@@ -413,6 +485,36 @@ export class PostGameView {
       this.game();
       this.picked.set(null);
     });
+    // Ranks come after the scoreboard so it never waits on them.
+    effect(() => {
+      const g = this.game();
+      const puuids = g.teams.flatMap((t) => t.players).filter((p) => p.name && p.puuid).map((p) => p.puuid);
+      this.ranks.set({});
+      if (!puuids.length) return;
+      this.rift
+        .getRanks(puuids)
+        .then((r) => {
+          if (this.game() === g) this.ranks.set(r);
+        })
+        .catch(() => {});
+    });
+  }
+
+  /** Current ranks of the scoreboard players, by puuid (empty until they load). */
+  private readonly ranks = signal<Record<string, PlayerRanks>>({});
+  protected tierCls = tierClass;
+  protected crest = rankCrest;
+  protected pct = winPct;
+
+  /** The rank shown by a player's name: Flex in Flex games, else Solo/Duo, falling back to the other queue. */
+  protected rankOf(p: PostPlayer): { line: RankLine | null; label: string; queue: string } | null {
+    const r = this.ranks()[p.puuid];
+    if (!r) return null;
+    const flexGame = this.game().queueId === 440;
+    const [first, second] = flexGame ? [r.flex, r.solo] : [r.solo, r.flex];
+    const line = first ?? second;
+    if (!line) return { line: null, label: 'Unranked', queue: 'No Solo/Duo or Flex rank' };
+    return { line, label: formatTier(line.tier, line.division), queue: line === r.flex ? 'Ranked Flex' : 'Ranked Solo/Duo' };
   }
 
   protected readonly myTeam = computed(() => this.game().teams.find((t) => t.isMine) ?? null);
@@ -432,6 +534,28 @@ export class PostGameView {
     if (!team || !player) return null;
     const r = review(g, team, player, (id) => this.rift.champName(id));
     return r ? { player, review: r } : null;
+  });
+  /**
+   * Every player ranked by the Bro's score (all stats, role-aware), keyed "teamId:seat":
+   * THE GOAT, 2nd, 3rd… and WOAT last. Off with roasts, and for remakes and short games.
+   */
+  protected readonly places = computed(() => {
+    const out = new Map<string, { label: string; cls: string; nth: string; of: number; score: number; grade: Grade }>();
+    if (!this.roastsOn()) return out;
+    const g = this.game();
+    const scored = g.teams.flatMap((t) =>
+      t.players.map((p, seat) => ({ key: `${t.teamId}:${seat}`, p, r: review(g, t, p, (id) => this.rift.champName(id)) })),
+    );
+    if (scored.length < 3 || scored.some((x) => !x.r)) return out;
+    // Ties go to the better KDA, then more damage.
+    const kda = (p: PostPlayer) => (p.kills + p.assists) / Math.max(1, p.deaths);
+    scored.sort((a, b) => b.r!.score - a.r!.score || kda(b.p) - kda(a.p) || b.p.damage - a.p.damage);
+    const last = scored.length - 1;
+    scored.forEach((x, i) => {
+      const label = i === 0 ? 'The GOAT' : i === last ? 'WOAT' : ordinal(i + 1);
+      out.set(x.key, { label, cls: i === 0 ? 'goat' : i === last ? 'woat' : '', nth: ordinal(i + 1), of: scored.length, score: x.r!.score, grade: x.r!.grade });
+    });
+    return out;
   });
   protected readonly copied = signal(false);
   protected readonly maxDamage = computed(() =>

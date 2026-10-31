@@ -235,6 +235,13 @@ async fn get_match(state: State<'_, AppState>, game_id: i64, queue_name: String,
     Ok(summary)
 }
 
+/// Current Solo/Flex ranks of the players on a scoreboard, by puuid (cached for a while).
+#[tauri::command]
+async fn get_ranks(state: State<'_, AppState>, puuids: Vec<String>) -> Result<std::collections::HashMap<String, scout::PlayerRanks>, String> {
+    let lcu = state.shared.lock().await.lcu.clone().ok_or("Open the League client to see ranks")?;
+    Ok(scout::ranks(&lcu, &puuids).await)
+}
+
 /// League's install folder: from the client, else the one set in Settings.
 async fn league_install_dir(state: &State<'_, AppState>) -> Result<std::path::PathBuf, String> {
     let configured = state.config().install_dir;
@@ -586,6 +593,7 @@ pub fn run() {
             players_named,
             renew_profile,
             get_match,
+            get_ranks,
             preview_overlay,
             set_overlay_locked,
             list_patches,

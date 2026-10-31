@@ -7,6 +7,8 @@ use crate::lcu::Lcu;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -149,6 +151,56 @@ pub async fn lookup(lcu: &Lcu, puuid: &str) -> Profile {
         p.error = Some(errors.join("; "));
     }
     p
+}
+
+/// A player's Solo/Duo and Flex ranks, for the post-game scoreboard.
+#[derive(Debug, Clone, Serialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerRanks {
+    pub solo: Option<RankLine>,
+    pub flex: Option<RankLine>,
+}
+
+/// Ranks looked up this session, by puuid, with when they were fetched.
+static RANKS: LazyLock<Mutex<HashMap<String, (Instant, PlayerRanks)>>> = LazyLock::new(Default::default);
+/// How long a looked-up rank is reused before asking the client again.
+const RANK_TTL: Duration = Duration::from_secs(15 * 60);
+
+/// Current ranks for `puuids` (bots and empty ids are skipped), all at once and
+/// cached for `RANK_TTL`. Players whose lookup fails are left out, and not cached.
+pub async fn ranks(lcu: &Lcu, puuids: &[String]) -> HashMap<String, PlayerRanks> {
+    let mut found = HashMap::new();
+    let mut missing = Vec::new();
+    {
+        let cache = RANKS.lock().unwrap();
+        for id in puuids.iter().filter(|p| !p.is_empty()) {
+            match cache.get(id) {
+                Some((at, r)) if at.elapsed() < RANK_TTL => {
+                    found.insert(id.clone(), r.clone());
+                }
+                _ if !missing.contains(id) => missing.push(id.clone()),
+                _ => {}
+            }
+        }
+    }
+    let mut set = tokio::task::JoinSet::new();
+    for id in missing {
+        let lcu = lcu.clone();
+        set.spawn(async move {
+            let stats = lcu.get(&format!("/lol-ranked/v1/ranked-stats/{id}")).await;
+            (id, stats)
+        });
+    }
+    while let Some(done) = set.join_next().await {
+        let Ok((id, Ok(stats))) = done else { continue };
+        let r = stats.map_or_else(PlayerRanks::default, |s| PlayerRanks {
+            solo: parse_rank(&s, "RANKED_SOLO_5x5"),
+            flex: parse_rank(&s, "RANKED_FLEX_SR"),
+        });
+        RANKS.lock().unwrap().insert(id.clone(), (Instant::now(), r.clone()));
+        found.insert(id, r);
+    }
+    found
 }
 
 #[cfg(test)]

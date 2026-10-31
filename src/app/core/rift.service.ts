@@ -20,6 +20,7 @@ import {
   OverlayState,
   PatchInfo,
   PatchNotes,
+  PlayerRanks,
   PostGame,
   Profile,
   RecChoice,
@@ -41,6 +42,7 @@ import {
   demoPatch,
   demoPatchList,
   demoPostGame,
+  demoRanks,
   demoProfile,
   demoPlayerProfile,
   demoOpggProfile,
@@ -418,6 +420,11 @@ export class RiftService {
   /** Full scoreboard of a past game, seen from `puuid` (another player's profile) or else from you. */
   getMatch(gameId: number, queueName: string, puuid: string | null = null): Promise<PostGame> {
     return this.call('get_match', { gameId, queueName, puuid }, () => ({ ...demoPostGame(), gameId, queueName }), 300);
+  }
+
+  /** Current ranks of scoreboard players, by puuid; players the client couldn't look up are left out. */
+  getRanks(puuids: string[]): Promise<Record<string, PlayerRanks>> {
+    return this.call('get_ranks', { puuids }, () => demoRanks(puuids), 400);
   }
 
   listPatches(): Promise<PatchInfo[]> {
