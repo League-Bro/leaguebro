@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
+import { signed } from '../core/format';
 import { championSplit, damageTip, DamageSplit, teamSplit } from '../core/damage';
 import { EnemyTrait, enemyTraits } from '../core/comp';
 import { GoldGraph } from './gold-graph';
@@ -193,7 +194,5 @@ export class TeamDamage {
   }
 
   protected tip = damageTip;
-  protected signed(n: number): string {
-    return (n > 0 ? '+' : n < 0 ? '−' : '±') + Math.abs(n).toLocaleString('en-US');
-  }
+  protected signed = signed;
 }

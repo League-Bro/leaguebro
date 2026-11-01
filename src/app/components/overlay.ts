@@ -2,6 +2,7 @@ import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, ElementRef, afterRenderEffect, computed, effect, inject, input, signal, viewChild } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { championIcon, clock } from '../core/assets';
+import { signed } from '../core/format';
 import { OverlayState } from '../core/models';
 
 /** Seconds the overlay's clock may run past the last update. */
@@ -84,7 +85,7 @@ const PREVIEW: OverlayState = {
                   <span class="cap">{{ role(f.position) }}</span>
                 }
                 @if (champIcon(f.championId ?? 0); as url) {
-                  <img class="champ" [src]="url" [alt]="f.opponent" (error)="rift.hideImg($event)" />
+                  <img class="champ" [src]="url" [alt]="f.opponent" />
                 } @else {
                   <span class="cap">vs {{ f.opponent.slice(0, 3) }}</span>
                 }
@@ -110,7 +111,7 @@ const PREVIEW: OverlayState = {
                 <button class="foe" [class.on]="e.opponent === foe().opponent" (click)="pickFoe(e.opponent)">
                   <span class="cap">{{ role(e.position) }}</span>
                   @if (champIcon(e.championId ?? 0); as url) {
-                    <img class="champ" [src]="url" [alt]="e.opponent" (error)="rift.hideImg($event)" />
+                    <img class="champ" [src]="url" [alt]="e.opponent" />
                   } @else {
                     <span class="cap">{{ e.opponent.slice(0, 3) }}</span>
                   }
@@ -158,7 +159,7 @@ const PREVIEW: OverlayState = {
             <div class="cap">Start · OP.GG build</div>
             @for (s of o.starter; track s.id) {
               <div class="item">
-                @if (rift.itemIcon(s.id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+                @if (rift.itemIcon(s.id); as url) { <img [src]="url" alt="" /> }
                 <span class="name">{{ s.name }}@if (s.count > 1) { <span class="count">×{{ s.count }}</span> }</span>
                 <span class="price">{{ s.price * s.count }}</span>
               </div>
@@ -172,7 +173,7 @@ const PREVIEW: OverlayState = {
               <div class="chips">
                 @for (b of buyNow(); track b.id) {
                   <span class="chip">
-                    @if (rift.itemIcon(b.id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+                    @if (rift.itemIcon(b.id); as url) { <img [src]="url" alt="" /> }
                     <span class="name">{{ b.name }}@if (b.count > 1) { <span class="count">×{{ b.count }}</span> }</span>
                     <span class="price">{{ b.price * b.count }}</span>
                   </span>
@@ -184,14 +185,14 @@ const PREVIEW: OverlayState = {
             <div class="cap">Next · OP.GG build</div>
             <!-- The next item, then its components left to buy; bought ones drop off. -->
             <div class="item" [class.ready]="it.affordable">
-              @if (rift.itemIcon(it.id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+              @if (rift.itemIcon(it.id); as url) { <img [src]="url" alt="" /> }
               <span class="name">{{ it.name }}</span>
               <span class="price">{{ it.price }}</span>
             </div>
             @for (c of it.components ?? []; track $index) {
               <div class="item comp" [class.ready]="c.affordable">
                 <span class="n">{{ $index + 1 }}</span>
-                @if (rift.itemIcon(c.id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+                @if (rift.itemIcon(c.id); as url) { <img [src]="url" alt="" /> }
                 <span class="name">{{ c.name }}</span>
                 <span class="price">{{ c.price }}</span>
               </div>
@@ -205,7 +206,7 @@ const PREVIEW: OverlayState = {
             <div class="cap">Situational · vs this team</div>
             @for (it of expanded() ? o.situational : o.situational.slice(0, 1); track it.id) {
               <div class="item" [class.ready]="it.affordable" [title]="it.reason">
-                @if (rift.itemIcon(it.id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+                @if (rift.itemIcon(it.id); as url) { <img [src]="url" alt="" /> }
                 <span class="name">{{ it.name }}</span>
                 @if (it.price) { <span class="price">{{ it.price }}</span> }
               </div>
@@ -227,9 +228,6 @@ const PREVIEW: OverlayState = {
             <path d="M5.8 3.7 8 1.5l2.2 2.2M5.8 12.3 8 14.5l2.2-2.2M3.7 5.8 1.5 8l2.2 2.2M12.3 5.8 14.5 8l-2.2 2.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </button>
-        @if (preview() && !inline() && !rift.overlay()) {
-          <div class="cap center">Preview</div>
-        }
       </div>
     }
   `,
@@ -323,7 +321,6 @@ const PREVIEW: OverlayState = {
     .build { margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.06); padding-top: 7px; display: flex; flex-direction: column; gap: 5px; }
     .cap { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-faint); }
     .build > .cap:first-child::before { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); margin: 0 6px 1px 0; vertical-align: middle; box-shadow: 0 0 6px var(--accent-glow); }
-    .center { text-align: center; margin-top: 6px; }
     .item { display: flex; align-items: center; gap: 8px; }
     .item img { width: 26px; height: 26px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.14); }
     .item .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
@@ -362,10 +359,9 @@ const PREVIEW: OverlayState = {
 })
 export class Overlay {
   protected readonly rift = inject(RiftService);
-  protected readonly preview = this.rift.overlayPreview;
   /** Shown inside the main window (Settings' preview), not as the overlay window. */
   readonly inline = input(false);
-  protected readonly state = computed(() => this.rift.overlay() ?? (this.preview() || this.inline() ? this.previewState() : null));
+  protected readonly state = computed(() => this.rift.overlay() ?? (this.inline() ? this.previewState() : null));
   /** The sample game, minus what the engine leaves out with your settings (skill order, the build). */
   private readonly previewState = computed((): OverlayState => {
     const c = this.rift.config();
@@ -384,9 +380,7 @@ export class Overlay {
   protected readonly MAX_RANK = 5;
   protected readonly ranks = [0, 1, 2, 3, 4];
   /** Points in one ability (Q, W, E or R). */
-  protected points(o: OverlayState, key: string): number {
-    return o.skillLevels?.['QWER'.indexOf(key)] ?? 0;
-  }
+  protected readonly points = (o: OverlayState, key: string): number => o.skillLevels?.['QWER'.indexOf(key)] ?? 0;
   /** Index in the max order of the ability you're maxing now: the first one not at rank 5. */
   protected maxing(o: OverlayState): number {
     const i = o.skillMax.findIndex((k) => this.points(o, k) < this.MAX_RANK);
@@ -511,19 +505,11 @@ export class Overlay {
   }
 
   /** Scoreboard role, short: Top, Jg, Mid, Bot, Sup. */
-  role(position: string): string {
-    return { TOP: 'Top', JUNGLE: 'Jg', MIDDLE: 'Mid', BOTTOM: 'Bot', UTILITY: 'Sup' }[position] ?? '?';
-  }
+  readonly role = (position: string): string => ({ TOP: 'Top', JUNGLE: 'Jg', MIDDLE: 'Mid', BOTTOM: 'Bot', UTILITY: 'Sup' }[position] ?? '?');
 
   /** CS per minute to one decimal, e.g. "7.2"; nothing in the first minute, when it jumps around. */
-  csPerMin(o: OverlayState): string {
-    return o.gameTime >= 60 && o.cs != null ? ((o.cs * 60) / o.gameTime).toFixed(1) : '';
-  }
+  readonly csPerMin = (o: OverlayState): string => o.gameTime >= 60 && o.cs != null ? ((o.cs * 60) / o.gameTime).toFixed(1) : '';
 
   /** Signed and short: +500, −1.3k. */
-  gold(n: number): string {
-    const sign = n > 0 ? '+' : n < 0 ? '−' : '±';
-    const a = Math.abs(n);
-    return sign + (a >= 1000 ? `${(a / 1000).toFixed(1)}k` : `${a}`);
-  }
+  gold = (n: number) => signed(n, true);
 }

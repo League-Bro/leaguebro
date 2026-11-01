@@ -8,6 +8,7 @@ import {
   CacheName,
   GlobalSets,
   Guide,
+  ChampInfo,
   ChampSelectView,
   Config,
   FeedbackReport,
@@ -94,19 +95,13 @@ export class RiftService {
   readonly navTo = signal<'champions' | 'profile' | null>(null);
   /** Whose profile the Profile page shows; null = yours. */
   readonly viewedPlayer = signal<PlayerRef | null>(null);
-  readonly overlayPreview = signal(false);
-  readonly overlayLocked = signal(false);
   readonly config = signal<Config | null>(null);
   readonly statics = signal<StaticData | null>(null);
   /** Window label: "main" or "overlay". */
   readonly windowLabel = signal('main');
   readonly demo = !inTauri();
 
-  readonly champById = computed(() => {
-    const m = new Map<number, string>();
-    for (const c of this.statics()?.champions ?? []) m.set(c.id, c.name);
-    return m;
-  });
+  readonly champById = computed(() => new Map((this.statics()?.champions ?? []).map((c) => [c.id, c.name])));
   readonly itemById = computed(() => new Map((this.statics()?.items ?? []).map((i) => [i.id, i])));
   readonly perkById = computed(() => new Map((this.statics()?.perks ?? []).map((p) => [p.id, p])));
   readonly spellById = computed(() => new Map((this.statics()?.spells ?? []).map((p) => [p.id, p])));
@@ -117,6 +112,10 @@ export class RiftService {
   private readonly preloaded = new Map<string, HTMLImageElement>();
 
   constructor() {
+    // Hides any icon CommunityDragon doesn't have (error events don't bubble, so this listens while capturing).
+    if (typeof document !== 'undefined') {
+      document.addEventListener('error', (e) => e.target instanceof HTMLImageElement && this.hideImg(e.target), true);
+    }
     // The overlay window fetches its icons during champ select and the loading
     // screen (the build, its components, situational items, enemy champions),
     // so they don't pop in once the game starts.
@@ -177,8 +176,6 @@ export class RiftService {
       listen<RecState | null>('recommendation', (e) => this.rec.set(e.payload)),
       listen<PostGame | null>('post-game', (e) => this.postGame.set(e.payload)),
       listen<SituationalState | null>('situational', (e) => this.situational.set(e.payload)),
-      listen<boolean>('overlay-preview', (e) => this.overlayPreview.set(e.payload)),
-      listen<boolean>('overlay-locked', (e) => this.overlayLocked.set(e.payload)),
       listen<Config>('config', (e) => this.config.set(e.payload)),
       listen<StaticData>('static', (e) => this.statics.set(e.payload)),
     ]);
@@ -226,19 +223,31 @@ export class RiftService {
     return keys?.[k.toLowerCase() as keyof AbilityKeys] || k;
   }
 
+  champ(id: number): ChampInfo | undefined {
+    return this.statics()?.champions.find((c) => c.id === id);
+  }
+
   champName(id: number): string {
     return this.champById().get(id) ?? (id > 0 ? `#${id}` : '');
   }
 
   /** Base-skin splash art for hero cards; '' for League Classic copies and unknown ids. */
   champSplash(id: number): string {
-    const c = this.statics()?.champions.find((x) => x.id === id);
+    const c = this.champ(id);
     return c && !c.classic ? championSplash(c.alias) : '';
   }
 
   itemIcon(id: number): string {
     const url = id > 0 ? assetUrl(this.itemById().get(id)?.iconPath) : '';
     return this.brokenIcons().has(url) ? '' : url;
+  }
+
+  perkIcon(id: number): string {
+    return assetUrl(this.perkById().get(id)?.iconPath);
+  }
+
+  spellIcon(id: number): string {
+    return assetUrl(this.spellById().get(id)?.iconPath);
   }
 
   itemName(id: number): string {
@@ -248,9 +257,7 @@ export class RiftService {
   /** Icon URLs CommunityDragon didn't have, so `itemIcon` can fall back to the item's name. */
   private readonly brokenIcons = signal(new Set<string>());
 
-  /** For an icon's (error) handler: hides an image CommunityDragon doesn't have. */
-  hideImg(e: Event): void {
-    const img = e.target as HTMLImageElement;
+  private hideImg(img: HTMLImageElement): void {
     img.style.display = 'none';
     const src = img.getAttribute('src');
     if (src && !this.brokenIcons().has(src)) this.brokenIcons.update((s) => new Set(s).add(src));
@@ -278,14 +285,6 @@ export class RiftService {
     return this.call('import_runes_now', {}, () => 'Set "League Bro: Ahri Mid" (OP.GG) · Flash + Ignite · build added to the shop');
   }
 
-  /** Imports runes (and spells, if on) into every Swiftplay lobby slot with a champion. */
-  importSwiftplayNow(): Promise<ImportEvent[]> {
-    return this.call('import_swiftplay_now', {}, () =>
-      this.swiftplay()
-        .filter((s) => s.championId)
-        .map((s) => ({ ok: true, championId: s.championId, message: `Swiftplay ${positionLabel(s.position)} runes (OP.GG) · Flash + Ignite` })),
-    );
-  }
 
   /** Picks a rune page, spells or build for one Swiftplay lobby champion; imported into its slot right away. */
   chooseSwiftplayOption(championId: number, position: string, choice: RecChoice): Promise<ImportEvent[]> {
@@ -348,16 +347,6 @@ export class RiftService {
   async openGuideVideos(champion: string): Promise<void> {
     const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(`${champion} beginner guide league of legends`)}`;
     await this.call('open_guide_videos', { champion }, () => void window.open(url, '_blank', 'noopener'));
-  }
-
-  async previewOverlay(show: boolean): Promise<void> {
-    this.overlayPreview.set(show);
-    await this.call('preview_overlay', { show }, () => undefined);
-  }
-
-  async setOverlayLocked(locked: boolean): Promise<void> {
-    this.overlayLocked.set(locked);
-    await this.call('set_overlay_locked', { locked }, () => undefined);
   }
 
   /** From the League client while it's running, else from OP.GG by the Riot ID in settings. */
@@ -446,7 +435,7 @@ export class RiftService {
     let position = opts.position ?? (prev?.championId === championId ? prev.position : null);
     // The guide doesn't depend on the lane, so it doesn't wait for one.
     if (!position && view === 'build') position = await this.mainLane(championId);
-    const classic = this.statics()?.champions.find((c) => c.id === championId)?.classic ?? false;
+    const classic = this.champ(championId)?.classic ?? false;
     this.championsGame.set(classic ? 'classic' : 'league');
     this.championsView.set(view);
     this.championsPick.set({ championId, position: position ?? prev?.position ?? 'middle', mode: opts.mode ?? prev?.mode ?? 'ranked' });

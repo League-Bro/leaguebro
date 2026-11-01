@@ -25,11 +25,7 @@ import { ImportEvent, LoadPlayer, OverlayState, RecChoice, RecState, SwiftplaySl
         <h2>Waiting for League</h2>
         <p class="muted">Open the League client and League Bro will connect on its own. If it never connects, set your install folder under Settings.</p>
         <p class="faint">These work without the client:</p>
-        <div class="row links">
-          <button (click)="open.emit('champions')">Champion builds</button>
-          <button (click)="open.emit('patch')">Patch notes</button>
-          <button (click)="open.emit('profile')">Your profile</button>
-        </div>
+        <div class="row links">@for (l of links; track l.tab) { <button (click)="open.emit(l.tab)">{{ l.label }}</button> }</div>
       </div>
     } @else if (rift.champSelect(); as cs) {
       <!-- Before you lock in: who to pick against your lane opponent. -->
@@ -207,11 +203,7 @@ import { ImportEvent, LoadPlayer, OverlayState, RecChoice, RecState, SwiftplaySl
           <p class="faint">Last rune import: {{ rift.champName(li.championId) }}: {{ li.message }}</p>
         }
         <p class="faint">In the meantime:</p>
-        <div class="row links">
-          <button (click)="open.emit('champions')">Champion builds</button>
-          <button (click)="open.emit('patch')">Patch notes</button>
-          <button (click)="open.emit('profile')">Your profile</button>
-        </div>
+        <div class="row links">@for (l of links; track l.tab) { <button (click)="open.emit(l.tab)">{{ l.label }}</button> }</div>
       </div>
     }
   `,
@@ -270,13 +262,13 @@ import { ImportEvent, LoadPlayer, OverlayState, RecChoice, RecState, SwiftplaySl
     .team-head { display: flex; align-items: baseline; gap: 12px; margin: 22px 0 10px; }
     .team-head .section, .section.team-head { margin: 22px 0 10px; }
     .team-head .section { margin: 0; }
-    .small { font-size: 12.5px; }
   `,
 })
 export class LiveView {
   protected readonly rift = inject(RiftService);
   /** Asks the shell to switch tabs (the shortcut buttons on the "Waiting for League" and idle cards). */
   readonly open = output<'champions' | 'patch' | 'profile'>();
+  protected readonly links = [{ tab: 'champions', label: 'Champion builds' }, { tab: 'patch', label: 'Patch notes' }, { tab: 'profile', label: 'Your profile' }] as const;
   protected readonly busy = signal(false);
   protected readonly manualMsg = signal<string | null>(null);
 
@@ -330,9 +322,7 @@ export class LiveView {
     });
   }
 
-  protected slotKey(s: SwiftplaySlot): string {
-    return `${s.championId}:${s.position}`;
-  }
+  protected readonly slotKey = (s: SwiftplaySlot): string => `${s.championId}:${s.position}`;
 
   private async loadSwift(slot: SwiftplaySlot): Promise<void> {
     const key = this.slotKey(slot);
@@ -384,9 +374,7 @@ export class LiveView {
   }
 
   /** A failed slot import in a few words; the full message is its tooltip. */
-  protected shortImport(li: ImportEvent): string {
-    return li.message.includes('rune menu') ? '✕ Pick the League Bro page in the lobby' : '✕ Couldn\'t set runes';
-  }
+  protected readonly shortImport = (li: ImportEvent): string => li.message.includes('rune menu') ? '✕ Pick the League Bro page in the lobby' : '✕ Couldn\'t set runes';
 
   protected slotImport(championId: number): ImportEvent | null {
     if (!championId) return null;
@@ -447,9 +435,7 @@ export class LiveView {
       default: return 'Listening for a game';
     }
   });
-  protected myChamp(l: { allies: { isMe: boolean; championId: number }[] }): number {
-    return l.allies.find((p) => p.isMe)?.championId ?? 0;
-  }
+  protected readonly myChamp = (l: { allies: { isMe: boolean; championId: number }[] }): number => l.allies.find((p) => p.isMe)?.championId ?? 0;
 
   /** Imports a slot again with its current picks, after a failed import. */
   async retrySlot(slot: SwiftplaySlot): Promise<void> {

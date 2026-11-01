@@ -103,7 +103,6 @@ const KEY_LABELS: Record<string, string> = { P: 'Passive', Q: 'Q', W: 'W', E: 'E
     :host { display: flex; flex-direction: column; gap: 16px; margin-top: 16px; }
     h3 { margin: 0 0 12px; font-size: 15px; }
     h4 { margin: 2px 0 6px; font-size: 17px; }
-    .small { font-size: 12.5px; margin: 0; }
     .label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
     .facts { display: flex; flex-wrap: wrap; gap: 10px 28px; margin-bottom: 16px; }
     .fact { display: flex; align-items: center; gap: 8px; }
@@ -179,13 +178,7 @@ export class GuideCard {
   }
 
   protected icon = assetUrl;
-  protected difficultyLabel(d: number): string {
-    return DIFFICULTY[d] ?? '';
-  }
-  protected damage(d: string): string {
-    return DAMAGE[d] ?? '';
-  }
-  protected keyLabel(k: string): string {
-    return KEY_LABELS[k] ?? k;
-  }
+  protected readonly difficultyLabel = (d: number): string => DIFFICULTY[d] ?? '';
+  protected readonly damage = (d: string): string => DAMAGE[d] ?? '';
+  protected readonly keyLabel = (k: string): string => KEY_LABELS[k] ?? k;
 }

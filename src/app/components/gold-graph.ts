@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 import { clock } from '../core/assets';
+import { kilo, signed } from '../core/format';
 import { GoldPoint } from '../core/models';
 
 let nextId = 0;
@@ -16,7 +17,7 @@ let nextId = 0;
   template: `
     @if (g(); as g) {
       <div class="graph">
-        <div class="yaxis mono faint"><span>+{{ short(g.max) }}</span><span>0</span><span>−{{ short(g.max) }}</span></div>
+        <div class="yaxis mono faint"><span>+{{ kilo(g.max) }}</span><span>0</span><span>−{{ kilo(g.max) }}</span></div>
         <div class="area" (mousemove)="hover($event)" (mouseleave)="hoverIdx.set(null)">
           <svg viewBox="0 0 100 100" preserveAspectRatio="none" [attr.aria-label]="label()">
             <defs>
@@ -90,9 +91,7 @@ export class GoldGraph {
     return { end, max, points, line, area };
   });
 
-  protected clip(side: 'up' | 'down'): string {
-    return `url(#${this.id}-${side})`;
-  }
+  protected readonly clip = (side: 'up' | 'down'): string => `url(#${this.id}-${side})`;
 
   protected hover(e: MouseEvent): void {
     const g = this.g();
@@ -107,12 +106,8 @@ export class GoldGraph {
   }
 
   protected time = clock;
-  protected signed(n: number): string {
-    return (n > 0 ? '+' : n < 0 ? '−' : '±') + Math.abs(n).toLocaleString('en-US');
-  }
-  protected short(n: number): string {
-    return n >= 1000 ? `${+(n / 1000).toFixed(1)}k` : `${n}`;
-  }
+  protected signed = signed;
+  protected kilo = kilo;
 }
 
 /** A round top for the gold axis, at least 500. */

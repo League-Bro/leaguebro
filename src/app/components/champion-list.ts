@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, e
 import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { POSITION_LABELS, championIcon, rankCrest } from '../core/assets';
+import { ago, kilo } from '../core/format';
 import { TierEntry, TierSource } from '../core/models';
 import { Loader } from './loader';
 
@@ -265,7 +266,6 @@ const prefs = signal({
     :host { display: flex; flex-direction: column; gap: 14px; max-width: 1180px; margin: 0 auto; }
     .top { display: flex; align-items: flex-end; gap: 12px; }
     h1 { font-size: 22px; }
-    .small { font-size: 12.5px; margin: 0; }
     .seg.game button { white-space: nowrap; font-size: 12.5px; }
     .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .search { position: relative; flex: 1; min-width: 180px; max-width: 280px; }
@@ -512,8 +512,8 @@ export class ChampionList {
     const parts = [`${SOURCES.find((s) => s.id === p.source)?.label} ranked solo`, this.rankLabel()];
     if (m) {
       parts.push(m.patch ? `patch ${m.patch}` : 'current patch');
-      if (m.games) parts.push(`${compact(m.games)} games`);
-      parts.push(`updated ${ago(m.fetchedAt, this.now())}`);
+      if (m.games) parts.push(`${kilo(m.games)} games`);
+      parts.push(`updated ${ago(m.fetchedAt * 1000, this.now())}`);
     }
     return parts.join(' · ');
   });
@@ -625,9 +625,7 @@ export class ChampionList {
     return best?.lane ?? 'middle';
   }
 
-  isFavorite(id: number): boolean {
-    return this.favoriteIds().has(id);
-  }
+  readonly isFavorite = (id: number): boolean => this.favoriteIds().has(id);
 
   toggleFavorite(id: number, event: Event): void {
     event.stopPropagation();
@@ -642,22 +640,16 @@ export class ChampionList {
     return e.label === 'OP' || /^[SABCD][+-]?$/.test(e.label) ? e.label : e.tier;
   }
 
-  laneLabel(lane: Lane): string {
-    return POSITION_LABELS[lane];
-  }
+  readonly laneLabel = (lane: Lane): string => POSITION_LABELS[lane];
 
   laneIcon(lane: Lane): { dim: string; main: string } {
     return LANE_ICONS[lane];
   }
 
   /** 44% → empty bar, 58% → full. */
-  wrBar(wr: number): number {
-    return Math.max(4, Math.min(100, ((wr - 44) / 14) * 100));
-  }
+  readonly wrBar = (wr: number): number => Math.max(4, Math.min(100, ((wr - 44) / 14) * 100));
 
-  share(v: number, max: number): number {
-    return Math.max(3, Math.min(100, (v / max) * 100));
-  }
+  readonly share = (v: number, max: number): number => Math.max(3, Math.min(100, (v / max) * 100));
 }
 
 const TIER_ORDER = 'SABCD';
@@ -681,15 +673,3 @@ function sub(label: string): number {
   return label === 'OP' ? -1 : label.endsWith('+') ? 0 : label.endsWith('-') ? 2 : 1;
 }
 
-function compact(n: number): string {
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `${Math.round(n / 1e3)}k`;
-  return String(n);
-}
-
-function ago(secs: number, nowMs: number): string {
-  const mins = Math.max(0, Math.round((nowMs / 1000 - secs) / 60));
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins} min ago`;
-  return `${Math.round(mins / 60)} h ago`;
-}

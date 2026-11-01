@@ -64,11 +64,6 @@ async fn import_runes_now(app: AppHandle) -> Result<String, String> {
     engine::import_for(&app, champion, &position).await
 }
 
-#[tauri::command]
-async fn import_swiftplay_now(app: AppHandle) -> Result<Vec<engine::ImportEvent>, String> {
-    engine::import_swiftplay_now(&app).await
-}
-
 /// Your rank, recent matches and insights (the Profile page): from the League
 /// client while it's running, else from OP.GG by the Riot ID in settings.
 /// OP.GG is never asked while the client is open, even before it connects.
@@ -83,7 +78,7 @@ async fn get_my_profile(app: AppHandle, state: State<'_, AppState>) -> Result<pr
     }
     client_closed().await?;
     let (riot_id, region) = riot_id(&state)?;
-    load_web_statics(&app, &state).await;
+    engine::fill_web_statics(&app).await;
     let mut p = opgg_profile::load(&state.opgg, &riot_id, &region).await.map_err(msg)?;
     state.lp.record(&mut p);
     Ok(p)
@@ -119,7 +114,7 @@ async fn get_player_profile(
     let riot_id = riot_id.ok_or("Open the League client to see this player")?;
     // OP.GG needs a tag: a bare name gets the server's usual one.
     let riot_id = if riot_id.contains('#') { riot_id } else { format!("{riot_id}#{tag}") };
-    load_web_statics(&app, &state).await;
+    engine::fill_web_statics(&app).await;
     opgg_profile::load(&state.opgg, &riot_id, &region).await.map_err(msg)
 }
 
@@ -197,25 +192,6 @@ async fn remember_riot_id(app: &AppHandle, state: &State<'_, AppState>, lcu: &lc
     }
 }
 
-/// Champion and item names from CommunityDragon while the client isn't
-/// running (the client's own replace them when it connects).
-async fn load_web_statics(app: &AppHandle, state: &State<'_, AppState>) {
-    if state.shared.lock().await.statics.is_some() {
-        return;
-    }
-    match engine::load_statics_web().await {
-        Ok(s) => {
-            let mut sh = state.shared.lock().await;
-            if sh.statics.is_none() {
-                sh.statics = Some(s.clone());
-                drop(sh);
-                let _ = app.emit("static", s);
-            }
-        }
-        Err(e) => eprintln!("couldn't load game data from CommunityDragon: {e:#}"),
-    }
-}
-
 /// The full scoreboard of one of your past games.
 #[tauri::command]
 async fn get_match(state: State<'_, AppState>, game_id: i64, queue_name: String, puuid: Option<String>) -> Result<postgame::PostGame, String> {
@@ -224,7 +200,7 @@ async fn get_match(state: State<'_, AppState>, game_id: i64, queue_name: String,
     // Seen from `puuid` (another player's profile) when given, else from you.
     let puuid = puuid.as_deref().filter(|p| !p.is_empty()).unwrap_or(text(&me, "puuid"));
     let (path, timeline_path) = (format!("/lol-match-history/v1/games/{game_id}"), postgame::timeline_path(game_id));
-    let (game, timeline, lanes) = tokio::join!(lcu.get(&path), lcu.get(&timeline_path), postgame::lane_games(&state));
+    let (game, timeline, lanes) = tokio::join!(lcu.get(&path), lcu.get(&timeline_path), state.lane_games());
     let game = game.map_err(msg)?.ok_or("The League client doesn't have this game anymore")?;
     let mut summary = postgame::parse(&game, puuid, &queue_name, &lanes).ok_or_else(|| "Couldn't read this game".to_string())?;
     // The gold graph is a bonus: the scoreboard still shows without a timeline.
@@ -255,15 +231,13 @@ async fn global_item_sets(state: State<'_, AppState>) -> Result<itemsets::Global
 #[tauri::command]
 async fn move_global_item_sets(state: State<'_, AppState>) -> Result<itemsets::GlobalSets, String> {
     let dir = league_install_dir(&state).await?;
-    itemsets::move_global_aside(&dir).map_err(msg)?;
-    Ok(itemsets::scan_global(&dir))
+    itemsets::move_global_aside(&dir).map(|_| itemsets::scan_global(&dir)).map_err(msg)
 }
 
 #[tauri::command]
 async fn restore_global_item_sets(state: State<'_, AppState>) -> Result<itemsets::GlobalSets, String> {
     let dir = league_install_dir(&state).await?;
-    itemsets::restore_global(&dir).map_err(msg)?;
-    Ok(itemsets::scan_global(&dir))
+    itemsets::restore_global(&dir).map(|_| itemsets::scan_global(&dir)).map_err(msg)
 }
 
 /// Picks a different rune page, spells or build for the current champion; in
@@ -316,35 +290,21 @@ async fn lookup_rec(
     if !matches!(game_mode.as_str(), "ranked" | "aram") {
         return Err(format!("Unknown game mode {game_mode}"));
     }
-    let (alias, lcu) = {
-        let sh = state.shared.lock().await;
-        let statics = sh.statics.as_ref().ok_or("Open the League client to load champions")?;
-        let champ = statics.champions.iter().find(|c| c.id == champion_id).ok_or("Unknown champion")?;
-        if champ.classic {
-            return Err("OP.GG has no League Classic stats".into());
-        }
-        (champ.alias.clone(), sh.lcu.clone())
-    };
-    state.opgg.recommend(champion_id, &alias, &position, &game_mode, lcu.as_ref()).await.map_err(msg)
+    let (champ, lcu) = champion_and_lcu(&state, champion_id).await?;
+    if champ.classic {
+        return Err("OP.GG has no League Classic stats".into());
+    }
+    state.opgg.recommend(champion_id, &champ.alias, &position, &game_mode, lcu.as_ref()).await.map_err(msg)
 }
 
-/// Unlocks the overlay so it accepts mouse input and can be dragged to a new
-/// spot; locking it again saves the position and makes it click-through.
-#[tauri::command]
-async fn set_overlay_locked(app: AppHandle, state: State<'_, AppState>, locked: bool) -> Result<(), String> {
-    let Some(overlay) = app.get_webview_window("overlay") else { return Ok(()) };
-    if locked {
-        if let Ok(pos) = overlay.outer_position() {
-            let mut cfg = state.config();
-            cfg.overlay_x = Some(pos.x);
-            cfg.overlay_y = Some(pos.y);
-            cfg.overlay_bottom = overlay.outer_size().ok().map(|s| pos.y + s.height as i32);
-            save_config(app.clone(), state, cfg)?;
-        }
-    }
-    engine::set_overlay_locked(&app, locked);
-    Ok(())
+/// A champion from the static data, plus the League client if it's connected.
+async fn champion_and_lcu(state: &AppState, champion_id: i64) -> Result<(engine::ChampInfo, Option<lcu::Lcu>), String> {
+    let sh = state.shared.lock().await;
+    let statics = sh.statics.as_ref().ok_or("Open the League client to load champions")?;
+    let champ = statics.champions.iter().find(|c| c.id == champion_id).ok_or("Unknown champion")?;
+    Ok((champ.clone(), sh.lcu.clone()))
 }
+
 
 /// Recent patch notes articles on leagueoflegends.com, newest first.
 #[tauri::command]
@@ -367,9 +327,7 @@ async fn get_tier_list(
     position: String,
     rank: String,
 ) -> Result<tierlist::TierList, String> {
-    let champions = state.shared.lock().await.statics.as_ref().map(|s| {
-        s.champions.iter().filter(|c| !c.classic).map(|c| (c.id, c.name.clone())).collect()
-    });
+    let champions = state.shared.lock().await.champ_names();
     state.tiers.get(source, &position, &rank, champions).await.map_err(msg)
 }
 
@@ -445,27 +403,6 @@ fn drag_overlay(app: AppHandle, state: State<'_, AppState>, step: String) {
     }
 }
 
-/// Shows the overlay outside a game so you can check its position.
-#[tauri::command]
-async fn preview_overlay(app: AppHandle, show: bool) -> Result<(), String> {
-    let state = app.state::<AppState>();
-    let in_game = {
-        let mut sh = state.shared.lock().await;
-        sh.overlay_preview = show;
-        sh.overlay.is_some()
-    };
-    if show {
-        engine::set_overlay_visible(&app, true);
-        let _ = app.emit("overlay-preview", true);
-    } else {
-        let _ = app.emit("overlay-preview", false);
-        if !in_game {
-            engine::set_overlay_visible(&app, false);
-        }
-    }
-    Ok(())
-}
-
 /// Sends a bug report or idea from the Feedback page to the devs' inbox.
 #[tauri::command]
 async fn send_feedback(report: feedback::Report) -> Result<(), String> {
@@ -475,13 +412,8 @@ async fn send_feedback(report: feedback::Report) -> Result<(), String> {
 /// A beginner's guide to any champion (the Champions tab's Guide view).
 #[tauri::command]
 async fn champion_guide(state: State<'_, AppState>, champion_id: i64) -> Result<guide::Guide, String> {
-    let (alias, lcu) = {
-        let sh = state.shared.lock().await;
-        let statics = sh.statics.as_ref().ok_or("Open the League client to load champions")?;
-        let champ = statics.champions.iter().find(|c| c.id == champion_id).ok_or("Unknown champion")?;
-        (champ.alias.clone(), sh.lcu.clone())
-    };
-    state.guides.get(champion_id, &alias, lcu.as_ref()).await.map_err(msg)
+    let (champ, lcu) = champion_and_lcu(&state, champion_id).await?;
+    state.guides.get(champion_id, &champ.alias, lcu.as_ref()).await.map_err(msg)
 }
 
 /// Opens a YouTube search for the champion's beginner guides in the default
@@ -565,7 +497,6 @@ pub fn run() {
             get_config,
             save_config,
             import_runes_now,
-            import_swiftplay_now,
             choose_swiftplay_option,
             lookup_rec,
             choose_rec_option,
@@ -581,8 +512,6 @@ pub fn run() {
             players_named,
             renew_profile,
             get_match,
-            preview_overlay,
-            set_overlay_locked,
             list_patches,
             get_patch,
             get_tier_list,

@@ -31,14 +31,11 @@ struct UsageState {
 
 impl UsageState {
     fn load(path: &Path) -> UsageState {
-        std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+        crate::util::read_json(path).unwrap_or_default()
     }
 
     fn save(&self, path: &Path) {
-        if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let _ = std::fs::write(path, serde_json::to_string_pretty(self).unwrap_or_default());
+        let _ = crate::util::write_json(path, self);
     }
 }
 

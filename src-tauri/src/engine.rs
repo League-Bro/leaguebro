@@ -258,7 +258,6 @@ pub struct Shared {
     pub profiles: HashMap<String, Profile>,
     pub last_import: Option<ImportEvent>,
     pub overlay: Option<OverlayState>,
-    pub overlay_preview: bool,
     pub post_game: Option<PostGame>,
     /// Slots of the Swiftplay lobby you're in (empty otherwise).
     pub swiftplay: Vec<SwiftplaySlot>,
@@ -293,6 +292,13 @@ impl Shared {
             .or_else(|| normal().find(|c| c.name == name))
     }
 
+    /// (id, name) of every champion but the League Classic copies, for OP.GG's
+    /// tier lists; None before the static data loads.
+    pub fn champ_names(&self) -> Option<Vec<(i64, String)>> {
+        let names: Vec<_> = self.statics.as_ref()?.champions.iter().filter(|c| !c.classic).map(|c| (c.id, c.name.clone())).collect();
+        (!names.is_empty()).then_some(names)
+    }
+
     /// The champion's alias for OP.GG, which has no League Classic stats.
     pub fn opgg_alias(&self, id: i64) -> Option<String> {
         self.champion(id).filter(|c| !c.classic).map(|c| c.alias.clone())
@@ -325,7 +331,6 @@ pub struct AppState {
 /// handle drags it while held.
 #[derive(Debug, Default)]
 pub struct OverlayInput {
-    pub unlocked: bool,
     /// Button bounds (x, y, width, height) in CSS pixels inside the overlay.
     pub buttons: Vec<[f64; 4]>,
     /// What `set_ignore_cursor_events` was last set to.
@@ -337,6 +342,12 @@ pub struct OverlayInput {
 impl AppState {
     pub fn config(&self) -> Config {
         self.config.read().unwrap().clone()
+    }
+
+    /// OP.GG's games per lane for every champion; empty when it can't be loaded.
+    pub async fn lane_games(&self) -> HashMap<i64, [i64; 5]> {
+        let names = self.shared.lock().await.champ_names();
+        crate::util::or_log(self.tiers.lane_games(names).await, "OP.GG games per lane")
     }
 }
 
@@ -534,6 +545,23 @@ async fn load_statics(lcu: &Lcu) -> anyhow::Result<StaticData> {
 /// when the client isn't running (the Champions and Tier List tabs, champion
 /// names and item icons on the Profile page). Kept until the client connects
 /// and replaces them.
+/// Champion, item and rune data from CommunityDragon while the client isn't
+/// running; the client's own replaces it when it connects.
+pub async fn fill_web_statics(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    if state.shared.lock().await.statics.is_some() {
+        return;
+    }
+    let Ok(statics) = load_statics_web().await.map_err(|e| eprintln!("champion data from CommunityDragon failed: {e:#}")) else { return };
+    let mut sh = state.shared.lock().await;
+    // The client may have connected meanwhile; its data wins.
+    if sh.statics.is_none() {
+        sh.statics = Some(statics.clone());
+        drop(sh);
+        let _ = app.emit("static", statics);
+    }
+}
+
 pub async fn load_statics_web() -> anyhow::Result<StaticData> {
     let http = web_client(20);
     let get = |file: &str| get_json(http.get(format!("{CDRAGON_GAME_DATA}/{file}")), "CommunityDragon");
@@ -731,7 +759,8 @@ pub fn set_overlay_visible(app: &AppHandle, visible: bool) {
                 let _ = w.set_position(p);
             }
             // Clicks go through to the game; the move handle stays clickable.
-            set_overlay_locked(app, true);
+            app.state::<AppState>().overlay_input.lock().unwrap().passthrough = true;
+            let _ = w.set_ignore_cursor_events(true);
         }
         let _ = w.set_always_on_top(true);
         let _ = w.show();
@@ -764,18 +793,6 @@ pub fn save_overlay_position(app: &AppHandle) {
     let _ = app.emit("config", cfg);
 }
 
-pub fn set_overlay_locked(app: &AppHandle, locked: bool) {
-    let Some(w) = app.get_webview_window("overlay") else { return };
-    let state = app.state::<AppState>();
-    {
-        let mut input = state.overlay_input.lock().unwrap();
-        input.unlocked = !locked;
-        input.passthrough = locked;
-    }
-    let _ = w.set_ignore_cursor_events(locked);
-    let _ = app.emit("overlay-locked", locked);
-}
-
 /// Makes the locked overlay clickable only while the cursor is over one of its
 /// buttons, so the rest of it never takes clicks away from the game.
 pub async fn watch_overlay_cursor(app: AppHandle) {
@@ -787,12 +804,12 @@ pub async fn watch_overlay_cursor(app: AppHandle) {
             continue;
         }
         let state = app.state::<AppState>();
-        let (unlocked, buttons, passthrough, dragging) = {
+        let (buttons, passthrough, dragging) = {
             let i = state.overlay_input.lock().unwrap();
-            (i.unlocked, i.buttons.clone(), i.passthrough, i.drag.is_some())
+            (i.buttons.clone(), i.passthrough, i.drag.is_some())
         };
         // Mid-drag the cursor can run ahead of the move handle; the window keeps taking it until the release.
-        if unlocked || (dragging && !passthrough) {
+        if dragging && !passthrough {
             continue;
         }
         let over = match (app.cursor_position(), w.inner_position(), w.scale_factor()) {
@@ -804,7 +821,7 @@ pub async fn watch_overlay_cursor(app: AppHandle) {
         };
         if over == passthrough {
             let mut i = state.overlay_input.lock().unwrap();
-            if !i.unlocked && i.passthrough == passthrough {
+            if i.passthrough == passthrough {
                 let _ = w.set_ignore_cursor_events(!over);
                 i.passthrough = !over;
             }
@@ -998,20 +1015,7 @@ impl Engine {
         }
         self.last_web_statics = Some(Instant::now());
         let app = self.app.clone();
-        tauri::async_runtime::spawn(async move {
-            let statics = match load_statics_web().await {
-                Ok(s) => s,
-                Err(e) => return eprintln!("champion data from CommunityDragon failed: {e:#}"),
-            };
-            let state = app.state::<AppState>();
-            let mut sh = state.shared.lock().await;
-            // The client may have connected meanwhile; its data wins.
-            if sh.statics.is_none() {
-                sh.statics = Some(statics.clone());
-                drop(sh);
-                let _ = app.emit("static", statics);
-            }
-        });
+        tauri::async_runtime::spawn(async move { fill_web_statics(&app).await });
     }
 
     async fn tick(&mut self) {
@@ -1103,7 +1107,7 @@ impl Engine {
             None => {
                 let path = format!("/lol-match-history/v1/games/{}", p.game_id);
                 let Ok(Some(game)) = lcu.get(&path).await else { return };
-                let lanes = postgame::lane_games(&self.app.state::<AppState>()).await;
+                let lanes = self.app.state::<AppState>().lane_games().await;
                 let Some(mut summary) = postgame::parse(&game, &self.my_puuid, &p.queue_name, &lanes) else { return };
                 if let (Ok(Some(t)), Some(mine)) = (lcu.get(&postgame::timeline_path(p.game_id)).await, summary.teams.first().map(|t| t.team_id)) {
                     summary.gold_lead = postgame::gold_lead(&game, &t, mine);
@@ -1399,7 +1403,7 @@ impl Engine {
                 // on the first good read after reconnecting.
                 self.live_misses = self.live_misses.saturating_add(1);
                 if self.live_misses >= LIVE_MISSES_HIDE && self.overlay_shown {
-                    self.put_overlay_away().await;
+                    self.put_overlay_away();
                 }
                 return;
             }
@@ -1452,10 +1456,9 @@ impl Engine {
                 .as_ref()
                 .filter(|r| cfg.use_recommended_builds && r.games >= opgg::MIN_GAMES && !r.build_order.is_empty())
                 .map(|r| r.build_order.as_slice());
-            let empty: Vec<String> = Vec::new();
             let (skill_max, skill_order) = match rec.as_ref().filter(|_| cfg.show_skill_hint) {
                 Some(r) => (r.skill_max.as_slice(), r.skill_order.as_slice()),
-                None => (empty.as_slice(), empty.as_slice()),
+                None => (&[][..], &[][..]),
             };
             let boots_now = live::my_boots(&data, &items);
             let seen_boots = boots_now.or(self.seen_boots);
@@ -1466,11 +1469,10 @@ impl Engine {
                 .map_or(&[][..], |s| s.ids.as_slice());
             let guide = live::Guidance { build, starter, skill_max, skill_order, seen_boots };
             let mut st = live::overlay_state(&data, &cfg.timers, &guide, &items);
+            let id = |key: &str, name: &str| sh.live_champion(key, name).map_or(0, |c| c.id);
             if let Some(lane) = st.lane.as_mut() {
-                lane.champion_id = sh.live_champion(&lane.opponent_key, &lane.opponent).map_or(0, |c| c.id);
-                for f in &mut lane.foes {
-                    f.champion_id = sh.live_champion(&f.opponent_key, &f.opponent).map_or(0, |c| c.id);
-                }
+                lane.champion_id = id(&lane.opponent_key, &lane.opponent);
+                lane.foes.iter_mut().for_each(|f| f.champion_id = id(&f.opponent_key, &f.opponent));
             }
             let (ours, theirs) = live::team_champions(&data);
             let ids = |t: &[(String, String)]| t.iter().filter_map(|(k, n)| sh.live_champion(k, n)).map(|c| c.id).collect();
@@ -1615,23 +1617,15 @@ impl Engine {
     }
 
     /// Hides the overlay window but keeps the game's state (Live tab, gold graph, lane pick).
-    async fn put_overlay_away(&mut self) {
-        let preview = self.state().shared.lock().await.overlay_preview;
-        if !preview {
-            set_overlay_visible(&self.app, false);
-        }
+    fn put_overlay_away(&mut self) {
+        set_overlay_visible(&self.app, false);
         self.overlay_shown = false;
     }
 
     async fn hide_overlay(&mut self) {
-        let preview = {
-            let state = self.state();
-            let mut sh = state.shared.lock().await;
-            sh.overlay = None;
-            sh.overlay_preview
-        };
+        self.state().shared.lock().await.overlay = None;
         let _ = self.app.emit("overlay", Option::<OverlayState>::None);
-        if self.overlay_shown && !preview {
+        if self.overlay_shown {
             set_overlay_visible(&self.app, false);
         }
         self.overlay_shown = false;
@@ -1712,10 +1706,7 @@ pub async fn import_for(app: &AppHandle, champion_id: i64, position: &str) -> Re
 }
 
 pub(crate) async fn publish_import(app: &AppHandle, champion_id: i64, result: Result<String, String>) -> ImportEvent {
-    let ev = match result {
-        Ok(m) => ImportEvent { ok: true, champion_id, message: m },
-        Err(m) => ImportEvent { ok: false, champion_id, message: m },
-    };
+    let ev = ImportEvent { ok: result.is_ok(), champion_id, message: result.unwrap_or_else(|e| e) };
     app.state::<AppState>().shared.lock().await.last_import = Some(ev.clone());
     let _ = app.emit("rune-import", ev.clone());
     ev
@@ -1818,8 +1809,8 @@ pub async fn import_slots(app: &AppHandle, lcu: &Lcu, wanted: Vec<(usize, i64, S
         return events;
     }
     // The PUT sets the spells and the runes. The client refuses a PUT that
-    // changes nothing ("Put slots request matches current slots"), e.g. on a
-    // second "Import runes" click, so skip it then.
+    // changes nothing ("Put slots request matches current slots"), e.g. when
+    // only the item sets changed, so skip it then.
     if slots != before {
         if let Err(e) = put_slots(lcu, &slots).await {
             for (_, champ, ..) in done {
@@ -1926,22 +1917,6 @@ fn same_perks(a: &str, b: &str) -> bool {
         (Ok(a), Ok(b)) => !["perkIds", "perkStyle", "perkSubStyle"].iter().any(|k| a.get(k) != b.get(k)),
         _ => false,
     }
-}
-
-/// The Swiftplay "Import runes" button: imports every slot with a champion.
-pub async fn import_swiftplay_now(app: &AppHandle) -> Result<Vec<ImportEvent>, String> {
-    let lcu = app.state::<AppState>().shared.lock().await.lcu.clone().ok_or("Not connected to the League client")?;
-    let slots = lcu.get(PLAYER_SLOTS).await.map_err(msg)?.unwrap_or(Value::Null);
-    let wanted: Vec<_> = slot_keys(&slots)
-        .into_iter()
-        .enumerate()
-        .filter(|(_, k)| k.0 != 0)
-        .map(|(i, (c, p))| (i, c, p))
-        .collect();
-    if wanted.is_empty() {
-        return Err("Pick a champion for your Swiftplay positions first".into());
-    }
-    Ok(import_slots(app, &lcu, wanted).await)
 }
 
 /// Picks a rune page, spells or build for one Swiftplay champion and

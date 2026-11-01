@@ -3,6 +3,7 @@
 // item descriptions, and what an item's stats mean for the champion's damage
 // type and class. Nothing is invented per champion.
 import { ChampInfo, ItemInfo, ItemSet, PerkInfo, Recommendation, SituationTag } from './models';
+import { pct } from './format';
 
 export interface Why {
   id: number;
@@ -40,10 +41,6 @@ const ROLE_NEEDS: Record<string, string> = {
   tank: 'soaks damage and starts fights',
   support: 'sets up and protects teammates',
 };
-
-export function pct(x: number, digits = 1): string {
-  return `${(x * 100).toFixed(digits)}%`;
-}
 
 /** "Mage / Assassin" */
 export function rolesLabel(champ: ChampInfo | undefined): string {

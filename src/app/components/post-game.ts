@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { championIcon, clock, kdaRatio, queueLabel } from '../core/assets';
+import { kilo, signed } from '../core/format';
 import { PostGame, PostPlayer, PostTeam } from '../core/models';
 import { Grade, review, reviewText } from '../core/roast';
 import { GoldGraph } from './gold-graph';
@@ -42,7 +43,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
           <div class="items">
             @for (id of m.items; track $index) {
               <span class="slot" [rlItemTip]="id" [attr.aria-label]="rift.itemName(id) || null">
-                @if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+                @if (rift.itemIcon(id); as url) { <img [src]="url" alt="" /> }
               </span>
             }
           </div>
@@ -128,7 +129,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
                 <div class="items sm">
                   @for (id of p.items; track $index) {
                     <span class="slot" [rlItemTip]="id" [attr.aria-label]="rift.itemName(id) || null">
-                      @if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+                      @if (rift.itemIcon(id); as url) { <img [src]="url" alt="" /> }
                     </span>
                   }
                 </div>
@@ -455,16 +456,10 @@ export class PostGameView {
   protected time = clock;
 
   /** Bar length on the chart's axis. */
-  barWidth(key: 'gold' | 'damage', p: PostPlayer): string {
-    return this.at(key, p[key]);
-  }
+  readonly barWidth = (key: 'gold' | 'damage', p: PostPlayer): string => this.at(key, p[key]);
   /** Where a value sits on the chart's axis (70px kept free at the end for the value and share). */
-  at(key: 'gold' | 'damage', v: number): string {
-    return `calc((100% - 70px) * ${(v / this.chartMax()[key]).toFixed(4)})`;
-  }
-  total(key: 'gold' | 'damage', t: PostTeam): number {
-    return t.players.reduce((a, x) => a + x[key], 0);
-  }
+  readonly at = (key: 'gold' | 'damage', v: number): string => `calc((100% - 70px) * ${(v / this.chartMax()[key]).toFixed(4)})`;
+  readonly total = (key: 'gold' | 'damage', t: PostTeam): number => t.players.reduce((a, x) => a + x[key], 0);
   share(key: 'gold' | 'damage', p: PostPlayer, t: PostTeam): number {
     const total = this.total(key, t);
     return total > 0 ? Math.round((p[key] / total) * 100) : 0;
@@ -507,24 +502,16 @@ export class PostGameView {
       () => undefined,
     );
   }
-  tone(g: Grade): string {
-    return g === 'S+' || g === 'S' ? 'top' : g === 'A' ? 'good' : g === 'B' ? 'mid' : g === 'C' ? 'meh' : 'bad';
-  }
+  readonly tone = (g: Grade): string => g === 'S+' || g === 'S' ? 'top' : g === 'A' ? 'good' : g === 'B' ? 'mid' : g === 'C' ? 'meh' : 'bad';
   isPicked(t: PostTeam, seat: number): boolean {
     const at = this.picked();
     return !!at && at.teamId === t.teamId && at.seat === seat;
   }
 
   kda = (p: PostPlayer) => kdaRatio(p.kills, p.deaths, p.assists);
-  perMin(n: number): string {
-    return (n / Math.max(1, this.game().duration / 60)).toFixed(1);
-  }
-  k(n: number): string {
-    return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-  }
-  signedK(n: number): string {
-    return (n > 0 ? '+' : n < 0 ? '−' : '±') + this.k(Math.abs(n));
-  }
+  readonly perMin = (n: number): string => (n / Math.max(1, this.game().duration / 60)).toFixed(1);
+  k = kilo;
+  signedK = (n: number) => signed(n, true);
   objectives(t: PostTeam): string {
     const n = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
     return [n(t.towers, 'tower'), n(t.dragons, 'dragon'), n(t.barons, 'baron')].join(' · ');

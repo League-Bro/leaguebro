@@ -1,4 +1,5 @@
 import { PostGame, PostPlayer, PostTeam } from './models';
+import { kilo as k } from './format';
 
 /** One bit of post-game trash talk about something done badly, or praise for something done well. */
 export interface Roast {
@@ -904,9 +905,6 @@ function ramp(v: number, lo: number, hi: number): number {
   return Math.min(1, Math.max(0, (v - lo) / (hi - lo)));
 }
 
-function k(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n));
-}
 
 function damageShare(me: PostPlayer, team: PostTeam): number {
   const total = team.players.reduce((a, p) => a + p.damage, 0);

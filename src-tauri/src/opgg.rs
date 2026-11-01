@@ -1049,9 +1049,8 @@ impl OpGg {
             bail!("no lane to compare (this mode has no lanes, or you have no role)");
         }
         let key = format!("m:{champion_id}:{opponent_id}:{pos}:{game_mode}");
-        let fetch = || self.fetch_matchup(champion_id, alias, opponent_id, opponent_alias, pos, game_mode, lcu, early);
         // Without the tip (the slow MCP call failed), ask again next time.
-        self.cached(&self.matchups, key, fetch, |m| m.tip.is_some()).await
+        self.cached(&self.matchups, key, || self.fetch_matchup(champion_id, alias, opponent_id, opponent_alias, pos, game_mode, lcu, early), |m| m.tip.is_some()).await
     }
 
     /// The website API (quick) and the MCP guide (~3.5 s, the only source of
@@ -1059,17 +1058,7 @@ impl OpGg {
     /// `early` gets the website's numbers (no tip yet) as soon as they're in,
     /// so the UI can show them while the guide is still out.
     #[allow(clippy::too_many_arguments)]
-    async fn fetch_matchup(
-        &self,
-        champion_id: i64,
-        alias: &str,
-        opponent_id: i64,
-        opponent_alias: &str,
-        pos: &str,
-        game_mode: &str,
-        lcu: Option<&Lcu>,
-        early: impl FnOnce(Matchup),
-    ) -> Result<Matchup> {
+    async fn fetch_matchup(&self, champion_id: i64, alias: &str, opponent_id: i64, opponent_alias: &str, pos: &str, game_mode: &str, lcu: Option<&Lcu>, early: impl FnOnce(Matchup)) -> Result<Matchup> {
         let guide_args = json!({
             "position": pos,
             "my_champion": champion_param(alias),
@@ -1143,10 +1132,7 @@ impl OpGg {
         let get = |url: &str| get_json(self.http.get(url).timeout(WEB_TIMEOUT), "OP.GG");
         let (main, builds, damage) = tokio::join!(get(&main_url), get(&builds_url), self.damage_type(champion_id, lcu));
         // Without /builds only the 4th-6th item options are missing.
-        let builds = builds.unwrap_or_else(|e| {
-            eprintln!("OP.GG item options failed: {e:#}");
-            Value::Null
-        });
+        let builds = crate::util::or_log(builds, "OP.GG item options");
         Ok((main?, builds, damage))
     }
 
@@ -1235,9 +1221,7 @@ pub fn parse_rpc_text(body: &str) -> Result<String> {
 mod tests {
     use super::*;
 
-    fn fixture(name: &str) -> String {
-        std::fs::read_to_string(format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
-    }
+    use crate::util::{fixture, fixture_json};
 
     #[test]
     fn parses_basic_shapes() {
@@ -1276,8 +1260,8 @@ mod tests {
 
     #[test]
     fn website_api_matches_the_mcp_shape() {
-        let main: Value = serde_json::from_str(&fixture("opgg_web_ahri_mid.json")).unwrap();
-        let builds: Value = serde_json::from_str(&fixture("opgg_web_ahri_mid_builds.json")).unwrap();
+        let main = fixture_json("opgg_web_ahri_mid.json");
+        let builds = fixture_json("opgg_web_ahri_mid_builds.json");
         let r = extract(&web_to_mcp(&main, &builds, "AP").unwrap(), 103, "mid", "ranked").unwrap();
         let runes = r.runes.as_ref().unwrap();
         assert_eq!((runes.primary_style_id, runes.sub_style_id), (8100, 8200));
@@ -1313,7 +1297,7 @@ mod tests {
     fn rune_pages_grouped_without_website_groups() {
         // Matchup answers have no `rune_pages`: the flat list is grouped by
         // keystone + secondary tree, so shard-only twins never show up twice.
-        let main: Value = serde_json::from_str(&fixture("opgg_web_ahri_vs_zed.json")).unwrap();
+        let main = fixture_json("opgg_web_ahri_vs_zed.json");
         let r = extract(&web_to_mcp(&main, &Value::Null, "AP").unwrap(), 103, "mid", "ranked").unwrap();
         let groups: Vec<(i64, i64, i64)> = r.rune_options.iter().map(|o| (o.perk_ids[0], o.sub_style_id, o.games)).collect();
         assert_eq!(groups, vec![(8112, 8200, 545), (8992, 8100, 88), (8112, 8300, 43)]);
@@ -1343,8 +1327,8 @@ mod tests {
 
     #[test]
     fn options_and_picking_one() {
-        let main: Value = serde_json::from_str(&fixture("opgg_web_ahri_mid.json")).unwrap();
-        let builds: Value = serde_json::from_str(&fixture("opgg_web_ahri_mid_builds.json")).unwrap();
+        let main = fixture_json("opgg_web_ahri_mid.json");
+        let builds = fixture_json("opgg_web_ahri_mid_builds.json");
         let r = extract(&web_to_mcp(&main, &builds, "AP").unwrap(), 103, "mid", "ranked").unwrap();
         // Top three of each list, most played first; the top one is what's shown by default.
         // Rune pages: one per keystone + secondary tree, up to three trees per keystone
@@ -1398,9 +1382,9 @@ mod tests {
     fn ahri_vs_zed_matchup() {
         // Real answers for Ahri mid vs Zed (October 2026): the website API with
         // ?target_champion=238 and the MCP lane guide.
-        let main: Value = serde_json::from_str(&fixture("opgg_web_ahri_vs_zed.json")).unwrap();
-        let builds: Value = serde_json::from_str(&fixture("opgg_web_ahri_vs_zed_builds.json")).unwrap();
-        let guide: Value = serde_json::from_str(&fixture("opgg_mcp_ahri_vs_zed.json")).unwrap();
+        let main = fixture_json("opgg_web_ahri_vs_zed.json");
+        let builds = fixture_json("opgg_web_ahri_vs_zed_builds.json");
+        let guide = fixture_json("opgg_mcp_ahri_vs_zed.json");
         let m = parse_matchup(&main, &builds, "AP", Some(&guide), 103, 238, "mid", "ranked").unwrap();
         assert_eq!((m.games, m.opponent_id), (852, 238));
         assert!((m.win_rate - 423.0 / 852.0).abs() < 1e-9);

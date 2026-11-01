@@ -31,7 +31,7 @@ interface Draft {
             @for (t of trees(); track t.id) {
               <button class="style" role="radio" [attr.aria-checked]="t.id === d.primary" [class.on]="t.id === d.primary"
                 [disabled]="disabled()" [attr.aria-label]="t.name" [rlItemTip]="t.id" tipKind="tree" (click)="setPrimary(t.id)">
-                <img [src]="icon(t)" alt="" (error)="rift.hideImg($event)" />
+                <img [src]="icon(t)" alt="" />
               </button>
             }
           </div>
@@ -55,7 +55,7 @@ interface Draft {
             @for (t of subTrees(d.primary); track t.id) {
               <button class="style" role="radio" [attr.aria-checked]="t.id === d.sub" [class.on]="t.id === d.sub"
                 [disabled]="disabled()" [attr.aria-label]="t.name" [rlItemTip]="t.id" tipKind="tree" (click)="setSub(t.id)">
-                <img [src]="icon(t)" alt="" (error)="rift.hideImg($event)" />
+                <img [src]="icon(t)" alt="" />
               </button>
             }
           </div>
@@ -85,7 +85,7 @@ interface Draft {
     <ng-template #perk let-id let-on="on" let-big="big" let-small="small" let-row="row" let-pick="pick">
       <button class="perk" [class.on]="on" [class.big]="big" [class.small]="small" [disabled]="disabled()"
         [attr.aria-pressed]="on" [attr.aria-label]="perkName(id)" [rlItemTip]="id" tipKind="rune" (click)="choose(pick, id, row)">
-        @if (perkIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+        @if (rift.perkIcon(id); as url) { <img [src]="url" alt="" /> }
         @else { <span class="fallback">{{ perkName(id).slice(0, 2) }}</span> }
       </button>
     </ng-template>
@@ -147,9 +147,7 @@ export class RuneEditor {
     return this.trees().filter((t) => t.id !== primary && (!allowed?.length || allowed.includes(t.id)));
   }
 
-  protected sideHas(d: Draft, id: number): boolean {
-    return d.side.some((s) => s.id === id);
-  }
+  protected readonly sideHas = (d: Draft, id: number): boolean => d.side.some((s) => s.id === id);
 
   protected setPrimary(id: number): void {
     const d = this.draft();
@@ -185,9 +183,7 @@ export class RuneEditor {
     if (c.perkIds.length === 9 && c.perkIds.every((id) => id > 0)) this.change.emit(c);
   }
 
-  private firstSide(sub: number): Draft['side'] {
-    return this.rows(sub, 'regular').slice(0, 2).map((r, row) => ({ row, id: r[0] }));
-  }
+  private readonly firstSide = (sub: number): Draft['side'] => this.rows(sub, 'regular').slice(0, 2).map((r, row) => ({ row, id: r[0] }));
 
   private fromPage(p: RuneRec): Draft {
     const [keystone = 0, a = 0, b = 0, c = 0, s1 = 0, s2 = 0, ...shards] = p.perkIds;
@@ -203,18 +199,9 @@ export class RuneEditor {
     };
   }
 
-  protected icon(t: PerkInfo): string {
-    return assetUrl(t.iconPath);
-  }
-  protected perkIcon(id: number): string {
-    return assetUrl(this.rift.perkById().get(id)?.iconPath);
-  }
-  protected perkName(id: number): string {
-    return this.rift.perkById().get(id)?.name ?? '';
-  }
-  protected treeName(id: number): string {
-    return this.treeById().get(id)?.name ?? '';
-  }
+  protected readonly icon = (t: PerkInfo): string => assetUrl(t.iconPath);
+  protected readonly perkName = (id: number): string => this.rift.perkById().get(id)?.name ?? '';
+  protected readonly treeName = (id: number): string => this.treeById().get(id)?.name ?? '';
 }
 
 /** The draft as a page, secondary runes in row order (the client's order). */

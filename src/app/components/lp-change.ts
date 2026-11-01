@@ -22,7 +22,6 @@ import { LpChange } from '../core/models';
     .lp { font-weight: 600; color: var(--text-dim); cursor: help; white-space: nowrap; }
     .moved { font-size: 0.85em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
     .gain { color: var(--win); }
-    .loss { color: var(--loss); }
   `,
 })
 export class LpChangeTag {

@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { ItemSet, SituationalState, SituationTag } from '../core/models';
-import { SITUATION_LABEL, SITUATION_WHEN, pct } from '../core/why';
+import { SITUATION_LABEL, SITUATION_WHEN } from '../core/why';
+import { pct } from '../core/format';
 import { ItemTip } from './item-tip';
 
 /** Other options shown before "Show more". */
@@ -41,7 +42,7 @@ const OTHERS_SHOWN = 3;
           }
           @for (p of picks(); track p.id) {
             <div class="pick">
-              @if (rift.itemIcon(p.id); as url) { <img [src]="url" alt="" [rlItemTip]="p.id" (error)="rift.hideImg($event)" /> }
+              @if (rift.itemIcon(p.id); as url) { <img [src]="url" alt="" [rlItemTip]="p.id" /> }
               <div class="body">
                 <div class="title">
                   <span class="strong">{{ p.name }}</span>
@@ -71,7 +72,7 @@ const OTHERS_SHOWN = 3;
           @if (state()) { <div class="sub">Other options</div> }
           @for (o of shownOthers(); track o.id) {
             <div class="pick other">
-              @if (rift.itemIcon(o.id); as url) { <img [src]="url" alt="" [rlItemTip]="o.id" (error)="rift.hideImg($event)" /> }
+              @if (rift.itemIcon(o.id); as url) { <img [src]="url" alt="" [rlItemTip]="o.id" /> }
               <div class="body">
                 <div class="title">
                   <span class="strong">{{ o.name }}</span>
@@ -103,7 +104,6 @@ const OTHERS_SHOWN = 3;
     .panel h4 { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
     .hint { font-size: 12px; color: var(--text-faint); }
     .sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); margin-top: 6px; }    .small { font-size: 12.5px; margin: 0; line-height: 1.4; }
-    .strong { font-weight: 600; }
     .threats { display: flex; flex-wrap: wrap; gap: 4px; }
     .threat {
       display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px;
@@ -156,15 +156,11 @@ export class SituationalCard {
   });
   protected readonly shownOthers = computed(() => (this.expanded() ? this.others() : this.others().slice(0, OTHERS_SHOWN)));
 
-  label(t: SituationTag): string {
-    return SITUATION_LABEL[t];
-  }
+  readonly label = (t: SituationTag): string => SITUATION_LABEL[t];
   when(t: SituationTag): string {
     const w = SITUATION_WHEN[t];
     return w.charAt(0).toUpperCase() + w.slice(1);
   }
   /** One to three dots for how much of a threat it is. */
-  dots(level: number): number[] {
-    return Array.from({ length: Math.min(3, Math.max(1, Math.round(level))) });
-  }
+  readonly dots = (level: number): number[] => Array.from({ length: Math.min(3, Math.max(1, Math.round(level))) });
 }

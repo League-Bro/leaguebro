@@ -125,7 +125,7 @@ const VERDICT_LABELS: Record<string, string> = {
     .top { display: flex; align-items: flex-end; gap: 12px; }
     h1 { font-size: 22px; display: flex; align-items: center; gap: 10px; }
     .latest { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); background: var(--accent-soft); padding: 2px 8px; border-radius: 10px; }
-    .small { font-size: 12.5px; }
+    .small { margin: revert; }
     .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
     .tile {
       display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
@@ -207,9 +207,7 @@ export class PatchView implements OnInit {
     return m;
   });
   /** "Q - Sonic Wave" with the player's own key in place of Q. */
-  abilityTitle(title: string): string {
-    return title.replace(/^([QWER])(?=\s*[-–:])/, (k) => this.rift.abilityKey(k));
-  }
+  readonly abilityTitle = (title: string): string => title.replace(/^([QWER])(?=\s*[-–:])/, (k) => this.rift.abilityKey(k));
 
   private readonly itemPaths = computed(() => {
     const m = new Map<string, string>();
@@ -291,14 +289,10 @@ export class PatchView implements OnInit {
     this.filter.set(this.filter() === f ? 'all' : f);
   }
 
-  verdictLabel(v: string): string {
-    return VERDICT_LABELS[v] ?? v;
-  }
+  readonly verdictLabel = (v: string): string => VERDICT_LABELS[v] ?? v;
 
   /** The champion an entry is about (0 for items, runes and the rest), for the link to its page. */
-  champFor(s: PatchSection, e: PatchEntry): number {
-    return s.kind === 'item' ? 0 : (this.champIds().get(norm(e.name)) ?? 0);
-  }
+  readonly champFor = (s: PatchSection, e: PatchEntry): number => s.kind === 'item' ? 0 : (this.champIds().get(norm(e.name)) ?? 0);
 
   iconFor(s: PatchSection, e: PatchEntry): string {
     const key = norm(e.name);

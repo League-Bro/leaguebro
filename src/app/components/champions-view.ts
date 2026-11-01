@@ -102,7 +102,6 @@ const ROLES = [
     .head .grow { gap: 8px; }
     .controls { gap: 12px; flex-wrap: wrap; }
     .note { margin: 10px 0 0; }
-    .small { font-size: 12.5px; margin: 0; }
   `,
 })
 export class ChampionsView {
@@ -146,16 +145,10 @@ export class ChampionsView {
   protected readonly game = this.rift.championsGame;
   protected readonly view = this.rift.championsView;
   private readonly favoriteIds = computed(() => new Set(this.rift.config()?.favoriteChampions ?? []));
-  protected readonly isClassic = computed(() => {
-    const id = this.pick()?.championId;
-    return this.rift.statics()?.champions.find((c) => c.id === id)?.classic ?? false;
-  });
+  protected readonly isClassic = computed(() => this.rift.champ(this.pick()?.championId ?? 0)?.classic ?? false);
   /** Separate from config() so changing another setting doesn't refetch. */
   private readonly opggOn = computed(() => this.rift.config()?.recSource === 'opgg');
-  protected readonly roles = computed(() => {
-    const id = this.pick()?.championId;
-    return rolesLabel(this.rift.statics()?.champions.find((c) => c.id === id));
-  });
+  protected readonly roles = computed(() => rolesLabel(this.rift.champ(this.pick()?.championId ?? 0)));
 
   protected icon = championIcon;
 
@@ -186,14 +179,12 @@ export class ChampionsView {
   }
 
   select(championId: number, position?: string): void {
-    const classic = this.rift.statics()?.champions.find((c) => c.id === championId)?.classic;
+    const classic = this.rift.champ(championId)?.classic;
     if (classic !== undefined) this.game.set(classic ? 'classic' : 'league');
     const prev = this.pick();
     this.pick.set({ championId, position: position ?? prev?.position ?? 'middle', mode: prev?.mode ?? 'ranked' });
   }
-  isFavorite(championId: number): boolean {
-    return this.favoriteIds().has(championId);
-  }
+  readonly isFavorite = (championId: number): boolean => this.favoriteIds().has(championId);
   toggleFavorite(championId: number): void {
     void this.rift.updateConfig((c) => ({
       ...c,

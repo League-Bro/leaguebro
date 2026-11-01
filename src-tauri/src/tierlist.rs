@@ -371,14 +371,12 @@ impl TierLists {
 mod tests {
     use super::*;
 
-    fn fixture(name: &str) -> String {
-        std::fs::read_to_string(format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
-    }
+    use crate::util::fixture_json;
 
     #[test]
     fn lolalytics_top_lane() {
         // Real answer for top, Emerald+, patch 16.21 (October 2026).
-        let body: Value = serde_json::from_str(&fixture("lolalytics_top.json")).unwrap();
+        let body = fixture_json("lolalytics_top.json");
         let names = HashMap::from([(54, "Malphite".to_string())]);
         let list = parse_lolalytics(&body, "top", "emerald_plus", &names).unwrap();
         assert_eq!(list.source, Source::Lolalytics);
@@ -402,7 +400,7 @@ mod tests {
     fn opgg_all_lanes() {
         // Real answer for Emerald+, patch 16.21 (October 2026), with the
         // counters and role breakdowns left out to keep the fixture small.
-        let body: Value = serde_json::from_str(&fixture("opgg_champions_emerald.json")).unwrap();
+        let body = fixture_json("opgg_champions_emerald.json");
         let names = HashMap::from([(412, "Thresh".to_string()), (103, "Ahri".to_string())]);
         let lists = parse_opgg(&body, "emerald_plus", &names).unwrap();
         let positions: Vec<&str> = lists.iter().map(|l| l.position.as_str()).collect();

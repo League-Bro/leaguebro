@@ -268,9 +268,7 @@ fn foreign_files(dir: &Path) -> Vec<PathBuf> {
 }
 
 fn title_of(path: &Path) -> String {
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+    crate::util::read_json::<Value>(path)
         .and_then(|v| v.get("title").and_then(Value::as_str).map(str::to_string))
         .filter(|t| !t.is_empty())
         .unwrap_or_else(|| path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string())

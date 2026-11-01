@@ -21,21 +21,12 @@ pub(crate) struct DiskCache {
 
 impl DiskCache {
     pub(crate) fn read<T: DeserializeOwned>(&self, name: &str) -> Option<T> {
-        let bytes = std::fs::read(self.dir.as_ref()?.join(name)).ok()?;
-        serde_json::from_slice(&bytes).ok()
+        crate::util::read_json(&self.dir.as_ref()?.join(name))
     }
 
     pub(crate) fn write<T: Serialize>(&self, name: &str, value: &T) {
         let Some(dir) = &self.dir else { return };
-        let save = || -> Result<()> {
-            std::fs::create_dir_all(dir)?;
-            // Write then rename, so a crash mid-write never leaves half a file.
-            let tmp = dir.join(format!("{name}.tmp"));
-            std::fs::write(&tmp, serde_json::to_vec(value)?)?;
-            std::fs::rename(&tmp, dir.join(name))?;
-            Ok(())
-        };
-        if let Err(e) = save() {
+        if let Err(e) = crate::util::write_json(&dir.join(name), value) {
             eprintln!("couldn't save {name} to {}: {e:#}", dir.display());
         }
     }

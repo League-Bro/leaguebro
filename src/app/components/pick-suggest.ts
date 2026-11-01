@@ -4,11 +4,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { RiftService } from '../core/rift.service';
 import { championIcon, positionLabel } from '../core/assets';
+import { kilo } from '../core/format';
 import { championSplit, teamSplit } from '../core/damage';
 import { EnemyTrait, answers, enemyTraits } from '../core/comp';
 import { demoPickSuggestions } from '../core/demo';
 import { PickSuggestions, SuggestedPick } from '../core/models';
 import { Loader } from './loader';
+import { OpponentPicker } from './opponent-picker';
 
 /** How many picks the top row shows, and how many of your own champions go under it. */
 const SHOWN = 5;
@@ -53,7 +55,7 @@ interface Shown extends SuggestedPick {
 @Component({
   selector: 'rl-pick-suggest',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe, NgTemplateOutlet, Loader],
+  imports: [DecimalPipe, NgTemplateOutlet, Loader, OpponentPicker],
   template: `
     @if (locked()) {
       <section class="card picks">
@@ -116,20 +118,7 @@ interface Shown extends SuggestedPick {
             <rl-loader [size]="16" class="faint small" />
           }
           <div class="spacer"></div>
-          @if (enemies().length) {
-            <span class="faint small">{{ s.opponentId ? 'Not them?' : 'Who\\'s in your lane?' }}</span>
-            <div class="who-pick" role="radiogroup" aria-label="Your lane opponent">
-              @for (id of enemies(); track id) {
-                <button class="ghost who" role="radio" [class.on]="id === s.opponentId" [attr.aria-checked]="id === s.opponentId"
-                  [disabled]="busy()" [title]="rift.champName(id)" (click)="choose(id)">
-                  <img [src]="icon(id)" alt="" />
-                </button>
-              }
-              @if (s.opponentId) {
-                <button class="ghost none" [disabled]="busy()" (click)="choose(0)" title="Show the lane's strongest picks instead">None</button>
-              }
-            </div>
-          }
+          <rl-opponent-picker [ids]="enemies()" [current]="s.opponentId" noneTitle="Show the lane's strongest picks instead" (chosen)="demoOpponent.set($event)" />
         </div>
 
         @if (best().length) {
@@ -191,12 +180,6 @@ interface Shown extends SuggestedPick {
     .picks { margin-bottom: 14px; display: flex; flex-direction: column; gap: 10px; }
     .head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .head h3 { margin: 0; }
-    .who-pick { display: flex; gap: 4px; align-items: center; }
-    .who { padding: 2px; border-radius: 10px; border: 1px solid transparent; line-height: 0; }
-    .who img { width: 28px; height: 28px; border-radius: 8px; opacity: 0.6; }
-    .who:hover img, .who.on img { opacity: 1; }
-    .who.on { border-color: var(--accent); background: var(--accent-soft); }
-    .none { font-size: 12px; padding: 4px 8px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
     .tile { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: var(--bg-sunken); min-width: 0; }
     .tile .champ-icon { width: 40px; height: 40px; border-radius: 10px; flex: none; }
@@ -206,7 +189,6 @@ interface Shown extends SuggestedPick {
     .tag { font-size: 11.5px; line-height: 1.3; color: var(--accent); }
     .tag::before { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: currentColor; margin: 0 6px 1px 0; vertical-align: middle; }
     .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
-    .small { font-size: 12.5px; margin: 0; }
     .mine { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 12px; background: var(--bg-sunken); }
     .mine .champ-icon { width: 40px; height: 40px; border-radius: 10px; }
     .mine .small .faint { margin-left: 4px; }
@@ -224,10 +206,9 @@ export class PickSuggest {
   protected readonly rift = inject(RiftService);
   protected readonly icon = championIcon;
   protected readonly pos = positionLabel;
-  protected readonly busy = signal(false);
   private readonly live = signal<PickSuggestions | null>(null);
   /** The browser demo's lane opponent (the real one comes back from League Bro). */
-  private readonly demoOpponent = signal<number | null>(null);
+  protected readonly demoOpponent = signal<number | null>(null);
 
   constructor() {
     if (this.rift.demo) return;
@@ -339,23 +320,8 @@ export class PickSuggest {
     this.ranked().slice(SHOWN).filter((p) => p.masteryPoints >= PLAYED).slice(0, YOURS),
   );
 
-  async choose(id: number): Promise<void> {
-    if (this.busy() || id === this.state()?.opponentId) return;
-    if (this.rift.demo) {
-      this.demoOpponent.set(id);
-      return;
-    }
-    this.busy.set(true);
-    try {
-      await this.rift.chooseLaneOpponent(id);
-    } finally {
-      this.busy.set(false);
-    }
-  }
 
-  games(n: number): string {
-    return n >= 1000 ? `${(n / 1000).toFixed(1)}k games` : `${n} games`;
-  }
+  games = (n: number) => `${kilo(n)} games`;
 
   tip(p: Shown): string {
     const lines = [`${this.rift.champName(p.championId)}: ${(p.winRate * 100).toFixed(1)}% win rate in lane overall (OP.GG tier ${p.tier})`];

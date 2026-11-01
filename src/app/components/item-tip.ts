@@ -64,7 +64,7 @@ export class ItemTip implements OnDestroy {
     @if (item(); as it) {
       <div class="tip" #box role="tooltip">
         <header>
-          @if (rift.itemIcon(it.id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+          @if (rift.itemIcon(it.id); as url) { <img [src]="url" alt="" /> }
           <div>
             <div class="name">{{ it.name }}</div>
             @if (it.priceTotal > 0) { <div class="cost mono">{{ it.priceTotal.toLocaleString() }} gold</div> }
@@ -85,7 +85,7 @@ export class ItemTip implements OnDestroy {
           <div class="from">
             <span class="faint">Built from</span>
             @for (f of from(); track $index) {
-              @if (rift.itemIcon(f.id); as url) { <img [src]="url" [alt]="f.name" [title]="f.name" (error)="rift.hideImg($event)" /> } @else { <span class="small">{{ f.name }}</span> }
+              @if (rift.itemIcon(f.id); as url) { <img [src]="url" [alt]="f.name" [title]="f.name" /> } @else { <span class="small">{{ f.name }}</span> }
             }
           </div>
         }
@@ -93,7 +93,7 @@ export class ItemTip implements OnDestroy {
     } @else if (perk(); as p) {
       <div class="tip fit" #box role="tooltip">
         <header>
-          @if (p.icon) { <img class="round" [class.tree]="p.kind === 'tree'" [src]="p.icon" alt="" (error)="rift.hideImg($event)" /> }
+          @if (p.icon) { <img class="round" [class.tree]="p.kind === 'tree'" [src]="p.icon" alt="" /> }
           <div>
             <div class="name">{{ p.name }}</div>
             @if (p.sub) { <div class="sub">{{ p.sub }}</div> }

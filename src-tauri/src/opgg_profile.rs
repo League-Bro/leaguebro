@@ -285,8 +285,7 @@ mod tests {
     use super::*;
 
     fn fixture(name: &str) -> Value {
-        let text = std::fs::read_to_string(format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap();
-        parse_compact(&text).unwrap()
+        parse_compact(&crate::util::fixture(name)).unwrap()
     }
 
     #[test]

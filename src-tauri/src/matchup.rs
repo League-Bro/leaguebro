@@ -75,6 +75,16 @@ pub fn guess_opponent(my_position: &str, enemies: &[i64], lanes: &HashMap<i64, [
     (share(picks[i], mine) >= MIN_GUESS_SHARE).then_some(picks[i])
 }
 
+/// Your lane opponent (0 = none): the player's pick while that champion is
+/// still on the enemy team, else League Bro's guess (`guessed` true).
+pub async fn resolve_opponent(state: &AppState, pick: Option<i64>, position: &str, enemies: &[i64]) -> (i64, bool) {
+    match pick {
+        Some(p) if p == 0 || enemies.contains(&p) => (p, false),
+        _ if enemies.is_empty() => (0, true),
+        _ => (guess_opponent(position, enemies, &state.lane_games().await).unwrap_or(0), true),
+    }
+}
+
 /// Works out the lane opponent from the current champ select and loads the
 /// matchup. Does nothing in modes without lanes or before you've locked in.
 pub async fn refresh(app: &AppHandle) {
@@ -82,35 +92,17 @@ pub async fn refresh(app: &AppHandle) {
     if state.config().rec_source != "opgg" {
         return;
     }
-    let (champ, position, enemies, pick, lane_mode, names) = {
+    let (champ, position, enemies, pick, lane_mode) = {
         let sh = state.shared.lock().await;
         let Some(cs) = sh.champ_select.as_ref().filter(|cs| cs.locked) else { return };
         let mode = opgg::game_mode_for(sh.queue_id, sh.map());
-        let names: Vec<(i64, String)> = sh
-            .statics
-            .as_ref()
-            .map(|s| s.champions.iter().filter(|c| !c.classic).map(|c| (c.id, c.name.clone())).collect())
-            .unwrap_or_default();
         let enemies: Vec<i64> = cs.enemies.iter().map(|e| e.champion_id).filter(|&c| c > 0).collect();
-        (cs.my_champion_id, cs.my_position.to_lowercase(), enemies, sh.opponent_pick, matches!(mode, Some("ranked" | "flex")), names)
+        (cs.my_champion_id, cs.my_position.to_lowercase(), enemies, sh.opponent_pick, matches!(mode, Some("ranked" | "flex")))
     };
     if champ == 0 || position.is_empty() || !lane_mode {
         return;
     }
-    let (opponent, guessed) = match pick {
-        // The player's pick, while that champion is still on the enemy team.
-        Some(p) if p == 0 || enemies.contains(&p) => (p, false),
-        _ => {
-            let lanes = match state.tiers.lane_games(Some(names).filter(|n| !n.is_empty())).await {
-                Ok(l) => l,
-                Err(e) => {
-                    eprintln!("lane guess: {e:#}");
-                    HashMap::new()
-                }
-            };
-            (guess_opponent(&position, &enemies, &lanes).unwrap_or(0), true)
-        }
-    };
+    let (opponent, guessed) = resolve_opponent(&state, pick, &position, &enemies).await;
     ensure(app, champ, &position, opponent, guessed).await;
 }
 
@@ -122,15 +114,9 @@ pub async fn prefetch(app: &AppHandle) {
     if state.config().rec_source != "opgg" {
         return;
     }
-    let (lane_mode, names, lcu) = {
+    let (lane_mode, lcu) = {
         let sh = state.shared.lock().await;
-        let mode = opgg::game_mode_for(sh.queue_id, sh.map());
-        let names: Vec<(i64, String)> = sh
-            .statics
-            .as_ref()
-            .map(|s| s.champions.iter().filter(|c| !c.classic).map(|c| (c.id, c.name.clone())).collect())
-            .unwrap_or_default();
-        (matches!(mode, Some("ranked" | "flex")), names, sh.lcu.clone())
+        (matches!(opgg::game_mode_for(sh.queue_id, sh.map()), Some("ranked" | "flex")), sh.lcu.clone())
     };
     if !lane_mode {
         return;
@@ -140,10 +126,7 @@ pub async fn prefetch(app: &AppHandle) {
             let _ = profile::record_against(l, 0).await;
         }
     };
-    let (lanes, _) = tokio::join!(state.tiers.lane_games(Some(names).filter(|n| !n.is_empty())), records);
-    if let Err(e) = lanes {
-        eprintln!("lane guess prefetch: {e:#}");
-    }
+    tokio::join!(state.lane_games(), records);
 }
 
 /// Loads (or clears, with opponent 0) the matchup for your champion and

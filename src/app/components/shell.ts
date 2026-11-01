@@ -342,9 +342,7 @@ export class Shell implements OnInit {
     else if (this.tab() === 'champions') this.rift.championsPick.set(null);
   }
 
-  private canGoBack(): boolean {
-    return !!this.backTo() || (this.tab() === 'champions' && !!this.rift.championsPick());
-  }
+  private readonly canGoBack = (): boolean => !!this.backTo() || (this.tab() === 'champions' && !!this.rift.championsPick());
 
   /** The mouse's back button (button 3) goes back too. */
   protected mouseBack(e: MouseEvent): void {
@@ -354,9 +352,7 @@ export class Shell implements OnInit {
     }
   }
 
-  protected label(t: Tab): string {
-    return t === 'profile' ? 'Profile' : (this.tabs.find((x) => x.id === t)?.label ?? t);
-  }
+  protected readonly label = (t: Tab): string => t === 'profile' ? 'Profile' : (this.tabs.find((x) => x.id === t)?.label ?? t);
 
   protected readonly statusText = computed(() => {
     const s = this.rift.status();

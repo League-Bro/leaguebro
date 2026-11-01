@@ -303,22 +303,6 @@ fn assign_lanes(team: &[&Value], guess: &[Option<&'static str>], lanes: &HashMap
     best.1.iter().map(|&l| Some(POSITIONS[l])).collect()
 }
 
-/// OP.GG's games per lane for every champion (for `parse`); empty when it can't be loaded.
-pub async fn lane_games(state: &crate::engine::AppState) -> HashMap<i64, [i64; 5]> {
-    let names: Vec<(i64, String)> = state
-        .shared
-        .lock()
-        .await
-        .statics
-        .as_ref()
-        .map(|s| s.champions.iter().filter(|c| !c.classic).map(|c| (c.id, c.name.clone())).collect())
-        .unwrap_or_default();
-    state.tiers.lane_games(Some(names).filter(|n| !n.is_empty())).await.unwrap_or_else(|e| {
-        eprintln!("post-game lanes: {e:#}");
-        HashMap::new()
-    })
-}
-
 /// Scoreboard order for a position: top, jungle, mid, ADC, support, then unknown.
 fn lane_rank(position: Option<&str>) -> usize {
     match position {
@@ -336,8 +320,7 @@ mod tests {
     use super::*;
 
     fn fixture() -> Value {
-        let text = std::fs::read_to_string(format!("{}/tests/fixtures/match_game.json", env!("CARGO_MANIFEST_DIR"))).unwrap();
-        serde_json::from_str(&text).unwrap()
+        crate::util::fixture_json("match_game.json")
     }
 
     #[test]

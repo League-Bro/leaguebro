@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, Injector, afterNextRend
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { championIcon, formatTier, kdaRatio, profileIcon, queueLabel, rankCrest, tierClass, winPct } from '../core/assets';
+import { ago } from '../core/format';
 import { LpPoint, MatchLine, MyProfile, PostGame, RankLine } from '../core/models';
 import { PostGameView } from './post-game';
 import { ItemTip } from './item-tip';
@@ -295,7 +296,7 @@ const REGIONS = [
             </div>
             <div class="items c-build">
               @for (id of m.items; track $index) {
-                <span class="slot" [rlItemTip]="id">@if (rift.itemIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }</span>
+                <span class="slot" [rlItemTip]="id">@if (rift.itemIcon(id); as url) { <img [src]="url" alt="" /> }</span>
               }
             </div>
           </button>
@@ -357,7 +358,6 @@ const REGIONS = [
     .crest { width: 56px; height: 56px; filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.5)); object-fit: contain; flex: none; }
     .crest.unranked { opacity: 0.45; }
     .cap { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; }
-    .small { font-size: 12.5px; margin: 0; }
     .note { margin-top: 8px; }
     /* The numbers as one strip instead of seven boxes. */
     .tiles {
@@ -692,9 +692,7 @@ export class ProfileView {
     this.openId.set(null);
   }
   /** A game mode for the queue, for queues without a label. */
-  modeName(p: MyProfile, queueId: number): string {
-    return p.matches.find((m) => m.queueId === queueId)?.gameMode ?? '';
-  }
+  readonly modeName = (p: MyProfile, queueId: number): string => p.matches.find((m) => m.queueId === queueId)?.gameMode ?? '';
   ranks(p: MyProfile): { label: string; line: RankLine | null; history: LpPoint[] }[] {
     return [
       { label: 'Solo/Duo', line: p.solo, history: p.lpHistory?.solo ?? [] },
@@ -702,20 +700,12 @@ export class ProfileView {
     ];
   }
   /** Ranked queues, which get an LP graph (or, before two saved ranks, a division meter). */
-  ranked(p: MyProfile) {
-    return this.ranks(p).filter((r) => r.line);
-  }
+  readonly ranked = (p: MyProfile) => this.ranks(p).filter((r) => r.line);
   pct = winPct;
   ratio = kdaRatio;
-  queue(id: number, mode = ''): string {
-    return queueLabel(id, mode);
-  }
-  resultLabel(m: MatchLine): string {
-    return RESULT_LABEL[m.result];
-  }
-  mins(s: number): string {
-    return `${Math.round(s / 60)} min`;
-  }
+  readonly queue = (id: number, mode = ''): string => queueLabel(id, mode);
+  readonly resultLabel = (m: MatchLine): string => RESULT_LABEL[m.result];
+  readonly mins = (s: number): string => `${Math.round(s / 60)} min`;
   private dayLabel(d: Date): string {
     const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
     const daysAgo = Math.round((startOf(new Date()) - startOf(d)) / 86_400_000);
@@ -724,11 +714,5 @@ export class ProfileView {
     const sameYear = d.getFullYear() === new Date().getFullYear();
     return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: sameYear ? undefined : 'numeric' });
   }
-  ago(ms: number): string {
-    const h = (Date.now() - ms) / 3_600_000;
-    if (h < 1) return 'just now';
-    if (h < 24) return `${Math.floor(h)}h ago`;
-    const d = Math.floor(h / 24);
-    return d < 30 ? `${d}d ago` : new Date(ms).toLocaleDateString();
-  }
+  ago = (ms: number) => ago(ms);
 }

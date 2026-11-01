@@ -6,6 +6,7 @@ import { CustomRunes, ItemSet, MIN_GAMES, RecChoice, RecState, Recommendation, R
 import { SituationalCard } from './situational-card';
 import { ItemTip, TipKind } from './item-tip';
 import { buildWhy, rolesLabel } from '../core/why';
+import { pct } from '../core/format';
 import { Loader } from './loader';
 import { RuneEditor } from './rune-editor';
 
@@ -43,7 +44,7 @@ interface ChoiceRow {
               @if (r.runes; as ru) { @if (!ru.custom) { · {{ ru.winRate * 100 | number: '1.0-1' }}% win } }
             </span>
             @if (!inGame()) {
-              <button class="ghost why-toggle" [class.on]="showWhy()" (click)="toggleWhy()">
+              <button class="ghost why-toggle" [class.on]="showWhy()" (click)="showWhy.set(!showWhy())">
                 {{ showWhy() ? 'Hide why' : 'Why these picks?' }}
               </button>
             }
@@ -158,7 +159,7 @@ interface ChoiceRow {
               <button class="src" role="radio" [attr.aria-checked]="!!s.choice.matchup" [class.on]="!!s.choice.matchup"
                 [disabled]="pickBusy()" (click)="pickSource(true)"
                 [title]="'OP.GG\\'s picks from ' + vs.games.toLocaleString() + ' games against ' + rift.champName(vs.opponentId) + ' in lane'">
-                <img class="round" [src]="champIcon(vs.opponentId)" alt="" (error)="rift.hideImg($event)" />
+                <img class="round" [src]="champIcon(vs.opponentId)" alt="" />
                 vs {{ rift.champName(vs.opponentId) }}
                 <span class="faint mono">{{ vs.games | number }} games</span>
               </button>
@@ -183,7 +184,7 @@ interface ChoiceRow {
                     @for (k of keys; track k.id) {
                       <button class="ks" role="radio" [attr.aria-checked]="k.on" [class.on]="k.on" [disabled]="pickBusy()"
                         [rlItemTip]="k.id" tipKind="rune" (click)="!k.on && pick('runes', k.i)">
-                        @if (k.icon) { <img [src]="k.icon" alt="" (error)="rift.hideImg($event)" /> }
+                        @if (k.icon) { <img [src]="k.icon" alt="" /> }
                         <span class="ks-text">
                           <span class="ks-name">{{ k.label }}</span>
                           <span class="ks-stats"><span class="num">{{ pct(k.winRate) }}</span> <span class="faint">{{ k.games | number }} games</span></span>
@@ -212,7 +213,7 @@ interface ChoiceRow {
                       <div class="sub">Shards</div>
                       <div class="shards">
                         @for (id of ru.perkIds.slice(6); track $index) {
-                          @if (perkIcon(id); as url) { <img [src]="url" [rlItemTip]="id" tipKind="rune" [alt]="perkName(id)" (error)="rift.hideImg($event)" /> }
+                          @if (rift.perkIcon(id); as url) { <img [src]="url" [rlItemTip]="id" tipKind="rune" [alt]="perkName(id)" /> }
                         }
                       </div>
                     }
@@ -237,7 +238,7 @@ interface ChoiceRow {
                   } @else {
                     <div class="spells">
                       @for (id of r.spells; track $index) {
-                        @if (spellIcon(id); as url) { <img [src]="url" alt="" [rlItemTip]="id" tipKind="spell" (error)="rift.hideImg($event)" /> }
+                        @if (rift.spellIcon(id); as url) { <img [src]="url" alt="" [rlItemTip]="id" tipKind="spell" /> }
                         <span>{{ spellName(id) }}</span>
                       }
                     </div>
@@ -283,7 +284,7 @@ interface ChoiceRow {
                       <div class="sub">Start with</div>
                       <div class="icons">
                         @for (id of st.ids; track $index) {
-                          @if (rift.itemIcon(id); as url) { <img [src]="url" [rlItemTip]="id" [alt]="itemName(id, st, $index)" (error)="rift.hideImg($event)" /> } @else { <span class="chip">{{ itemName(id, st, $index) }}</span> }
+                          @if (rift.itemIcon(id); as url) { <img [src]="url" [rlItemTip]="id" [alt]="itemName(id, st, $index)" /> } @else { <span class="chip">{{ itemName(id, st, $index) }}</span> }
                         }
                       </div>
                     </div>
@@ -293,7 +294,7 @@ interface ChoiceRow {
                       <div class="sub">Build order</div>
                       <div class="icons">
                         @for (id of r.buildOrder; track id; let last = $last) {
-                          @if (rift.itemIcon(id); as url) { <img [src]="url" [rlItemTip]="id" [alt]="itemNameAny(id, r)" (error)="rift.hideImg($event)" /> } @else { <span class="chip">{{ itemNameAny(id, r) }}</span> }
+                          @if (rift.itemIcon(id); as url) { <img [src]="url" [rlItemTip]="id" [alt]="itemNameAny(id, r)" /> } @else { <span class="chip">{{ itemNameAny(id, r) }}</span> }
                           @if (!last) { <span class="faint arrow">›</span> }
                         }
                       </div>
@@ -328,7 +329,7 @@ interface ChoiceRow {
 
     <ng-template #runeRow let-id let-ru="ru" let-i="i">
       <div class="rune" [rlItemTip]="id" tipKind="rune">
-        @if (perkIcon(id); as url) { <img [src]="url" alt="" (error)="rift.hideImg($event)" /> }
+        @if (rift.perkIcon(id); as url) { <img [src]="url" alt="" /> }
         <span>{{ perkLabel(id, ru.perkNames[i] ?? '') }}</span>
       </div>
     </ng-template>
@@ -341,7 +342,7 @@ interface ChoiceRow {
           <button class="choice" role="radio" [attr.aria-checked]="sel === (p.i ?? $index)" [class.on]="sel === (p.i ?? $index)"
             [disabled]="pickBusy()" [attr.title]="p.tips ? null : p.tip" (click)="pick(kind, p.i ?? $index)">
             <span class="choice-what">
-              @for (u of p.icons; track $index) { <img [class.round]="p.round" [src]="u" alt="" [rlItemTip]="p.tips?.[$index] ?? 0" [tipKind]="p.tipKind ?? 'item'" (error)="rift.hideImg($event)" /> }
+              @for (u of p.icons; track $index) { <img [class.round]="p.round" [src]="u" alt="" [rlItemTip]="p.tips?.[$index] ?? 0" [tipKind]="p.tipKind ?? 'item'" /> }
               <span class="choice-name" [attr.title]="p.tips ? p.tip : null">{{ p.label }}</span>
             </span>
             <span class="num">{{ pct(p.o.winRate) }}</span>
@@ -374,13 +375,10 @@ interface ChoiceRow {
   styles: `
     .rec { margin: 14px 0 4px; display: flex; flex-direction: column; gap: 14px; }
     .head { display: flex; align-items: baseline; gap: 10px; }
-    .small { font-size: 12.5px; margin: 0; }
     .warn { color: var(--gold); }
     .rec { container-type: inline-size; }
     .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); margin-top: 2px; }
     .picked { color: var(--win); }
-    .strong { font-weight: 600; }
-    .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
     /* Layout: runes | spells + skills, then items across the card. Titled panels with room between them. */
     .layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
@@ -545,10 +543,6 @@ export class RecCard {
   protected readonly champIcon = championIcon;
   protected readonly showWhy = signal(false);
 
-  protected toggleWhy(): void {
-    this.showWhy.set(!this.showWhy());
-  }
-
   /** Skill-order placeholder: one box per level. */
   protected readonly levels = Array.from({ length: 18 });
   /** Rune-name placeholders, roughly as wide as real names ("Taste of Blood", "Grisly Mementos"…). */
@@ -557,8 +551,7 @@ export class RecCard {
   protected readonly why = computed(() => {
     const r = this.state()?.rec;
     if (!r) return null;
-    const champ = this.rift.statics()?.champions.find((c) => c.id === r.championId);
-    return buildWhy(r, champ, this.rift.itemById(), this.rift.perkById(), this.rift.styleById(), this.rift.spellById(), (k) =>
+    return buildWhy(r, this.rift.champ(r.championId), this.rift.itemById(), this.rift.perkById(), this.rift.styleById(), this.rift.spellById(), (k) =>
       this.rift.abilityKey(k),
     );
   });
@@ -568,7 +561,7 @@ export class RecCard {
     const s = this.state();
     if (!s?.rec) return '';
     const name = this.rift.champName(s.championId);
-    const roles = rolesLabel(this.rift.statics()?.champions.find((c) => c.id === s.championId)).toLowerCase();
+    const roles = rolesLabel(this.rift.champ(s.championId)).toLowerCase();
     const damage = { AD: 'physical', AP: 'magic', BOTH: 'mixed physical and magic' }[s.rec.damageType];
     let who = name;
     if (roles) who += ` is a ${roles}`;
@@ -576,9 +569,7 @@ export class RecCard {
     const lead = who === name ? '' : `${who}. `;
     return `${lead}Each pick below shows what it does, why it suits ${name}, and how it does on OP.GG.`;
   });
-  iconFor(path: string): string {
-    return assetUrl(path);
-  }
+  protected readonly iconFor = assetUrl;
 
   /** A lookup to show instead of champ select's (the Champions tab). */
   readonly lookup = input<RecState | null>();
@@ -625,9 +616,7 @@ export class RecCard {
     return sit && sit.championId === this.state()?.championId ? sit : null;
   });
 
-  coreIds(r: Recommendation): number[] {
-    return [...(r.core?.ids ?? []), ...(r.boots?.ids ?? [])];
-  }
+  readonly coreIds = (r: Recommendation): number[] => [...(r.core?.ids ?? []), ...(r.boots?.ids ?? [])];
 
   /** Switches between the build from all games and the one against your lane opponent. */
   async pickSource(vs: boolean): Promise<void> {
@@ -671,7 +660,7 @@ export class RecCard {
       const id = o.perkIds[0];
       let k = out.find((x) => x.id === id);
       if (!k) {
-        k = { id, label: this.perkLabel(id, o.keystoneName), icon: this.perkIcon(id), games: 0, winRate: 0, i, on: !custom && id === picked };
+        k = { id, label: this.perkLabel(id, o.keystoneName), icon: this.rift.perkIcon(id), games: 0, winRate: 0, i, on: !custom && id === picked };
         out.push(k);
       }
       k.winRate = (k.winRate * k.games + o.winRate * o.games) / Math.max(1, k.games + o.games);
@@ -698,11 +687,10 @@ export class RecCard {
         const minor = (r: RuneRec) => r.perkIds.slice(1, 6);
         const swapped = minor(o).filter((p) => !minor(twin).includes(p));
         label = swapped.map((p) => this.perkLabel(p, o.perkNames[o.perkIds.indexOf(p)] ?? '')).filter(Boolean).join(' + ') || 'Other runes';
-        icons = [this.perkIcon(swapped[0] ?? o.perkIds[0])];
+        icons = [this.rift.perkIcon(swapped[0] ?? o.perkIds[0])];
         hover = { tips: [swapped[0] ?? o.perkIds[0]], tipKind: 'rune' };
       }
-      if (!icons[0]) return [{ o, label, icons: [], round: true, i, tip: this.optTip(o, this.runeOptionNames(o)) } satisfies ChoiceRow];
-      return [{ o, label, icons, ...hover, round: true, i, tip: this.optTip(o, this.runeOptionNames(o)) } satisfies ChoiceRow];
+      return [{ o, label, ...(icons[0] ? { icons, ...hover } : { icons: [] }), round: true, i, tip: this.optTip(o, this.runeOptionNames(o)) } satisfies ChoiceRow];
     });
     // With keystone chips the list stays even with one tree, so it doesn't vanish on a less played keystone.
     return rows.length > 1 || (rows.length && this.keystones()) ? rows : null;
@@ -713,8 +701,8 @@ export class RecCard {
     if (opts.length < 2) return null;
     return opts.map((o) => {
       const label = o.ids.map((id) => this.spellName(id)).join(' + ');
-      const withIcon = o.ids.filter((id) => this.spellIcon(id));
-      return { o, label, icons: withIcon.map((id) => this.spellIcon(id)), tips: withIcon, tipKind: 'spell', tip: this.optTip(o, label) } satisfies ChoiceRow;
+      const withIcon = o.ids.filter((id) => this.rift.spellIcon(id));
+      return { o, label, icons: withIcon.map((id) => this.rift.spellIcon(id)), tips: withIcon, tipKind: 'spell', tip: this.optTip(o, label) } satisfies ChoiceRow;
     });
   });
 
@@ -732,16 +720,12 @@ export class RecCard {
     });
   }
 
-  pct(winRate: number): string {
-    return `${Math.round(winRate * 100)}%`;
-  }
+  pct = (winRate: number) => pct(winRate, 0);
   /** Hover text for an option chip: what it is, then how it does on OP.GG. */
   optTip(o: { games: number; winRate: number; pickRate: number }, what: string): string {
-    return `${what}\n${(o.winRate * 100).toFixed(1)}% win · ${o.games.toLocaleString()} games · picked in ${(o.pickRate * 100).toFixed(0)}%`;
+    return `${what}\n${pct(o.winRate)} win · ${o.games.toLocaleString()} games · picked in ${pct(o.pickRate, 0)}`;
   }
-  runeOptionNames(o: RuneRec): string {
-    return o.perkIds.slice(0, 6).map((id, i) => this.perkLabel(id, o.perkNames[i] ?? '')).filter(Boolean).join(' · ');
-  }
+  readonly runeOptionNames = (o: RuneRec): string => o.perkIds.slice(0, 6).map((id, i) => this.perkLabel(id, o.perkNames[i] ?? '')).filter(Boolean).join(' · ');
 
   /** Only show the recommendation for the champion currently picked. */
   protected readonly state = computed(() => {
@@ -754,30 +738,16 @@ export class RecCard {
     return s;
   });
 
-  perkIcon(id: number): string {
-    return assetUrl(this.rift.perkById().get(id)?.iconPath);
-  }
   /** Hover text: the rune's name and what it does. */
   perkName(id: number): string {
     const p = this.rift.perkById().get(id);
     return p ? [p.name, p.desc].filter(Boolean).join('\n') : '';
   }
   /** Names from the client's data, falling back to OP.GG's (the website API sends none). */
-  perkLabel(id: number, fallback: string): string {
-    return this.rift.perkById().get(id)?.name ?? fallback;
-  }
-  styleName(id: number, fallback: string): string {
-    return this.rift.styleById().get(id)?.name ?? (fallback || TREES[id]) ?? '';
-  }
-  spellIcon(id: number): string {
-    return assetUrl(this.rift.spellById().get(id)?.iconPath);
-  }
-  spellName(id: number): string {
-    return this.rift.spellById().get(id)?.name ?? `Spell ${id}`;
-  }
-  itemName(id: number, set: ItemSet, i: number): string {
-    return this.rift.itemById().get(id)?.name ?? set.names[i] ?? `Item ${id}`;
-  }
+  readonly perkLabel = (id: number, fallback: string): string => this.rift.perkById().get(id)?.name ?? fallback;
+  readonly styleName = (id: number, fallback: string): string => this.rift.styleById().get(id)?.name ?? (fallback || TREES[id]) ?? '';
+  readonly spellName = (id: number): string => this.rift.spellById().get(id)?.name ?? `Spell ${id}`;
+  readonly itemName = (id: number, set: ItemSet, i: number): string => this.rift.itemById().get(id)?.name ?? set.names[i] ?? `Item ${id}`;
   /** Name for an item in the build order, from the client or OP.GG's own names. */
   itemNameAny(id: number, r: { starter: ItemSet | null; boots: ItemSet | null; core: ItemSet | null; later: ItemSet[][] }): string {
     const known = this.rift.itemById().get(id)?.name;

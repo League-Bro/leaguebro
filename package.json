@@ -4,7 +4,9 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve --host 127.0.0.1 --port 4200",
+    "prebuild": "node scripts/check-code.mjs",
     "build": "ng build",
+    "check": "node scripts/check-code.mjs",
     "tauri": "tauri"
   },
   "private": true,

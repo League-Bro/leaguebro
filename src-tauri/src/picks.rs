@@ -250,26 +250,10 @@ async fn lookup(app: &AppHandle, view: &ChampSelectView, opponent_pick: Option<i
     let position = view.my_position.to_lowercase();
     let (names, lcu, mode) = {
         let sh = state.shared.lock().await;
-        let names: Vec<(i64, String)> = sh
-            .statics
-            .as_ref()
-            .map(|s| s.champions.iter().filter(|c| !c.classic).map(|c| (c.id, c.name.clone())).collect())
-            .unwrap_or_default();
-        (names, sh.lcu.clone(), opgg::game_mode_for(view.queue_id, sh.map()).unwrap_or("ranked"))
+        (sh.champ_names(), sh.lcu.clone(), opgg::game_mode_for(view.queue_id, sh.map()).unwrap_or("ranked"))
     };
-    let names = Some(names).filter(|n| !n.is_empty());
     let enemies: Vec<i64> = view.enemies.iter().map(|e| e.champion_id).filter(|&c| c > 0).collect();
-    let (opponent, guessed) = match opponent_pick {
-        Some(p) if p == 0 || enemies.contains(&p) => (p, false),
-        _ if enemies.is_empty() => (0, true),
-        _ => {
-            let lanes = state.tiers.lane_games(names.clone()).await.unwrap_or_else(|e| {
-                eprintln!("pick suggestions lane guess: {e:#}");
-                HashMap::new()
-            });
-            (matchup::guess_opponent(&position, &enemies, &lanes).unwrap_or(0), true)
-        }
-    };
+    let (opponent, guessed) = matchup::resolve_opponent(&state, opponent_pick, &position, &enemies).await;
     let tiers = state.tiers.get(Source::Opgg, &position, "emerald_plus", names).await?;
     let counters = if opponent > 0 { Some(counters(app, opponent, &position, mode).await?) } else { None };
 
@@ -367,8 +351,7 @@ mod tests {
     #[test]
     fn reads_opgg_counters() {
         // Real answer for Ahri mid (October 2026): Ahri's wins against each opponent.
-        let text = std::fs::read_to_string(format!("{}/tests/fixtures/opgg_web_ahri_mid.json", env!("CARGO_MANIFEST_DIR"))).unwrap();
-        let rows = parse_counters(&serde_json::from_str(&text).unwrap());
+        let rows = parse_counters(&crate::util::fixture_json("opgg_web_ahri_mid.json"));
         assert!(rows.len() > 30, "{} rows", rows.len());
         assert_eq!(rows[0], Counter { champion_id: 517, games: 602, wins: 327 });
         assert!(rows.iter().all(|c| c.wins <= c.games));

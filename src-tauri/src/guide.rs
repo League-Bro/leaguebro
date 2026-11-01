@@ -181,8 +181,7 @@ mod tests {
 
     #[test]
     fn reads_the_client_champion_file() {
-        let raw = std::fs::read_to_string(format!("{}/tests/fixtures/champion_ahri.json", env!("CARGO_MANIFEST_DIR"))).unwrap();
-        let g = parse_kit(&serde_json::from_str(&raw).unwrap());
+        let g = parse_kit(&crate::util::fixture_json("champion_ahri.json"));
         assert_eq!(g.name, "Ahri");
         assert_eq!(g.title, "the Nine-Tailed Fox");
         assert_eq!(g.difficulty, 2);

@@ -309,7 +309,6 @@ type BoolKey =
     .wide { flex: 1; }
     .keybind { display: flex; flex-direction: column; align-items: center; gap: 2px; }
     .key { width: 52px; text-align: center; text-transform: uppercase; }
-    .small { font-size: 12.5px; margin: 0; }
     .sub {
       margin: 8px 0 0; padding-top: 10px; border-top: 1px solid var(--line);
       font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
