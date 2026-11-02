@@ -1132,9 +1132,9 @@ impl Engine {
 
     /// Saves your current ranks to the LP history, which it returns.
     async fn record_ranks(&self, lcu: &Lcu) -> Option<crate::lp_history::LpHistory> {
-        let stats = lcu.get(&format!("/lol-ranked/v1/ranked-stats/{}", self.my_puuid)).await.ok().flatten()?;
-        let (solo, flex) = (scout::parse_rank(&stats, "RANKED_SOLO_5x5"), scout::parse_rank(&stats, "RANKED_FLEX_SR"));
-        self.state().lp.record_ranks(&self.my_puuid, solo.as_ref(), flex.as_ref())
+        let stats = lcu.get(&scout::ranked_stats_path(&self.my_puuid)).await.ok().flatten()?;
+        let r = scout::PlayerRanks::from_stats(&stats);
+        self.state().lp.record_ranks(&self.my_puuid, r.solo.as_ref(), r.flex.as_ref())
     }
 
     async fn on_phase_change(&mut self, lcu: &Lcu, phase: &str) {

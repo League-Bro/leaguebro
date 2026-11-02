@@ -4,6 +4,7 @@ import { RiftService, inTauri } from '../core/rift.service';
 import { UpdateService } from '../core/update.service';
 import { IS_MAC, MOD_KEY } from '../core/platform';
 import { profileIcon } from '../core/assets';
+import { readLocal, writeLocal } from '../core/storage';
 import { LiveView } from './live-view';
 import { ChampionsView } from './champions-view';
 import { SettingsView } from './settings-view';
@@ -42,14 +43,6 @@ const RAIL_KEY = 'leaguebro.railCollapsed';
 
 /** Below this window width the side rail collapses to icons on its own. */
 const narrowQuery = typeof matchMedia === 'function' ? matchMedia('(max-width: 1100px)') : null;
-
-function readRailCollapsed(): boolean {
-  try {
-    return localStorage.getItem(RAIL_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
 
 /** Client phases from joining a lobby to closing the end-of-game screen. */
 const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'));
@@ -294,7 +287,7 @@ export class Shell implements OnInit {
   protected readonly isMac = IS_MAC;
 
   /** Collapsed with the button; remembered between runs. */
-  private readonly pinnedCollapsed = signal(readRailCollapsed());
+  private readonly pinnedCollapsed = signal(readLocal(RAIL_KEY) === '1');
   /** The window is narrow enough (narrowQuery) that it collapses the rail on its own. */
   private readonly narrow = signal(narrowQuery?.matches ?? false);
   /** Expanded with the button while the window is narrow; dropped when the window crosses the width again. */
@@ -324,11 +317,7 @@ export class Shell implements OnInit {
 
   private setPinned(on: boolean): void {
     this.pinnedCollapsed.set(on);
-    try {
-      localStorage.setItem(RAIL_KEY, on ? '1' : '0');
-    } catch {
-      // No storage (private window): the choice just lasts until League Bro closes.
-    }
+    writeLocal(RAIL_KEY, on ? '1' : '0');
   }
 
   /** Whether the window is maximized, so the title bar shows Restore instead of Maximize. */

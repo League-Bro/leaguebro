@@ -157,35 +157,25 @@ export class PickSuggest {
   });
   protected readonly enemies = computed(() => (this.rift.champSelect()?.enemies ?? []).map((e) => e.championId).filter((id) => id > 0));
 
-  private readonly champs = computed(() => new Map((this.rift.statics()?.champions ?? []).map((c) => [c.id, c])));
-
-  private split(id: number): [number, number, number] | null {
-    const c = this.champs().get(id);
-    return c ? championSplit(c.alias, c.roles) : null;
-  }
-
   /** The damage your team lacks: "AP" when your picks so far are mostly AD, and the other way round. */
   protected readonly need = computed(() => {
     const allies = (this.rift.champSelect()?.allies ?? []).filter((p) => !p.isMe).map((p) => p.championId || p.pickIntent);
-    const s = teamSplit(allies.filter((id) => id > 0).map((id) => this.split(id)).filter((x) => !!x));
+    const s = teamSplit(this.rift.champs(allies));
     if (!s || s.counted < 2) return '';
     return s.ad >= 70 ? 'AP' : s.ap >= 70 ? 'AD' : '';
   });
 
   /** What the enemy picks so far are built around (tanks, dive, poke, squishy). */
-  protected readonly traits = computed(() => {
-    const enemies = (this.rift.champSelect()?.enemies ?? []).map((e) => this.champs().get(e.championId)).filter((c) => !!c);
-    return enemyTraits(enemies);
-  });
+  protected readonly traits = computed(() => enemyTraits(this.rift.champs(this.enemies())));
 
   private readonly ranked = computed<Shown[]>(() => {
     const need = this.need();
     const traits = this.traits();
     const picks = (this.state()?.picks ?? []).map((p) => {
-      const s = this.split(p.championId);
+      const c = this.rift.champ(p.championId);
+      const s = c ? championSplit(c) : null;
       const kind = !s ? '' : s[1] >= 60 ? 'AP' : s[0] >= 60 ? 'AD' : '';
-      const alias = this.champs().get(p.championId)?.alias ?? '';
-      const tags = alias ? traits.map((t) => answers(t.trait, alias)).filter((a) => !!a) : [];
+      const tags = c ? traits.map((t) => answers(t.trait, c.alias)).filter((a) => !!a) : [];
       return { ...p, adds: need && kind === need ? need : '', answers: tags };
     });
     // A point of win rate per answer: enough to swap close picks, not to lift a bad one.

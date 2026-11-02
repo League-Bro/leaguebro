@@ -95,8 +95,7 @@ pub fn parse_history(history: &Value) -> Vec<GameLine> {
 pub fn summarize(puuid: &str, stats: Option<&Value>, games: Vec<GameLine>) -> Profile {
     let mut p = Profile { puuid: puuid.to_string(), ..Default::default() };
     if let Some(stats) = stats {
-        p.solo = parse_rank(stats, "RANKED_SOLO_5x5");
-        p.flex = parse_rank(stats, "RANKED_FLEX_SR");
+        PlayerRanks { solo: p.solo, flex: p.flex } = PlayerRanks::from_stats(stats);
     }
     let n = games.len() as i64;
     p.recent_games = n;
@@ -126,7 +125,7 @@ pub fn summarize(puuid: &str, stats: Option<&Value>, games: Vec<GameLine>) -> Pr
 
 pub async fn lookup(lcu: &Lcu, puuid: &str) -> Profile {
     let (stats_path, history_path) = (
-        format!("/lol-ranked/v1/ranked-stats/{puuid}"),
+        ranked_stats_path(puuid),
         format!("/lol-match-history/v1/products/lol/{puuid}/matches?begIndex=0&endIndex=19"),
     );
     let (stats, history) = tokio::join!(lcu.get(&stats_path), lcu.get(&history_path));
@@ -161,6 +160,18 @@ pub struct PlayerRanks {
     pub flex: Option<RankLine>,
 }
 
+impl PlayerRanks {
+    /// Both ranks from the client's `ranked-stats` answer.
+    pub fn from_stats(stats: &Value) -> Self {
+        Self { solo: parse_rank(stats, "RANKED_SOLO_5x5"), flex: parse_rank(stats, "RANKED_FLEX_SR") }
+    }
+}
+
+/// The client's ranked stats for a player.
+pub fn ranked_stats_path(puuid: &str) -> String {
+    format!("/lol-ranked/v1/ranked-stats/{puuid}")
+}
+
 /// Ranks looked up this session, by puuid, with when they were fetched.
 static RANKS: LazyLock<Mutex<HashMap<String, (Instant, PlayerRanks)>>> = LazyLock::new(Default::default);
 /// How long a looked-up rank is reused before asking the client again.
@@ -187,16 +198,13 @@ pub async fn ranks(lcu: &Lcu, puuids: &[String]) -> HashMap<String, PlayerRanks>
     for id in missing {
         let lcu = lcu.clone();
         set.spawn(async move {
-            let stats = lcu.get(&format!("/lol-ranked/v1/ranked-stats/{id}")).await;
+            let stats = lcu.get(&ranked_stats_path(&id)).await;
             (id, stats)
         });
     }
     while let Some(done) = set.join_next().await {
         let Ok((id, Ok(stats))) = done else { continue };
-        let r = stats.map_or_else(PlayerRanks::default, |s| PlayerRanks {
-            solo: parse_rank(&s, "RANKED_SOLO_5x5"),
-            flex: parse_rank(&s, "RANKED_FLEX_SR"),
-        });
+        let r = stats.map_or_else(PlayerRanks::default, |s| PlayerRanks::from_stats(&s));
         RANKS.lock().unwrap().insert(id.clone(), (Instant::now(), r.clone()));
         found.insert(id, r);
     }

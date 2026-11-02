@@ -1,17 +1,8 @@
 import { ChangeDetectionStrategy, Component, effect, inject, signal, untracked } from '@angular/core';
-import { RiftService } from '../core/rift.service';
 import { UpdateService } from '../core/update.service';
 import { IS_MAC } from '../core/platform';
-import { AbilityKeys, CacheInfo, CacheName, Config, GlobalSets } from '../core/models';
-
-type BoolKey =
-  | 'scoutInChampSelect'
-  | 'scoutOnLoading'
-  | 'showRoasts'
-  | 'shareUsageStats'
-  | 'autoImportRunes'
-  | 'importOnHover'
-  | 'keepMyPagesWhenFull';
+import { AbilityKeys, CacheInfo, CacheName, GlobalSets } from '../core/models';
+import { ConfigPage } from './config-page';
 
 @Component({
   selector: 'rl-settings',
@@ -22,8 +13,8 @@ type BoolKey =
         <section class="card stack">
           <h2>Recommendations</h2>
           <div class="seg">
-            <button [class.on]="cfg.recSource === 'opgg'" (click)="setSource('opgg')">OP.GG meta</button>
-            <button [class.on]="cfg.recSource === 'client'" (click)="setSource('client')">League client only</button>
+            <button [class.on]="cfg.recSource === 'opgg'" (click)="set('recSource', 'opgg')">OP.GG meta</button>
+            <button [class.on]="cfg.recSource === 'client'" (click)="set('recSource', 'client')">League client only</button>
           </div>
           <p class="faint small">
             @if (cfg.recSource === 'opgg') {
@@ -34,12 +25,12 @@ type BoolKey =
           </p>
           @if (cfg.recSource === 'opgg') {
             <label class="toggle">
-              <input type="checkbox" [checked]="cfg.setSummonerSpells" (change)="setRec('setSummonerSpells', $any($event.target).checked)" />
+              <input type="checkbox" [checked]="cfg.setSummonerSpells" (change)="set('setSummonerSpells', $any($event.target).checked)" />
               <span class="track"></span>
               <span class="label"><b>Set summoner spells</b><span>On lock-in. Flash stays on whichever key you already use.</span></span>
             </label>
             <label class="toggle">
-              <input type="checkbox" [checked]="cfg.setItemSets" (change)="setRec('setItemSets', $any($event.target).checked)" />
+              <input type="checkbox" [checked]="cfg.setItemSets" (change)="set('setItemSets', $any($event.target).checked)" />
               <span class="track"></span>
               <span class="label"><b>Add the build to the in-game shop</b><span>On lock-in, as a "League Bro" item set listed first under Item Sets, so the shop opens on it. Your own item sets aren't touched.</span></span>
             </label>
@@ -72,7 +63,7 @@ type BoolKey =
         <section class="card stack">
           <h2>Ability keys</h2>
           <p class="faint small">Rebound your abilities in League? Enter your keys and every skill order in League Bro shows them instead of Q W E R.</p>
-          <div class="field">
+          <div class="setting-field">
             @for (k of abilitySlots; track k) {
               <label class="keybind">
                 <span class="faint small">{{ k.toUpperCase() }}</span>
@@ -87,17 +78,17 @@ type BoolKey =
         <section class="card stack">
           <h2>Rune import</h2>
           <label class="toggle">
-            <input type="checkbox" [checked]="cfg.autoImportRunes" (change)="setBool('autoImportRunes', $any($event.target).checked)" />
+            <input type="checkbox" [checked]="cfg.autoImportRunes" (change)="set('autoImportRunes', $any($event.target).checked)" />
             <span class="track"></span>
             <span class="label"><b>Import runes</b><span>In champ select, creates one page called "League Bro: …" and overwrites it each game. In a Swiftplay lobby, sets the runes of each champion you pick there.</span></span>
           </label>
           <label class="toggle">
-            <input type="checkbox" [checked]="cfg.importOnHover" (change)="setBool('importOnHover', $any($event.target).checked)" />
+            <input type="checkbox" [checked]="cfg.importOnHover" (change)="set('importOnHover', $any($event.target).checked)" />
             <span class="track"></span>
             <span class="label"><b>Import while hovering</b><span>Don't wait for lock-in. Handy for blind pick.</span></span>
           </label>
           <label class="toggle">
-            <input type="checkbox" [checked]="cfg.keepMyPagesWhenFull" (change)="setBool('keepMyPagesWhenFull', $any($event.target).checked)" />
+            <input type="checkbox" [checked]="cfg.keepMyPagesWhenFull" (change)="set('keepMyPagesWhenFull', $any($event.target).checked)" />
             <span class="track"></span>
             <span class="label"><b>Keep my pages when slots are full</b><span>If every slot is used and there's no League Bro page yet, League Bro takes over the selected page once and reuses it after that. Turn on to get an error instead.</span></span>
           </label>
@@ -106,12 +97,12 @@ type BoolKey =
         <section class="card stack">
           <h2>Scouting</h2>
           <label class="toggle">
-            <input type="checkbox" [checked]="cfg.scoutInChampSelect" (change)="setBool('scoutInChampSelect', $any($event.target).checked)" />
+            <input type="checkbox" [checked]="cfg.scoutInChampSelect" (change)="set('scoutInChampSelect', $any($event.target).checked)" />
             <span class="track"></span>
             <span class="label"><b>Look up teammates in champ select</b><span>Only players whose names the client shows: your party, and everyone in normals. Ranked hides the rest until loading.</span></span>
           </label>
           <label class="toggle">
-            <input type="checkbox" [checked]="cfg.scoutOnLoading" (change)="setBool('scoutOnLoading', $any($event.target).checked)" />
+            <input type="checkbox" [checked]="cfg.scoutOnLoading" (change)="set('scoutOnLoading', $any($event.target).checked)" />
             <span class="track"></span>
             <span class="label"><b>Look up all ten players on the loading screen</b><span>Ranks and recent games, straight from the League client. No API key needed.</span></span>
           </label>
@@ -120,7 +111,7 @@ type BoolKey =
         <section class="card stack">
           <h2>Post-game</h2>
           <label class="toggle">
-            <input type="checkbox" [checked]="cfg.showRoasts" (change)="setBool('showRoasts', $any($event.target).checked)" />
+            <input type="checkbox" [checked]="cfg.showRoasts" (change)="set('showRoasts', $any($event.target).checked)" />
             <span class="track"></span>
             <span class="label"><b>Roasts</b><span>"The Bro's review" after each game: a bit of trash talk for what went badly, and some hype for what went well. Also shown for other players when you click them.</span></span>
           </label>
@@ -129,7 +120,7 @@ type BoolKey =
         <section class="card stack">
           <h2>Privacy</h2>
           <label class="toggle">
-            <input type="checkbox" [checked]="cfg.shareUsageStats" (change)="setBool('shareUsageStats', $any($event.target).checked)" />
+            <input type="checkbox" [checked]="cfg.shareUsageStats" (change)="set('shareUsageStats', $any($event.target).checked)" />
             <span class="track"></span>
             <span class="label"><b>Share anonymous usage stats</b><span>Once a day, League Bro says "the app was opened" with a random ID made up on this computer, the app version and the {{ osName }} version. Never your Riot ID, games or settings. It only helps count how many people use the app.</span></span>
           </label>
@@ -137,13 +128,13 @@ type BoolKey =
 
         <section class="card stack">
           <h2>Troubleshooting</h2>
-          <h3 class="sub first">League install folder</h3>
+          <h3 class="setting-head first">League install folder</h3>
           <p class="faint small">Only needed if League Bro never connects. It normally finds the client on its own.</p>
-          <div class="field">
+          <div class="setting-field">
             <input type="text" class="wide" [placeholder]="installHint" [value]="cfg.installDir ?? ''"
               (change)="setInstall($any($event.target).value)" />
           </div>
-          <h3 class="sub">Clear cache</h3>
+          <h3 class="setting-head">Clear cache</h3>
           <p class="faint small">Saved downloads. Clearing one fetches a fresh copy the next time it's needed.</p>
           @for (c of cacheRows; track c.key) {
             <div class="cache-row">
@@ -179,16 +170,9 @@ type BoolKey =
        leaves a gap next to a short one, and cards fill each column in order. */
     .grid { columns: 360px 3; column-gap: 16px; }
     .grid > .card { break-inside: avoid; margin-bottom: 16px; gap: 6px; }
-    .field { display: flex; align-items: center; gap: 10px; }
-    .field > span:first-child { width: 72px; flex: none; color: var(--text-dim); }
     .wide { flex: 1; }
     .keybind { display: flex; flex-direction: column; align-items: center; gap: 2px; }
     .key { width: 52px; text-align: center; text-transform: uppercase; }
-    .sub {
-      margin: 8px 0 0; padding-top: 10px; border-top: 1px solid var(--line);
-      font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
-    }
-    .sub.first { margin-top: 0; padding-top: 0; border-top: none; }
     .global-sets {
       display: flex; flex-direction: column; gap: 6px; margin-top: 4px; padding: 10px 12px;
       border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg-sunken);
@@ -202,10 +186,8 @@ type BoolKey =
     .cache-row .mono { white-space: nowrap; }
   `,
 })
-export class SettingsView {
-  protected readonly rift = inject(RiftService);
+export class SettingsView extends ConfigPage {
   protected readonly updates = inject(UpdateService);
-  protected readonly error = signal('');
   protected readonly abilitySlots: (keyof AbilityKeys)[] = ['q', 'w', 'e', 'r'];
   protected readonly osName = IS_MAC ? 'macOS' : 'Windows';
   protected readonly installHint = IS_MAC ? '/Applications/League of Legends.app/Contents/LoL' : 'C:\\Riot Games\\League of Legends';
@@ -222,6 +204,7 @@ export class SettingsView {
   protected readonly globalBusy = signal(false);
 
   constructor() {
+    super();
     // Reloaded whenever a recommendation arrives, since that's when the rune
     // cache grows. Patch notes only change on the Patch Notes tab, and coming
     // back here recreates this view.
@@ -287,19 +270,6 @@ export class SettingsView {
     }
   }
 
-  private save(fn: (c: Config) => Config): void {
-    this.rift.updateConfig(fn).catch((e) => this.error.set(String(e)));
-  }
-
-  setBool(key: BoolKey, v: boolean): void {
-    this.save((c) => ({ ...c, [key]: v }));
-  }
-  setSource(v: 'opgg' | 'client'): void {
-    this.save((c) => ({ ...c, recSource: v }));
-  }
-  setRec(key: 'setSummonerSpells' | 'setItemSets', v: boolean): void {
-    this.save((c) => ({ ...c, [key]: v }));
-  }
   setKey(key: keyof AbilityKeys, raw: string): void {
     // Empty is fine: displays fall back to Q/W/E/R (RiftService.abilityKey).
     const v = raw.trim().toUpperCase();

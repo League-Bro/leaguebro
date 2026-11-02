@@ -1,18 +1,7 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { RiftService } from '../core/rift.service';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ConfigPage } from './config-page';
 import { FullscreenHint } from './fullscreen-hint';
 import { Overlay } from './overlay';
-import { Config } from '../core/models';
-
-type BoolKey =
-  | 'overlayEnabled'
-  | 'showTimers'
-  | 'showLaneDiff'
-  | 'showSituational'
-  | 'showCs'
-  | 'overlayGrowUp'
-  | 'showTeamDiff'
-  | 'showBuyNow';
 
 /** The Overlay page: the in-game overlay's look, position and parts (moved out of Settings). */
 @Component({
@@ -25,45 +14,45 @@ type BoolKey =
         <div class="col">
           <section class="card stack" [class.off]="!cfg.overlayEnabled">
             <h2>What it shows</h2>
-            <h3 class="sub first">Top line</h3>
+            <h3 class="setting-head first">Top line</h3>
             <label class="toggle">
-              <input type="checkbox" [checked]="cfg.showLaneDiff" (change)="setBool('showLaneDiff', $any($event.target).checked)" />
+              <input type="checkbox" [checked]="cfg.showLaneDiff" (change)="set('showLaneDiff', $any($event.target).checked)" />
               <span class="track"></span>
               <span class="label"><b>Item gold vs your lane opponent</b><span>The total cost of your items against theirs. Not shown in modes without roles, like ARAM.</span></span>
             </label>
             <label class="toggle">
-              <input type="checkbox" [checked]="cfg.showTeamDiff ?? true" (change)="setBool('showTeamDiff', $any($event.target).checked)" />
+              <input type="checkbox" [checked]="cfg.showTeamDiff ?? true" (change)="set('showTeamDiff', $any($event.target).checked)" />
               <span class="track"></span>
               <span class="label"><b>Item gold vs the enemy team</b><span>Your team's item value against theirs.</span></span>
             </label>
             <label class="toggle">
-              <input type="checkbox" [checked]="cfg.showCs ?? true" (change)="setBool('showCs', $any($event.target).checked)" />
+              <input type="checkbox" [checked]="cfg.showCs ?? true" (change)="set('showCs', $any($event.target).checked)" />
               <span class="track"></span>
               <span class="label"><b>CS per minute</b><span>From the first minute on. The game only updates CS every 10 minions, so it moves in steps.</span></span>
             </label>
-            <h3 class="sub">Sections</h3>
+            <h3 class="setting-head">Sections</h3>
             <label class="toggle">
-              <input type="checkbox" [checked]="cfg.showTimers" (change)="setBool('showTimers', $any($event.target).checked)" />
+              <input type="checkbox" [checked]="cfg.showTimers" (change)="set('showTimers', $any($event.target).checked)" />
               <span class="track"></span>
               <span class="label"><b>Objective timers</b><span>Dragon, Baron and inhibitor respawns. The Live tab shows them either way.</span></span>
             </label>
             <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
-              <input type="checkbox" [checked]="cfg.showSkillHint" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('showSkillHint', $any($event.target).checked)" />
+              <input type="checkbox" [checked]="cfg.showSkillHint" [disabled]="cfg.recSource !== 'opgg'" (change)="set('showSkillHint', $any($event.target).checked)" />
               <span class="track"></span>
               <span class="label"><b>Skill order</b><span>Which ability you're maxing now (pink), which one is next (teal), and what to level when you have a point.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
             </label>
             <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
-              <input type="checkbox" [checked]="cfg.useRecommendedBuilds" [disabled]="cfg.recSource !== 'opgg'" (change)="setRec('useRecommendedBuilds', $any($event.target).checked)" />
+              <input type="checkbox" [checked]="cfg.useRecommendedBuilds" [disabled]="cfg.recSource !== 'opgg'" (change)="set('useRecommendedBuilds', $any($event.target).checked)" />
               <span class="track"></span>
               <span class="label"><b>Next items to buy</b><span>Starting items, then OP.GG's next item and the parts left to buy, green when you can afford them.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
             </label>
             <label class="toggle" [class.off]="cfg.recSource !== 'opgg' || !cfg.useRecommendedBuilds">
-              <input type="checkbox" [checked]="cfg.showBuyNow ?? true" [disabled]="cfg.recSource !== 'opgg' || !cfg.useRecommendedBuilds" (change)="setBool('showBuyNow', $any($event.target).checked)" />
+              <input type="checkbox" [checked]="cfg.showBuyNow ?? true" [disabled]="cfg.recSource !== 'opgg' || !cfg.useRecommendedBuilds" (change)="set('showBuyNow', $any($event.target).checked)" />
               <span class="track"></span>
               <span class="label"><b>Buy now</b><span>What your gold buys now toward the next item, like a Long Sword before the Noonquiver.@if (cfg.recSource !== 'opgg' || !cfg.useRecommendedBuilds) { Needs Next items to buy. }</span></span>
             </label>
             <label class="toggle" [class.off]="cfg.recSource !== 'opgg'">
-              <input type="checkbox" [checked]="cfg.showSituational" [disabled]="cfg.recSource !== 'opgg'" (change)="setBool('showSituational', $any($event.target).checked)" />
+              <input type="checkbox" [checked]="cfg.showSituational" [disabled]="cfg.recSource !== 'opgg'" (change)="set('showSituational', $any($event.target).checked)" />
               <span class="track"></span>
               <span class="label"><b>Situational items</b><span>The best counter item from OP.GG's 4th–6th item options, updated as enemies buy items. The Live tab shows them either way.@if (cfg.recSource !== 'opgg') { Needs OP.GG recommendations. }</span></span>
             </label>
@@ -73,7 +62,7 @@ type BoolKey =
           <section class="card stack">
             <h2>Overlay</h2>
             <label class="toggle">
-              <input type="checkbox" [checked]="cfg.overlayEnabled" (change)="setBool('overlayEnabled', $any($event.target).checked)" />
+              <input type="checkbox" [checked]="cfg.overlayEnabled" (change)="set('overlayEnabled', $any($event.target).checked)" />
               <span class="track"></span>
               <span class="label"><b>Show the in-game overlay</b><span>Needs League in Borderless or Windowed mode. Fullscreen draws over it.</span></span>
             </label>
@@ -86,29 +75,29 @@ type BoolKey =
 
           <section class="card stack" [class.off]="!cfg.overlayEnabled">
             <h2>Size and position</h2>
-            <div class="field">
+            <div class="setting-field">
               <span>Opacity</span>
               <input type="range" min="0.4" max="1" step="0.05" [value]="cfg.overlayOpacity"
-                (change)="setNum('overlayOpacity', +$any($event.target).value)" />
+                (change)="set('overlayOpacity', +$any($event.target).value)" />
               <span class="mono faint val">{{ (cfg.overlayOpacity * 100).toFixed(0) }}%</span>
               <span class="reset"></span>
             </div>
-            <div class="field">
+            <div class="setting-field">
               <span>Width</span>
               <input type="range" min="260" max="480" step="10" [value]="cfg.overlayWidth"
-                (change)="setNum('overlayWidth', +$any($event.target).value)" />
+                (change)="set('overlayWidth', +$any($event.target).value)" />
               <span class="mono faint val">{{ cfg.overlayWidth }} px</span>
               <span class="reset"></span>
             </div>
-            <div class="field">
+            <div class="setting-field">
               <span>Size</span>
               <input type="range" min="0.8" max="1.5" step="0.05" [value]="cfg.overlayScale"
-                (change)="setNum('overlayScale', +$any($event.target).value)" />
+                (change)="set('overlayScale', +$any($event.target).value)" />
               <span class="mono faint val">{{ (cfg.overlayScale * 100).toFixed(0) }}%</span>
               <button class="ghost icon-btn reset" [disabled]="cfg.overlayWidth === 340 && cfg.overlayScale === 1" (click)="resetSize()" title="Reset width and size" aria-label="Reset width and size"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.34-5.66M4 4v5h5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg></button>
             </div>
             <p class="faint small">The height follows what's on the overlay. Size scales text and icons.</p>
-            <div class="field">
+            <div class="setting-field">
               <span>Position</span>
               <input type="number" placeholder="X auto" [value]="cfg.overlayX ?? ''" (change)="setPos('overlayX', $any($event.target).value)" />
               <input type="number" placeholder="Y auto" [value]="cfg.overlayY ?? ''" (change)="setPos('overlayY', $any($event.target).value)" />
@@ -116,7 +105,7 @@ type BoolKey =
             </div>
             <p class="faint small">Screen pixels from the top-left. Leave empty for the top-right corner, or drag the overlay by its corner handle during a game.</p>
             <label class="toggle">
-              <input type="checkbox" [checked]="cfg.overlayGrowUp ?? false" (change)="setBool('overlayGrowUp', $any($event.target).checked)" />
+              <input type="checkbox" [checked]="cfg.overlayGrowUp ?? false" (change)="set('overlayGrowUp', $any($event.target).checked)" />
               <span class="track"></span>
               <span class="label"><b>Grow upward</b><span>For an overlay at the bottom of your screen: the bottom edge stays put and new rows push the top up.</span></span>
             </label>
@@ -144,38 +133,15 @@ type BoolKey =
       .page { grid-template-columns: minmax(0, 1fr); }
       .col:last-child { order: -1; }
     }
-    .field { display: flex; align-items: center; gap: 10px; min-height: 34px; }
-    .field > span:first-child { width: 72px; flex: none; color: var(--text-dim); }
-    .field input[type='range'] { flex: 1; accent-color: var(--accent); }
-    .field input[type='number'] { flex: 1; min-width: 0; }
-    .field .val { width: 56px; text-align: right; }
-    .field .reset { width: 34px; flex: none; }
-    .small { font-size: 12.5px; margin: 0; }
-    .sub {
-      margin: 8px 0 0; padding-top: 10px; border-top: 1px solid var(--line);
-      font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
-    }
-    .sub.first { margin-top: 0; padding-top: 0; border-top: none; }
+    .setting-field { min-height: 34px; }
+    .setting-field input[type='range'] { flex: 1; accent-color: var(--accent); }
+    .setting-field input[type='number'] { flex: 1; min-width: 0; }
+    .setting-field .val { width: 56px; text-align: right; }
+    .setting-field .reset { width: 34px; flex: none; }
     .toggle.off { opacity: 0.55; }
   `,
 })
-export class OverlaySettingsView {
-  protected readonly rift = inject(RiftService);
-  protected readonly error = signal('');
-
-  private save(fn: (c: Config) => Config): void {
-    this.rift.updateConfig(fn).catch((e) => this.error.set(String(e)));
-  }
-
-  setBool(key: BoolKey, v: boolean): void {
-    this.save((c) => ({ ...c, [key]: v }));
-  }
-  setRec(key: 'useRecommendedBuilds' | 'showSkillHint', v: boolean): void {
-    this.save((c) => ({ ...c, [key]: v }));
-  }
-  setNum(key: 'overlayOpacity' | 'overlayWidth' | 'overlayScale', v: number): void {
-    this.save((c) => ({ ...c, [key]: v }));
-  }
+export class OverlaySettingsView extends ConfigPage {
   setPos(key: 'overlayX' | 'overlayY', raw: string): void {
     const v = raw.trim() === '' ? null : Math.round(Number(raw));
     // A typed position wins over the saved bottom edge (see overlayGrowUp).

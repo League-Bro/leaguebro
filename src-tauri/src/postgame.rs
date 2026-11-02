@@ -111,15 +111,19 @@ pub fn result(p: &Value) -> &'static str {
     }
 }
 
+/// A game record's players (`participantIdentities[].player`: Riot ID, puuid) by participant id.
+pub fn players_by_id(game: &Value) -> HashMap<i64, &Value> {
+    list(game, "participantIdentities").iter().filter_map(|i| Some((int(i, "participantId"), i.get("player")?))).collect()
+}
+
 /// `lanes` is OP.GG's games per lane for each champion (`TierLists::lane_games`,
 /// may be empty), for players whose lane the record doesn't say.
 pub fn parse(game: &Value, my_puuid: &str, queue_name: &str, lanes: &HashMap<i64, [i64; 5]>) -> Option<PostGame> {
-    let idents = list(game, "participantIdentities");
+    let idents = players_by_id(game);
     let mut players: Vec<(i64, PostPlayer, &Value)> = list(game, "participants")
         .iter()
         .map(|p| {
-            let pid = int(p, "participantId");
-            let player = idents.iter().find(|i| int(i, "participantId") == pid).map_or(&Value::Null, |i| &i["player"]);
+            let player = idents.get(&int(p, "participantId")).copied().unwrap_or(&Value::Null);
             let puuid = text(player, "puuid").to_string();
             let name = match (text(player, "gameName"), text(player, "tagLine")) {
                 ("", _) => None,

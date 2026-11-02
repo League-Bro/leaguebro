@@ -54,13 +54,14 @@ export interface CompChamp {
   roles: string[];
 }
 
-function key(alias: string): string {
+/** The table key for a client alias: lowercase, League Classic copies (`Jade_…`) as the normal champion. */
+export function aliasKey(alias: string): string {
   return alias.toLowerCase().replace(/^jade_/, '');
 }
 
 /** What the enemy picks so far add up to. Needs 2 of a kind, and 3 picks with no tank to call them squishy. */
 export function enemyTraits(enemies: CompChamp[]): { trait: EnemyTrait; count: number }[] {
-  const count = (f: (c: CompChamp, k: string) => boolean) => enemies.filter((c) => f(c, key(c.alias))).length;
+  const count = (f: (c: CompChamp, k: string) => boolean) => enemies.filter((c) => f(c, aliasKey(c.alias))).length;
   const tanks = count((c) => c.roles[0] === 'tank');
   const dive = count((c, k) => c.roles[0] === 'assassin' || DIVERS.has(k));
   const poke = count((_, k) => POKE.has(k));
@@ -75,7 +76,7 @@ export function enemyTraits(enemies: CompChamp[]): { trait: EnemyTrait; count: n
 
 /** The tag a pick gets for answering one enemy trait, or '' if it doesn't. */
 export function answers(trait: EnemyTrait, alias: string): string {
-  const k = key(alias);
+  const k = aliasKey(alias);
   switch (trait) {
     case 'tanks':
       return SHREDS_TANKS.has(k) ? 'Shreds tanks' : '';
@@ -88,9 +89,31 @@ export function answers(trait: EnemyTrait, alias: string): string {
   }
 }
 
-export const TRAIT_LABELS: Record<EnemyTrait, string> = {
-  tanks: 'tanky',
-  dive: 'dive',
-  poke: 'poke',
-  squishy: 'squishy',
+/** A trait as a heading: "2 tanks.", "No tank.". */
+export const TRAIT_TITLES: Record<EnemyTrait, (n: number) => string> = {
+  tanks: (n) => `${n} tanks.`,
+  dive: (n) => `${n} divers.`,
+  poke: (n) => `${n} poke champions.`,
+  squishy: () => 'No tank.',
+};
+/** What a trait means for your own team. */
+export const TRAIT_FOR_US: Record<EnemyTrait, string> = {
+  tanks: 'You can take long fights and front line for your carries.',
+  dive: 'Built to jump their backline: go in together.',
+  poke: 'Wear them down before objectives instead of forcing fights.',
+  squishy: 'Avoid long fights; pick your moments.',
+};
+/** How to play into an enemy trait. */
+export const TRAIT_VS_THEM: Record<EnemyTrait, string> = {
+  tanks: 'Armor or magic pen and % health damage pay off.',
+  dive: 'Stay near whoever can peel you; a defensive item helps.',
+  poke: 'Engage or flank fast instead of sitting in their range.',
+  squishy: 'Catching one of them out of position wins fights.',
+};
+/** What answers a trait, for "Nobody on your team …" lines. */
+export const TRAIT_ANSWER: Record<EnemyTrait, string> = {
+  tanks: 'shreds tanks',
+  dive: 'stops dive',
+  poke: 'engages on poke',
+  squishy: 'bursts squishies',
 };

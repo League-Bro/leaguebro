@@ -28,3 +28,8 @@ export function ago(ms: number, now = Date.now()): string {
   const d = Math.floor(mins / 1440);
   return d < 30 ? `${d}d ago` : new Date(ms).toLocaleDateString();
 }
+
+/** `n` per minute of a `seconds`-long game (the first minute counts as a whole one). */
+export function perMin(n: number, seconds: number): number {
+  return n / Math.max(1, seconds / 60);
+}

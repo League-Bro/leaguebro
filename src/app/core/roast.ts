@@ -1,5 +1,6 @@
 import { PostGame, PostPlayer, PostTeam } from './models';
 import { kilo as k } from './format';
+import { readLocal, writeLocal } from './storage';
 
 /** One bit of post-game trash talk about something done badly, or praise for something done well. */
 export interface Roast {
@@ -708,9 +709,9 @@ export function review(game: PostGame, team: PostTeam, me: PostPlayer, champName
   const jungle = pos === 'jungle';
   const enemy = game.teams.find((t) => t.teamId !== team.teamId) ?? null;
   const opp = pos ? enemy?.players.find((p) => p.position === pos) ?? null : null;
-  const kda = (me.kills + me.assists) / Math.max(1, me.deaths);
+  const kda = kdaOf(me);
   const csMin = me.cs / min;
-  const kp = team.kills ? Math.round(((me.kills + me.assists) / team.kills) * 100) : 0;
+  const kp = killShare(me, team);
   const dmg = Math.round(damageShare(me, team) * 100);
   const vpm = me.vision / min;
   const goldDiff = opp ? me.gold - opp.gold : 0;
@@ -897,6 +898,21 @@ function damageShare(me: PostPlayer, team: PostTeam): number {
   return total > 0 ? me.damage / total : 0;
 }
 
+/** (Kills + assists) / deaths, with no deaths counted as one. */
+export function kdaOf(p: PostPlayer): number {
+  return (p.kills + p.assists) / Math.max(1, p.deaths);
+}
+
+/** Kill participation in whole percent; 0 when the team has no kills. */
+export function killShare(p: PostPlayer, team: PostTeam): number {
+  return team.kills ? Math.round(((p.kills + p.assists) / team.kills) * 100) : 0;
+}
+
+/** The grade's colour, as a `tone-…` class (styles.css). */
+export function gradeTone(g: Grade): string {
+  return g === 'S+' || g === 'S' ? 'top' : g === 'A' ? 'good' : g === 'B' ? 'mid' : g === 'C' ? 'meh' : 'bad';
+}
+
 /**
  * The line each game got, and each pool's recent jabs, so a reopened game
  * keeps its lines and new games don't repeat a joke soon. Lives in
@@ -938,7 +954,7 @@ function any<T>(list: T[]): T {
 
 function loadMemory(): LineMemory {
   try {
-    const m = JSON.parse(localStorage.getItem(MEMORY_KEY) ?? '') as LineMemory;
+    const m = JSON.parse(readLocal(MEMORY_KEY) ?? '') as LineMemory;
     if (m && typeof m.picks === 'object' && typeof m.recent === 'object') return m;
   } catch {
     // Missing or unreadable: start fresh.
@@ -947,12 +963,8 @@ function loadMemory(): LineMemory {
 }
 
 function saveMemory(m: LineMemory): void {
-  try {
-    localStorage.setItem(MEMORY_KEY, JSON.stringify(m));
-    localStorage.removeItem('leaguebro.roastLines'); // the old format, before lines were built from parts
-  } catch {
-    // Storage off or full: lines just won't be remembered.
-  }
+  writeLocal(MEMORY_KEY, JSON.stringify(m));
+  writeLocal('leaguebro.roastLines', null); // the old format, before lines were built from parts
 }
 
 function fill(line: string, vars: Vars): string {

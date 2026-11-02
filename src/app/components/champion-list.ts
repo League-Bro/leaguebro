@@ -440,8 +440,7 @@ export class ChampionList {
     const { sort, desc, favoritesOnly, lane } = this.p();
     const keep = (id: number, name: string, alias = '') =>
       (!favoritesOnly || favs.has(id)) && (!q || name.toLowerCase().includes(q) || alias.toLowerCase().includes(q));
-    const alias = new Map(this.champs().map((c) => [c.id, c.alias]));
-    const stats = this.statRows().filter((r) => keep(r.championId, r.name, alias.get(r.championId)));
+    const stats = this.statRows().filter((r) => keep(r.championId, r.name, this.rift.champ(r.championId)?.alias));
     stats.sort((a, b) => compare(a, b, sort) * (desc ? -1 : 1) || compare(a, b, 'tier'));
     // With All lanes (or a search) every champion is listed: ones without
     // stats for these filters go at the bottom, so the table is the full roster.

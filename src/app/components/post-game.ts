@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { championIcon, clock, formatTier, kdaRatio, queueLabel, rankCrest, tierClass, winPct } from '../core/assets';
-import { kilo, signed } from '../core/format';
+import { kilo, perMin, signed } from '../core/format';
 import { PlayerRanks, PostGame, PostPlayer, PostTeam, RankLine } from '../core/models';
-import { Grade, review, reviewText } from '../core/roast';
+import { Grade, gradeTone, kdaOf, killShare, review, reviewText } from '../core/roast';
 import { GoldGraph } from './gold-graph';
 import { ItemTip } from './item-tip';
 import { LpChangeTag } from './lp-change';
@@ -311,18 +311,9 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .gval { font-size: 11.5px; color: var(--text-dim); flex: none; }
     .bar-row.me .gval { color: var(--text); }
 
-    .roast { --tone: var(--loss); margin-top: 14px; padding: 14px 18px; display: flex; flex-direction: column; gap: 8px; border-left: 3px solid var(--tone); }
-    .roast.tone-top { --tone: var(--gold); }
-    .roast.tone-good { --tone: var(--win); }
-    .roast.tone-mid { --tone: var(--accent-2); }
-    .roast.tone-meh { --tone: #ff9a4e; }
+    .roast { margin-top: 14px; padding: 14px 18px; display: flex; flex-direction: column; gap: 8px; border-left: 3px solid var(--tone); }
     .roast-head { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
-    .grade {
-      flex: none; display: grid; place-items: center; width: 50px; height: 50px; border-radius: 14px; cursor: help;
-      font: 800 24px/1 var(--display); letter-spacing: -0.03em; color: var(--tone);
-      background: color-mix(in srgb, var(--tone) 12%, transparent); border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
-      box-shadow: 0 0 18px color-mix(in srgb, var(--tone) 22%, transparent);
-    }
+    .grade { width: 50px; height: 50px; border-radius: 14px; font: 800 24px/1 var(--display); letter-spacing: -0.03em; }
     .tone-top .grade { animation: shine 2.4s ease-in-out infinite; }
     @keyframes shine { 50% { box-shadow: 0 0 28px color-mix(in srgb, var(--tone) 50%, transparent); } }
     .verdict { flex: 1; min-width: 0; }
@@ -549,8 +540,7 @@ export class PostGameView {
     );
     if (scored.length < 3 || scored.some((x) => !x.r)) return out;
     // Ties go to the better KDA, then more damage.
-    const kda = (p: PostPlayer) => (p.kills + p.assists) / Math.max(1, p.deaths);
-    scored.sort((a, b) => b.r!.score - a.r!.score || kda(b.p) - kda(a.p) || b.p.damage - a.p.damage);
+    scored.sort((a, b) => b.r!.score - a.r!.score || kdaOf(b.p) - kdaOf(a.p) || b.p.damage - a.p.damage);
     const last = scored.length - 1;
     scored.forEach((x, i) => {
       const label = i === 0 ? 'The GOAT' : i === last ? 'WOAT' : ordinal(i + 1);
@@ -566,7 +556,7 @@ export class PostGameView {
     const m = this.me();
     const team = this.myTeam();
     if (!m || !team || team.kills === 0) return null;
-    return Math.round(((m.kills + m.assists) / team.kills) * 100);
+    return killShare(m, team);
   });
 
   protected readonly charts: { key: 'gold' | 'damage'; title: string; unit: string }[] = [
@@ -642,14 +632,14 @@ export class PostGameView {
       () => undefined,
     );
   }
-  readonly tone = (g: Grade): string => g === 'S+' || g === 'S' ? 'top' : g === 'A' ? 'good' : g === 'B' ? 'mid' : g === 'C' ? 'meh' : 'bad';
+  protected readonly tone = gradeTone;
   isPicked(t: PostTeam, seat: number): boolean {
     const at = this.picked();
     return !!at && at.teamId === t.teamId && at.seat === seat;
   }
 
   kda = (p: PostPlayer) => kdaRatio(p.kills, p.deaths, p.assists);
-  readonly perMin = (n: number): string => (n / Math.max(1, this.game().duration / 60)).toFixed(1);
+  readonly perMin = (n: number): string => perMin(n, this.game().duration).toFixed(1);
   k = kilo;
   signedK = (n: number) => signed(n, true);
   objectives(t: PostTeam): string {

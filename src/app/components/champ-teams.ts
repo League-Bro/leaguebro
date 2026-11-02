@@ -1,37 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { RiftService } from '../core/rift.service';
 import { championIcon } from '../core/assets';
-import { championSplit, damageTip, DamageSplit, teamSplit } from '../core/damage';
-import { EnemyTrait, answers, enemyTraits } from '../core/comp';
+import { damageTip, DamageSplit, teamSplit } from '../core/damage';
+import { TRAIT_ANSWER, TRAIT_FOR_US, TRAIT_TITLES, TRAIT_VS_THEM, answers, enemyTraits } from '../core/comp';
+import { DamageBar, DamageLegend } from './damage-bar';
 import { PlayerCard } from './player-card';
-
-const TRAIT_TITLES: Record<EnemyTrait, (n: number) => string> = {
-  tanks: (n) => `${n} tanks.`,
-  dive: (n) => `${n} divers.`,
-  poke: (n) => `${n} poke champions.`,
-  squishy: () => 'No tank.',
-};
-/** What a trait means for your own team. */
-const FOR_US: Record<EnemyTrait, string> = {
-  tanks: 'You can take long fights and front line for your carries.',
-  dive: 'Built to jump their backline: go in together.',
-  poke: 'Wear them down before objectives instead of forcing fights.',
-  squishy: 'Avoid long fights; pick your moments.',
-};
-/** How to play into an enemy trait when nobody on your team answers it. */
-const VS_THEM: Record<EnemyTrait, string> = {
-  tanks: 'Armor or magic pen and % health damage pay off.',
-  dive: 'Stay near whoever can peel you; a defensive item helps.',
-  poke: 'Engage or flank fast instead of sitting in their range.',
-  squishy: 'Catching one of them out of position wins fights.',
-};
-/** What answers it, for "Nobody on your team …" lines. */
-const ANSWER: Record<EnemyTrait, string> = {
-  tanks: 'shreds tanks',
-  dive: 'stops dive',
-  poke: 'engages on poke',
-  squishy: 'bursts squishies',
-};
 
 interface Note {
   key: string;
@@ -49,17 +22,13 @@ interface Note {
 @Component({
   selector: 'rl-champ-teams',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [PlayerCard],
+  imports: [DamageBar, DamageLegend, PlayerCard],
   template: `
     @if (rift.champSelect(); as cs) {
       <section class="card teams-card">
         <div class="top">
           <h3>Your team vs their team</h3>
-          <span class="legend">
-            <span><i class="sw ad"></i>AD</span>
-            <span><i class="sw ap"></i>AP</span>
-            <span><i class="sw tr"></i>True</span>
-          </span>
+          <rl-damage-legend />
           <div class="spacer"></div>
           @if (cs.bans.length) {
             <span class="bans">
@@ -79,17 +48,7 @@ interface Note {
                 <span class="who">{{ t.label }}</span>
                 @if (t.split && t.split.counted < 5) { <span class="faint small">{{ t.split.counted }}/5 picked</span> }
               </div>
-              <div class="track">
-                @if (t.split; as s) {
-                  @for (seg of segments(s); track seg.key) {
-                    <span [class]="'part ' + seg.key" [class.first]="$first" [class.last]="$last" [style.width.%]="seg.value" [title]="t.label + ': ' + seg.value + '% ' + seg.name">
-                      @if (seg.value >= 14) { <b class="mono">{{ seg.value }}%</b> }
-                    </span>
-                  }
-                } @else {
-                  <span class="none faint">No picks yet</span>
-                }
-              </div>
+              <rl-damage-bar [split]="t.split" [label]="t.label" />
               <div class="notes">
                 @for (n of t.notes; track n.key) {
                   <div class="note">
@@ -128,12 +87,6 @@ interface Note {
     .teams-card { padding: 14px 22px 16px; margin-top: 8px; container-type: inline-size; }
     .top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; }
     .top h3 { margin: 0; }
-    .legend { display: flex; gap: 12px; font-size: 12px; color: var(--text-dim); }
-    .legend span { display: flex; align-items: center; gap: 5px; }
-    .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; background: var(--c); }
-    .ad { --c: #f26b3a; }
-    .ap { --c: #8f7dff; }
-    .tr { --c: #d8d2e6; }
     .bans { display: flex; align-items: center; gap: 6px; }
     .cap { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; margin-right: 2px; }
     .ban { width: 26px; height: 26px; border-radius: 7px; filter: grayscale(1) brightness(0.6); }
@@ -154,12 +107,6 @@ interface Note {
     .who { font-weight: 700; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ally); }
     .enemy .who { color: var(--enemy); }
     .small { font-size: 12px; }
-    .track { display: flex; gap: 2px; height: 22px; }
-    .part { display: flex; align-items: center; padding: 0 7px; min-width: 3px; background: var(--c); transition: width 0.4s ease; }
-    .part.first { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
-    .part.last { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
-    .part b { font-size: 11.5px; color: #17131d; }
-    .none { align-self: center; font-size: 12px; }
     .notes { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
     .note { line-height: 1.7; }
     .note > * { margin-right: 5px; }
@@ -172,34 +119,20 @@ export class ChampTeams {
   protected readonly rift = inject(RiftService);
   protected readonly icon = championIcon;
 
-  private readonly champs = computed(() => new Map((this.rift.statics()?.champions ?? []).map((c) => [c.id, c])));
   /** An ally's hover counts until they lock in. */
-  private readonly allyIds = computed(() => (this.rift.champSelect()?.allies ?? []).map((p) => p.championId || p.pickIntent).filter((id) => id > 0));
-  private readonly enemyIds = computed(() => (this.rift.champSelect()?.enemies ?? []).map((p) => p.championId).filter((id) => id > 0));
-
-  private split(ids: number[]): DamageSplit | null {
-    const m = this.champs();
-    return teamSplit(ids.flatMap((id) => {
-      const c = m.get(id);
-      return c ? [championSplit(c.alias, c.roles)] : [];
-    }));
-  }
-  private traits(ids: number[]) {
-    const m = this.champs();
-    return enemyTraits(ids.flatMap((id) => (m.has(id) ? [m.get(id)!] : [])));
-  }
+  private readonly allies = computed(() => this.rift.champs((this.rift.champSelect()?.allies ?? []).map((p) => p.championId || p.pickIntent)));
+  private readonly enemies = computed(() => this.rift.champs((this.rift.champSelect()?.enemies ?? []).map((p) => p.championId)));
 
   protected readonly sides = computed(() => {
-    const ours = this.split(this.allyIds());
-    const theirs = this.split(this.enemyIds());
-    const allyNotes: Note[] = this.traits(this.allyIds()).map((t) => ({ key: t.trait, title: TRAIT_TITLES[t.trait](t.count), text: FOR_US[t.trait] }));
-    const enemyNotes: Note[] = this.traits(this.enemyIds()).map((t) => {
-      const by = this.allyIds().flatMap((id) => {
-        const alias = this.champs().get(id)?.alias ?? '';
-        const tag = alias ? answers(t.trait, alias) : '';
-        return tag ? [{ id, tag }] : [];
+    const ours = teamSplit(this.allies());
+    const theirs = teamSplit(this.enemies());
+    const allyNotes: Note[] = enemyTraits(this.allies()).map((t) => ({ key: t.trait, title: TRAIT_TITLES[t.trait](t.count), text: TRAIT_FOR_US[t.trait] }));
+    const enemyNotes: Note[] = enemyTraits(this.enemies()).map((t) => {
+      const by = this.allies().flatMap((c) => {
+        const tag = answers(t.trait, c.alias);
+        return tag ? [{ id: c.id, tag }] : [];
       });
-      return { key: t.trait, title: TRAIT_TITLES[t.trait](t.count), text: `Nobody on your team ${ANSWER[t.trait]}. ${VS_THEM[t.trait]}`, by };
+      return { key: t.trait, title: TRAIT_TITLES[t.trait](t.count), text: `Nobody on your team ${TRAIT_ANSWER[t.trait]}. ${TRAIT_VS_THEM[t.trait]}`, by };
     });
     // The damage tip leads each side's notes (heavy AD on your side, "armor goes a long way" on theirs).
     const tip = (s: DamageSplit | null, enemy: boolean): Note[] => {
@@ -213,12 +146,4 @@ export class ChampTeams {
       { key: 'enemy', label: 'Enemy team', split: theirs, notes: [...tip(theirs, true), ...enemyNotes] },
     ];
   });
-
-  protected segments(s: DamageSplit) {
-    return [
-      { key: 'ad', name: 'physical', value: s.ad },
-      { key: 'ap', name: 'magic', value: s.ap },
-      { key: 'tr', name: 'true', value: s.true },
-    ].filter((x) => x.value > 0);
-  }
 }

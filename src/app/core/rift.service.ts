@@ -37,6 +37,7 @@ import {
   MIN_GAMES,
 } from './models';
 import { POSITION_LABELS, assetUrl, championIcon, championSplash, positionLabel } from './assets';
+import { readLocal, writeLocal } from './storage';
 import {
   demoCacheInfo,
   demoConfig,
@@ -103,7 +104,7 @@ export class RiftService {
   readonly windowLabel = signal('main');
   readonly demo = !inTauri();
 
-  readonly champById = computed(() => new Map((this.statics()?.champions ?? []).map((c) => [c.id, c.name])));
+  readonly champById = computed(() => new Map((this.statics()?.champions ?? []).map((c) => [c.id, c])));
   readonly itemById = computed(() => new Map((this.statics()?.items ?? []).map((i) => [i.id, i])));
   readonly perkById = computed(() => new Map((this.statics()?.perks ?? []).map((p) => [p.id, p])));
   readonly spellById = computed(() => new Map((this.statics()?.spells ?? []).map((p) => [p.id, p])));
@@ -226,11 +227,16 @@ export class RiftService {
   }
 
   champ(id: number): ChampInfo | undefined {
-    return this.statics()?.champions.find((c) => c.id === id);
+    return this.champById().get(id);
+  }
+
+  /** The known champions among `ids` (0 and unknown ids dropped). */
+  champs(ids: number[]): ChampInfo[] {
+    return ids.flatMap((id) => this.champById().get(id) ?? []);
   }
 
   champName(id: number): string {
-    return this.champById().get(id) ?? (id > 0 ? `#${id}` : '');
+    return this.champById().get(id)?.name ?? (id > 0 ? `#${id}` : '');
   }
 
   /** Base-skin splash art for hero cards; '' for League Classic copies and unknown ids. */
@@ -555,21 +561,5 @@ export class RiftService {
       .catch(() => {
         this.lastOverlaySize = [0, 0];
       });
-  }
-}
-
-function readLocal(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function writeLocal(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Storage off: the icon just shows after the profile loads next time.
   }
 }

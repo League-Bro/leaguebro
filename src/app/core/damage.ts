@@ -1,3 +1,5 @@
+import { CompChamp, aliasKey } from './comp';
+
 /**
  * Rough damage split per champion, as [AD, AP, true] percentages of what the
  * champion usually deals in a game. Hand-made from how their kits and common
@@ -57,13 +59,14 @@ function guess(roles: string[]): [number, number, number] {
 }
 
 /** One champion's split, from the table or guessed from its roles. League Classic copies use the normal one. */
-export function championSplit(alias: string, roles: string[]): [number, number, number] {
-  return SPLITS[alias.toLowerCase().replace(/^jade_/, '')] ?? guess(roles);
+export function championSplit(c: CompChamp): [number, number, number] {
+  return SPLITS[aliasKey(c.alias)] ?? guess(c.roles);
 }
 
 /** A team's split: each champion counts the same, rounded so it adds up to 100. */
-export function teamSplit(splits: [number, number, number][]): DamageSplit | null {
-  if (!splits.length) return null;
+export function teamSplit(champs: CompChamp[]): DamageSplit | null {
+  if (!champs.length) return null;
+  const splits = champs.map(championSplit);
   const sum = splits.reduce((a, s) => [a[0] + s[0], a[1] + s[1], a[2] + s[2]], [0, 0, 0]);
   const total = sum[0] + sum[1] + sum[2] || 1;
   const ad = Math.round((sum[0] / total) * 100);

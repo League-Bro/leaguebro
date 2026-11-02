@@ -3,16 +3,13 @@ import { RiftService } from '../core/rift.service';
 import { ItemSet, SituationalState, SituationTag } from '../core/models';
 import { SITUATION_LABEL, SITUATION_WHEN } from '../core/why';
 import { pct } from '../core/format';
+import { readLocal, writeLocal } from '../core/storage';
 import { ItemTip } from './item-tip';
 
 /** Other options shown before "Show more". */
 const OTHERS_SHOWN = 3;
 /** Whether the list was left open (localStorage). */
 const OPEN_KEY = 'leaguebro.situationalOpen';
-
-function readOpen(): boolean {
-  try { return localStorage.getItem(OPEN_KEY) === '1'; } catch { return false; }
-}
 
 /**
  * Situational items: OP.GG's 4th–6th item options, ranked against the enemy
@@ -154,10 +151,8 @@ export class SituationalCard {
   protected readonly othersShown = OTHERS_SHOWN;
   protected readonly expanded = signal(false);
   /** Closed by default; your last choice is remembered. */
-  protected readonly open = signal(readOpen());
-  private readonly saveOpen = effect(() => {
-    try { localStorage.setItem(OPEN_KEY, this.open() ? '1' : '0'); } catch { /* storage off: just don't remember */ }
-  });
+  protected readonly open = signal(readLocal(OPEN_KEY) === '1');
+  private readonly saveOpen = effect(() => writeLocal(OPEN_KEY, this.open() ? '1' : '0'));
   /** What's inside while it's closed, e.g. "3 picks for this team". */
   protected readonly summary = computed(() => {
     const n = this.picks().length;

@@ -189,12 +189,8 @@ pub struct Opponents {
 /// full record. None if you aren't in it.
 pub fn opponents(game: &Value, my_puuid: &str) -> Option<Opponents> {
     let parts = game.get("participants")?.as_array()?;
-    let my_pid = game
-        .get("participantIdentities")?
-        .as_array()?
-        .iter()
-        .find(|i| i.pointer("/player/puuid").and_then(Value::as_str) == Some(my_puuid))
-        .map(|i| int(i, "participantId"))?;
+    let names = postgame::players_by_id(game);
+    let my_pid = names.iter().find(|(_, p)| text(p, "puuid") == my_puuid).map(|(id, _)| *id)?;
     let me = parts.iter().find(|p| int(p, "participantId") == my_pid)?;
     let my_team_id = int(me, "teamId");
     let (mine, theirs): (Vec<&Value>, Vec<&Value>) = parts.iter().partition(|p| int(p, "teamId") == my_team_id);
@@ -202,8 +198,6 @@ pub fn opponents(game: &Value, my_puuid: &str) -> Option<Opponents> {
     // teamId doesn't say who was against you there.
     let arena = int(game, "mapId") == 30;
     let enemies = if arena { Vec::new() } else { theirs.iter().map(|p| int(p, "championId")).collect() };
-    let names: HashMap<i64, &Value> =
-        list(game, "participantIdentities").iter().filter_map(|i| Some((int(i, "participantId"), i.get("player")?))).collect();
     let roster = |team: &[&Value]| {
         let pos = positions(team);
         let mut players: Vec<(usize, GamePlayer)> = team
@@ -612,8 +606,7 @@ static SEEN_PLAYERS: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(De
 
 fn remember_players(game: &Value) {
     let mut seen = SEEN_PLAYERS.lock().unwrap();
-    for i in list(game, "participantIdentities") {
-        let Some(player) = i.get("player") else { continue };
+    for player in postgame::players_by_id(game).into_values() {
         let puuid = text(player, "puuid");
         if let (false, Some(name)) = (puuid.is_empty(), riot_name(player).filter(|n| n.contains('#'))) {
             seen.insert(puuid.to_string(), name);
@@ -677,13 +670,10 @@ async fn load_summoner(lcu: &Lcu, summoner: &Value, history_path: &str, full_rec
         ..Default::default()
     };
     let mut errors = Vec::new();
-    let stats_path = format!("/lol-ranked/v1/ranked-stats/{puuid}");
+    let stats_path = scout::ranked_stats_path(&puuid);
     let (stats, history) = tokio::join!(lcu.get(&stats_path), lcu.get_slow(history_path));
     match stats {
-        Ok(Some(stats)) => {
-            p.solo = scout::parse_rank(&stats, "RANKED_SOLO_5x5");
-            p.flex = scout::parse_rank(&stats, "RANKED_FLEX_SR");
-        }
+        Ok(Some(stats)) => scout::PlayerRanks { solo: p.solo, flex: p.flex } = scout::PlayerRanks::from_stats(&stats),
         Ok(None) => {}
         Err(e) => errors.push(format!("rank: {e:#}")),
     }

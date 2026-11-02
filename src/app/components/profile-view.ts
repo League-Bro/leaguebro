@@ -2,9 +2,9 @@ import { ChangeDetectionStrategy, Component, DestroyRef, Injector, afterNextRend
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
 import { championIcon, formatTier, kdaRatio, profileIcon, queueLabel, rankCrest, tierClass, winPct } from '../core/assets';
-import { ago } from '../core/format';
+import { ago, perMin } from '../core/format';
 import { LpPoint, MatchLine, MyProfile, PostGame, RankLine } from '../core/models';
-import { Grade, Review, review } from '../core/roast';
+import { Review, gradeTone, review } from '../core/roast';
 import { PostGameView } from './post-game';
 import { ItemTip } from './item-tip';
 import { LpGraph } from './lp-graph';
@@ -297,16 +297,16 @@ const REGIONS = [
               </div>
               <div class="st">
                 <div class="mono">{{ m.cs }}</div>
-                <div class="faint small mono">{{ m.cs / (m.duration / 60 || 1) | number: '1.1-1' }}<span class="n"> CS</span>/min</div>
+                <div class="faint small mono">{{ perMin(m.cs, m.duration) | number: '1.1-1' }}<span class="n"> CS</span>/min</div>
               </div>
               <div class="st">
                 <div class="mono">{{ m.damage | number }}</div>
-                <div class="faint small mono w">{{ m.damage / (m.duration / 60 || 1) | number: '1.0-0' }}/min</div>
+                <div class="faint small mono w">{{ perMin(m.damage, m.duration) | number: '1.0-0' }}/min</div>
                 <div class="faint small n">damage</div>
               </div>
               <div class="st">
                 <div class="mono">{{ m.gold | number }}</div>
-                <div class="faint small mono w">{{ m.gold / (m.duration / 60 || 1) | number: '1.0-0' }}/min</div>
+                <div class="faint small mono w">{{ perMin(m.gold, m.duration) | number: '1.0-0' }}/min</div>
                 <div class="faint small n">gold</div>
               </div>
             </div>
@@ -496,17 +496,8 @@ const REGIONS = [
     .match > .c-players { grid-column: 9; grid-row: 1 / span 2; }
     .match > .c-bro { grid-column: 2 / 9; grid-row: 2; margin-top: 8px; }
     .match > .what, .match > .c-build, .match > .stats > .st { grid-row: 1; }
-    .bro { --tone: var(--loss); display: flex; align-items: center; gap: 12px; min-width: 0; }
-    .bro.tone-top { --tone: var(--gold); }
-    .bro.tone-good { --tone: var(--win); }
-    .bro.tone-mid { --tone: var(--accent-2); }
-    .bro.tone-meh { --tone: #ff9a4e; }
-    .bro .grade {
-      flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; cursor: help;
-      font: 700 18px/1 var(--display); color: var(--tone);
-      background: color-mix(in srgb, var(--tone) 12%, transparent); border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
-      box-shadow: 0 0 14px color-mix(in srgb, var(--tone) 20%, transparent);
-    }
+    .bro { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .bro .grade { width: 38px; height: 38px; border-radius: 11px; font: 700 18px/1 var(--display); }
     .bro-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
     .bro-title { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--tone); }
     .verdict { font-size: 13.5px; font-weight: 600; font-style: italic; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -827,10 +818,7 @@ export class ProfileView {
     }
   }
   private previewSeq = 0;
-  /** Same colors as the review card's grades. */
-  tone(g: Grade): string {
-    return g === 'S+' || g === 'S' ? 'top' : g === 'A' ? 'good' : g === 'B' ? 'mid' : g === 'C' ? 'meh' : 'bad';
-  }
+  protected readonly tone = gradeTone;
   private previewOf = '';
 
   /**
@@ -885,5 +873,6 @@ export class ProfileView {
     const sameYear = d.getFullYear() === new Date().getFullYear();
     return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: sameYear ? undefined : 'numeric' });
   }
-  ago = (ms: number) => ago(ms);
+  protected readonly ago = ago;
+  protected readonly perMin = perMin;
 }

@@ -137,6 +137,27 @@ input[type='number'] { width: 90px; }
 .strong { font-weight: 600; }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 
+/* Settings pages (Settings, Overlay): a labelled row of inputs, and a small heading between groups of switches. */
+.setting-field { display: flex; align-items: center; gap: 10px; }
+.setting-field > span:first-child { width: 72px; flex: none; color: var(--text-dim); }
+.setting-head {
+  margin: 8px 0 0; padding-top: 10px; border-top: 1px solid var(--line);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
+}
+.setting-head.first { margin-top: 0; padding-top: 0; border-top: none; }
+
+/* The Bro's grade colours (roast.ts gradeTone) set --tone, and a grade badge ("S+") uses it; pages set the badge's size. */
+.tone-top { --tone: var(--gold); }
+.tone-good { --tone: var(--win); }
+.tone-mid { --tone: var(--accent-2); }
+.tone-meh { --tone: #ff9a4e; }
+.tone-bad { --tone: var(--loss); }
+.grade {
+  flex: none; display: grid; place-items: center; cursor: help; color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 12%, transparent); border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--tone) 22%, transparent);
+}
+
 .champ-icon {
   width: 40px;
   height: 40px;
