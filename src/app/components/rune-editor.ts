@@ -92,25 +92,25 @@ interface Draft {
   `,
   imports: [NgTemplateOutlet, ItemTip],
   styles: `
-    :host { display: block; margin-top: 14px; }
+    :host { display: block; margin-top: 4px; }
     .editor { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
     @container (max-width: 520px) { .editor { grid-template-columns: minmax(0, 1fr); } }
-    .side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+    .side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
     .styles { display: flex; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
     .style { padding: 3px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: transparent; }
     .style img { width: 22px; height: 22px; opacity: 0.45; filter: grayscale(1); }
     .style.on { border-color: var(--accent); background: var(--bg-hover); }
     .style.on img, .style:hover:not(:disabled) img { opacity: 1; filter: none; }
     .row { display: flex; gap: 8px; justify-content: space-around; }
-    .shards { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--line); }
-    .perk { padding: 0; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-sunken); overflow: hidden; }
-    .perk.big { width: 44px; height: 44px; }
+    .shards { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; padding-top: 8px; border-top: 1px solid var(--line); }
+    .perk { padding: 0; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-sunken); overflow: hidden; }
+    .perk.big { width: 40px; height: 40px; }
     .perk.small { width: 26px; height: 26px; }
     .perk img { width: 100%; height: 100%; opacity: 0.4; filter: grayscale(1); }
     .perk.on { border-color: var(--accent); box-shadow: 0 0 10px var(--accent-glow); }
     .perk.on img, .perk:hover:not(:disabled) img { opacity: 1; filter: none; }
     .fallback { font-size: 10px; color: var(--text-dim); }
-    .hint { font-size: 12px; margin: 10px 0 0; }
+    .hint { font-size: 12px; margin: 6px 0 0; }
   `,
 })
 export class RuneEditor {

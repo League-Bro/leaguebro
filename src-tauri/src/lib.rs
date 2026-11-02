@@ -211,6 +211,13 @@ async fn get_match(state: State<'_, AppState>, game_id: i64, queue_name: String,
     Ok(summary)
 }
 
+/// Current Solo/Flex ranks of the players on a scoreboard, by puuid (cached for a while).
+#[tauri::command]
+async fn get_ranks(state: State<'_, AppState>, puuids: Vec<String>) -> Result<std::collections::HashMap<String, scout::PlayerRanks>, String> {
+    let lcu = state.shared.lock().await.lcu.clone().ok_or("Open the League client to see ranks")?;
+    Ok(scout::ranks(&lcu, &puuids).await)
+}
+
 /// League's install folder: from the client, else the one set in Settings.
 async fn league_install_dir(state: &State<'_, AppState>) -> Result<std::path::PathBuf, String> {
     let configured = state.config().install_dir;
@@ -468,6 +475,11 @@ pub fn run() {
                 overlay_input: std::sync::Mutex::new(engine::OverlayInput { passthrough: true, ..Default::default() }),
             });
             app.manage(picks::Picks::default());
+            // The main window draws its own title bar (shell.ts) on Windows; a Mac keeps its native one.
+            #[cfg(target_os = "macos")]
+            if let Some(main) = app.get_webview_window("main") {
+                let _ = main.set_decorations(true);
+            }
             if let Some(overlay) = app.get_webview_window("overlay") {
                 let _ = overlay.set_ignore_cursor_events(true);
                 // macOS puts a full-screen game in its own Space; this lets the
@@ -512,6 +524,7 @@ pub fn run() {
             players_named,
             renew_profile,
             get_match,
+            get_ranks,
             list_patches,
             get_patch,
             get_tier_list,

@@ -304,7 +304,7 @@ fn assign_lanes(team: &[&Value], guess: &[Option<&'static str>], lanes: &HashMap
 }
 
 /// Scoreboard order for a position: top, jungle, mid, ADC, support, then unknown.
-fn lane_rank(position: Option<&str>) -> usize {
+pub fn lane_rank(position: Option<&str>) -> usize {
     match position {
         Some("top") => 0,
         Some("jungle") => 1,

@@ -13,6 +13,7 @@ import {
   Insights,
   ItemEffect,
   ItemInfo,
+  GamePlayer,
   MatchLine,
   MatchupState,
   LpChange,
@@ -22,6 +23,7 @@ import {
   QueueStat,
   PatchInfo,
   PatchNotes,
+  PlayerRanks,
   PostGame,
   PostPlayer,
   Profile,
@@ -293,12 +295,20 @@ export function demoProfile(): MyProfile {
     if ([0, 2, 5, 11].includes(i)) rest[0] = 555;
     return (lane ? [lane, ...rest] : rest).slice(0, 5);
   };
+  const names = ['Hubcus#NA1', 'Big Hub#777', 'Tylor#NA1', 'xX Midkid Xx#0420', 'Wardbot#NA1', 'Gank Plank#0001', 'Sleepy Jg#EUW', 'pyke main#hook',
+    'Lil Baron#NA1', 'Smolder Fan#NA1', 'TiltProof#NA1', 'Shy Support#123', 'Flash on D#NA1', 'Mr Farm#NA1'];
+  const player = (championId: number, k: number) => ({ championId, name: names[k % names.length], puuid: `demo-${k % names.length}`, isMe: false });
+  const teams = (i: number, championId: number, foes: number[], result: MatchLine['result']): GamePlayer[][] => {
+    if (result === 'remake') return [];
+    const mine = [86, 64, 0, 51, 412].map((c, k) => (k === 2 ? { championId, name: 'Dom#NA1', puuid: 'me', isMe: true } : player(c, i + k)));
+    return [mine, foes.map((c, k) => player(c, i * 3 + k + 5))];
+  };
   const matches: MatchLine[] = rows.map(([queueId, championId, result, kills, deaths, assists, cs, min, lane], i) => ({
     gameId: 1000 + i, queueId, gameMode: queueId === 450 ? 'ARAM' : queueId === 480 ? 'SWIFTPLAY' : 'CLASSIC',
     created: Date.now() - (i * 5 + 1) * 3_600_000, duration: min * 60, result, championId, kills, deaths, assists, cs,
     gold: min * 420, damage: min * 850 + kills * 600, vision: Math.round(min * 0.8), level: Math.min(18, 6 + Math.round(min / 3)),
     items: [...(builds[championId] ?? []), 0, 0, 0, 0, 0, 0].slice(0, 6).concat(3340), spells: [4, 14],
-    laneOpponent: lane, enemies: enemies(i, lane), lpChange: demoLpChange(i, queueId, result),
+    laneOpponent: lane, enemies: enemies(i, lane), teams: teams(i, championId, enemies(i, lane), result), lpChange: demoLpChange(i, queueId, result),
   }));
   const queueIds = [...new Set(matches.map((m) => m.queueId))];
   const modes = queueIds
@@ -347,7 +357,7 @@ function demoLpHistory(): LpPoint[] {
 export function demoOpggProfile(): MyProfile {
   const p = demoProfile();
   const matches = p.matches.slice(2).map((m) => ({
-    ...m, created: m.created - 2 * 86_400_000, vision: 0, laneOpponent: null, enemies: [],
+    ...m, created: m.created - 2 * 86_400_000, vision: 0, laneOpponent: null, enemies: [], teams: [],
     queueId: m.queueId === 400 ? 0 : m.queueId, gameMode: m.queueId === 400 ? 'NORMAL' : m.gameMode,
   }));
   const queueIds = [...new Set(matches.map((m) => m.queueId))];
@@ -412,6 +422,23 @@ function demoGoldLead(duration: number, final: number): GoldPoint[] {
   for (let t = 0; t < duration; t += 60) points.push({ t, lead: Math.round(lead(t)) });
   points.push({ t: duration, lead: final });
   return points;
+}
+
+/** Made-up ranks for the demo scoreboard; one player is unranked. */
+export function demoRanks(puuids: string[]): Record<string, PlayerRanks> {
+  const tiers = ['SILVER', 'GOLD', 'GOLD', 'PLATINUM', 'EMERALD', 'GOLD', 'DIAMOND', 'SILVER', 'MASTER'];
+  const divisions = ['IV', 'III', 'II', 'I'];
+  const out: Record<string, PlayerRanks> = {};
+  puuids.forEach((id, i) => {
+    if (id === 'e2') {
+      out[id] = { solo: null, flex: null };
+      return;
+    }
+    const tier = tiers[i % tiers.length];
+    const rank = (division: string, lp: number) => ({ tier, division: tier === 'MASTER' ? '' : division, lp, wins: 40 + i * 7, losses: 38 + i * 5 });
+    out[id] = { solo: rank(divisions[i % 4], (i * 23) % 100), flex: i % 3 ? null : rank(divisions[(i + 1) % 4], 50) };
+  });
+  return out;
 }
 
 /** The post-game summary demo: a good game, or with `bad`, one worth roasting. */

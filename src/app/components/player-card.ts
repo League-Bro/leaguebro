@@ -9,7 +9,7 @@ import { Loader } from './loader';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DecimalPipe, Loader],
   template: `
-    <div class="player" [class.me]="isMe()" [class.enemy]="side() === 'enemy'">
+    <div class="player" [class.me]="isMe()" [class.enemy]="side() === 'enemy'" [class.flat]="flat()">
       <div class="who">
         @if (championId() > 0) {
           <img class="champ-icon" [src]="icon(championId())" alt="" [title]="rift.champName(championId())" />
@@ -84,6 +84,10 @@ import { Loader } from './loader';
     }
     .player.enemy { border-left-color: var(--enemy); }
     .player.me { background: linear-gradient(90deg, var(--accent-soft), transparent 60%), var(--bg-raised); border-left-color: var(--accent); }
+    /* A row inside another card (champ select's team card): no card of its own. */
+    .player.flat { background: var(--bg-sunken); border: 0; border-left: 3px solid var(--ally); border-radius: 10px; min-height: 50px; padding: 6px 12px; }
+    .player.flat.enemy { border-left-color: var(--enemy); }
+    .player.flat.me { background: linear-gradient(90deg, var(--accent-soft), transparent 60%), var(--bg-sunken); border-left-color: var(--accent); }
     .who { display: flex; align-items: center; gap: 10px; min-width: 0; }
     .names { min-width: 0; }
     .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -115,6 +119,8 @@ export class PlayerCard {
   /** Why a player's details are missing, e.g. ranked champ select. */
   readonly hiddenLabel = input('Hidden');
   readonly hiddenNote = input('Shown on the loading screen');
+  /** A plain row for use inside another card. */
+  readonly flat = input(false);
 
   protected readonly profile = computed(() => {
     const id = this.puuid();

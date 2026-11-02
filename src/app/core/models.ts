@@ -103,8 +103,19 @@ export interface MatchLine {
   laneOpponent: number | null;
   /** Enemy champion ids; empty if the game's full record didn't load. */
   enemies: number[];
+  /** Your team then theirs, each top to support where that's clear; empty if the game's full record didn't load, and in Arena. */
+  teams: GamePlayer[][];
   /** LP gained or lost in a ranked game, when League Bro saw your rank before and after it. */
   lpChange: LpChange | null;
+}
+
+/** One player in a game, for the names beside each match. */
+export interface GamePlayer {
+  championId: number;
+  /** Riot ID ("Name#TAG"), or the summoner name in older records. */
+  name: string;
+  puuid: string;
+  isMe: boolean;
 }
 
 /** The LP one ranked game gained or lost, and the rank it left you at. */
@@ -565,6 +576,12 @@ export interface PostTeam {
   barons: number;
   towers: number;
   players: PostPlayer[];
+}
+
+/** A player's current Solo/Duo and Flex ranks (post-game scoreboard). */
+export interface PlayerRanks {
+  solo: RankLine | null;
+  flex: RankLine | null;
 }
 
 export interface PostGame {

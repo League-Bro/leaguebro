@@ -299,6 +299,7 @@ mod tests {
             line: Default::default(),
             lane_opponent: None,
             enemies: Vec::new(),
+            teams: Vec::new(),
             lp_change: None,
         };
         let mut one = vec![m(20)];
