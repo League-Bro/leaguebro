@@ -44,6 +44,8 @@ pub struct MatchLine {
     /// LP gained or lost in a ranked game, when League Bro saw your rank
     /// before and after it (see `lp_history`).
     pub lp_change: Option<crate::lp_history::LpChange>,
+    /// OP.GG's id for the game, in games from OP.GG's match list (`get_match` loads it from there).
+    pub opgg_game: Option<crate::opgg_profile::OpggGame>,
 }
 
 /// One player in a game, for the names beside each match.
@@ -170,6 +172,7 @@ pub fn parse_matches(history: &Value) -> Vec<MatchLine> {
                 enemies: Vec::new(),
                 teams: Vec::new(),
                 lp_change: None,
+                opgg_game: None,
             })
         })
         .collect();

@@ -107,6 +107,14 @@ export interface MatchLine {
   teams: GamePlayer[][];
   /** LP gained or lost in a ranked game, when League Bro saw your rank before and after it. */
   lpChange: LpChange | null;
+  /** OP.GG's id for the game, in games from OP.GG's match list (the scoreboard loads from there). */
+  opggGame: OpggGame | null;
+}
+
+export interface OpggGame {
+  id: string;
+  /** ISO-8601, as OP.GG gave it. */
+  createdAt: string;
 }
 
 /** One player in a game, for the names beside each match. */
@@ -552,6 +560,8 @@ export interface PostPlayer {
   isMe: boolean;
   /** Null outside a 5v5 on Summoner's Rift or when it's unclear. */
   position: 'top' | 'jungle' | 'mid' | 'adc' | 'support' | null;
+  /** League's own grade ("S-", "A+"…), when the client gave one: yours, plus your party's. */
+  clientGrade: string | null;
   championId: number;
   level: number;
   kills: number;
@@ -598,6 +608,8 @@ export interface PostGame {
   goldLead?: GoldPoint[];
   /** LP gained or lost, for ranked games League Bro saw your rank around. */
   lpChange?: LpChange | null;
+  /** The source had no vision score (OP.GG's games), so every `vision` is 0. */
+  noVision?: boolean;
 }
 
 export interface ChampInfo {

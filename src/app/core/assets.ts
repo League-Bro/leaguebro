@@ -79,6 +79,16 @@ export function winPct(wins: number, games: number): number {
   return games > 0 ? Math.round((wins / games) * 100) : 0;
 }
 
+/**
+ * A rank's season record, e.g. "38W 31L · 55%". The League client sends other
+ * players' losses as 0 (it only shows their wins), so with no losses it's just
+ * the wins: "113 wins", not a made-up 100%.
+ */
+export function rankRecord(r: { wins: number; losses: number }): string {
+  if (r.losses === 0) return `${r.wins} ${r.wins === 1 ? 'win' : 'wins'}`;
+  return `${r.wins}W ${r.losses}L · ${winPct(r.wins, r.wins + r.losses)}%`;
+}
+
 /** (Kills + assists) / deaths, e.g. "3.2", or "Perfect" without deaths. */
 export function kdaRatio(k: number, d: number, a: number): string {
   return d === 0 ? (k + a > 0 ? 'Perfect' : '0.0') : ((k + a) / d).toFixed(1);

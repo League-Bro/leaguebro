@@ -1,11 +1,14 @@
 //! Post-game summary, built from the League client's match-history record
 //! (`/lol-match-history/v1/games/{gameId}`) once the game has ended.
 
+use crate::cache::DiskCache;
+use crate::lcu::Lcu;
 use crate::profile;
 use crate::util::{flag, int, list, text};
 use serde::Serialize;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -24,6 +27,8 @@ pub struct PostGame {
     pub gold_lead: Vec<GoldPoint>,
     /// LP gained or lost, for ranked games League Bro saw your rank around.
     pub lp_change: Option<crate::lp_history::LpChange>,
+    /// The source has no vision score (OP.GG's games), so every `vision` is 0.
+    pub no_vision: bool,
 }
 
 /// Your team's gold minus the other team's at a game time.
@@ -58,6 +63,9 @@ pub struct PostPlayer {
     /// "top", "jungle", "mid", "adc" or "support"; None outside a 5v5 on
     /// Summoner's Rift or when it's unclear (`profile::positions`).
     pub position: Option<&'static str>,
+    /// League's own grade for the game ("S-", "A+"…, champion mastery), when
+    /// the client gave one: yours, plus your party's (`client_grades`).
+    pub client_grade: Option<String>,
     #[serde(flatten)]
     pub line: PlayerLine,
 }
@@ -131,7 +139,7 @@ pub fn parse(game: &Value, my_puuid: &str, queue_name: &str, lanes: &HashMap<i64
                 (g, t) => Some(format!("{g}#{t}")),
             };
             let is_me = !puuid.is_empty() && puuid == my_puuid;
-            (int(p, "teamId"), PostPlayer { puuid, name, is_me, position: None, line: PlayerLine::parse(p) }, p)
+            (int(p, "teamId"), PostPlayer { puuid, name, is_me, position: None, client_grade: None, line: PlayerLine::parse(p) }, p)
         })
         .collect();
     // A solo custom game may not carry the puuid we know; one player means it's us.
@@ -186,12 +194,114 @@ pub fn parse(game: &Value, my_puuid: &str, queue_name: &str, lanes: &HashMap<i64
         teams,
         gold_lead: Vec::new(),
         lp_change: None,
+        no_vision: false,
     })
 }
 
 /// The client's timeline for a game.
 pub fn timeline_path(game_id: i64) -> String {
     format!("/lol-match-history/v1/game-timelines/{game_id}")
+}
+
+/// Where League's own grades for a finished game are: the post-game screen's
+/// mastery update, then the mastery notifications (still there after it's closed).
+const GRADE_PATHS: [&str; 2] = ["/lol-end-of-game/v1/champion-mastery-updates", "/lol-champion-mastery/v1/notifications"];
+
+/// League's grades for a finished game by puuid (see `grades_from`); empty
+/// until the client has them (a few seconds after the game) or when it gave none.
+pub async fn client_grades(lcu: &Lcu, game_id: i64, my_puuid: &str) -> HashMap<String, String> {
+    for path in GRADE_PATHS {
+        if let Ok(Some(v)) = lcu.get(path).await {
+            let grades = grades_from(&v, game_id, my_puuid);
+            if !grades.is_empty() {
+                return grades;
+            }
+        }
+    }
+    HashMap::new()
+}
+
+/// Grades by puuid from a mastery update (`grade`) or notification
+/// (`playerGrade`), one or a list, about `game_id`: the player's own, plus
+/// `memberGrades` (their party). An entry without a game id counts, since the
+/// post-game screen's is always about the game that just ended.
+pub fn grades_from(v: &Value, game_id: i64, my_puuid: &str) -> HashMap<String, String> {
+    let entries = v.as_array().map(|a| a.iter().collect()).unwrap_or_else(|| vec![v]);
+    let mut out = HashMap::new();
+    let mut add = |puuid: &str, grade: &str| {
+        if !puuid.is_empty() && is_grade(grade) {
+            out.entry(puuid.to_string()).or_insert_with(|| grade.to_string());
+        }
+    };
+    for e in entries.into_iter().filter(|e| [0, game_id].contains(&int(e, "gameId"))) {
+        let grade = Some(text(e, "grade")).filter(|s| !s.is_empty()).unwrap_or(text(e, "playerGrade"));
+        let puuid = Some(text(e, "puuid")).filter(|s| !s.is_empty()).unwrap_or(my_puuid);
+        add(puuid, grade);
+        for m in list(e, "memberGrades") {
+            add(text(m, "puuid"), text(m, "grade"));
+        }
+    }
+    out
+}
+
+/// "S+" down to "D-".
+fn is_grade(g: &str) -> bool {
+    let mut c = g.chars();
+    matches!(c.next(), Some('S' | 'A' | 'B' | 'C' | 'D')) && matches!(c.as_str(), "" | "+" | "-")
+}
+
+/// Puts each player's grade on the summary; true if anyone got one.
+pub fn apply_grades(game: &mut PostGame, grades: &HashMap<String, String>) -> bool {
+    let mut any = false;
+    for p in game.teams.iter_mut().flat_map(|t| t.players.iter_mut()) {
+        if let Some(g) = grades.get(&p.puuid).filter(|_| !p.puuid.is_empty()) {
+            p.client_grade = Some(g.clone());
+            any = true;
+        }
+    }
+    any
+}
+
+/// Your grade on the summary.
+pub fn my_grade(game: &PostGame) -> Option<&str> {
+    game.teams.iter().flat_map(|t| &t.players).find(|p| p.is_me)?.client_grade.as_deref()
+}
+
+const GRADES_FILE: &str = "grades.json";
+/// Games whose grades are kept; the oldest go first.
+const MAX_GRADED_GAMES: usize = 500;
+
+/// League's grades saved per game (`grades.json` in the app data folder), since
+/// the client only has them right after the game, not in match history.
+pub struct GradeStore {
+    disk: DiskCache,
+    lock: std::sync::Mutex<()>,
+}
+
+impl GradeStore {
+    pub fn new(dir: Option<PathBuf>) -> GradeStore {
+        GradeStore { disk: DiskCache { dir }, lock: std::sync::Mutex::new(()) }
+    }
+
+    pub fn get(&self, game_id: i64) -> HashMap<String, String> {
+        let _guard = self.lock.lock().unwrap();
+        let mut all: BTreeMap<i64, HashMap<String, String>> = self.disk.read(GRADES_FILE).unwrap_or_default();
+        all.remove(&game_id).unwrap_or_default()
+    }
+
+    pub fn save(&self, game_id: i64, grades: &HashMap<String, String>) {
+        let _guard = self.lock.lock().unwrap();
+        let mut all: BTreeMap<i64, HashMap<String, String>> = self.disk.read(GRADES_FILE).unwrap_or_default();
+        if all.get(&game_id) == Some(grades) {
+            return;
+        }
+        all.insert(game_id, grades.clone());
+        // Game ids go up over time, so the first ones are the oldest.
+        while all.len() > MAX_GRADED_GAMES {
+            all.pop_first();
+        }
+        self.disk.write(GRADES_FILE, &all);
+    }
 }
 
 /// Your team's gold lead from the game's timeline (one frame a minute, each
@@ -325,6 +435,25 @@ mod tests {
 
     fn fixture() -> Value {
         crate::util::fixture_json("match_game.json")
+    }
+
+    #[test]
+    fn league_grades_from_the_mastery_update() {
+        let update = serde_json::json!({
+            "gameId": 7, "puuid": "me-puuid", "grade": "A-",
+            "memberGrades": [{ "puuid": "friend", "grade": "S+" }, { "puuid": "odd", "grade": "NONE" }],
+        });
+        let g = grades_from(&update, 7, "me-puuid");
+        assert_eq!((g.get("me-puuid").map(String::as_str), g.get("friend").map(String::as_str), g.len()), (Some("A-"), Some("S+"), 2));
+        // Notifications are a list; only this game's counts.
+        let notes = serde_json::json!([{ "gameId": 6, "playerGrade": "D" }, { "gameId": 7, "playerGrade": "B+" }]);
+        assert_eq!(grades_from(&notes, 7, "me-puuid").get("me-puuid").map(String::as_str), Some("B+"));
+        assert!(grades_from(&notes, 8, "me-puuid").is_empty());
+
+        let mut game = parse(&fixture(), "me-puuid", "Ranked Solo/Duo", &HashMap::new()).unwrap();
+        assert_eq!(my_grade(&game), None);
+        assert!(apply_grades(&mut game, &g));
+        assert_eq!(my_grade(&game), Some("A-"));
     }
 
     #[test]

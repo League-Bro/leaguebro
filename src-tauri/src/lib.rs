@@ -192,9 +192,23 @@ async fn remember_riot_id(app: &AppHandle, state: &State<'_, AppState>, lcu: &lc
     }
 }
 
-/// The full scoreboard of one of your past games.
+/// The full scoreboard of one of your past games. Games from OP.GG's match
+/// list (`opgg_game`, the client closed) load from OP.GG, seen from `puuid`.
 #[tauri::command]
-async fn get_match(state: State<'_, AppState>, game_id: i64, queue_name: String, puuid: Option<String>) -> Result<postgame::PostGame, String> {
+async fn get_match(
+    state: State<'_, AppState>,
+    game_id: i64,
+    queue_name: String,
+    puuid: Option<String>,
+    opgg_game: Option<opgg_profile::OpggGame>,
+) -> Result<postgame::PostGame, String> {
+    if let Some(game) = opgg_game {
+        client_closed().await?;
+        let puuid = puuid.filter(|p| !p.is_empty()).ok_or("Couldn't tell whose game this is")?;
+        let mut summary = opgg_profile::load_game(&state.opgg, &state.config().region, &game, &puuid, &queue_name).await.map_err(msg)?;
+        summary.lp_change = state.lp.history(&puuid).change(summary.queue_id, summary.game_id);
+        return Ok(summary);
+    }
     let lcu = state.shared.lock().await.lcu.clone().ok_or("Open the League client to see this game")?;
     let me = lcu.summoner_ids().await.map_err(msg)?;
     // Seen from `puuid` (another player's profile) when given, else from you.
@@ -208,6 +222,7 @@ async fn get_match(state: State<'_, AppState>, game_id: i64, queue_name: String,
         summary.gold_lead = postgame::gold_lead(&game, &t, mine);
     }
     summary.lp_change = state.lp.history(puuid).change(summary.queue_id, util::int(&game, "gameCreation"));
+    postgame::apply_grades(&mut summary, &state.grades.get(game_id));
     Ok(summary)
 }
 
@@ -472,6 +487,7 @@ pub fn run() {
                 tiers: tierlist::TierLists::new(),
                 guides: guide::Guides::new(),
                 lp: lp_history::LpStore::new(app.path().app_data_dir().ok()),
+                grades: postgame::GradeStore::new(app.path().app_data_dir().ok()),
                 overlay_input: std::sync::Mutex::new(engine::OverlayInput { passthrough: true, ..Default::default() }),
             });
             app.manage(picks::Picks::default());

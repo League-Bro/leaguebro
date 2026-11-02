@@ -309,6 +309,7 @@ export function demoProfile(): MyProfile {
     gold: min * 420, damage: min * 850 + kills * 600, vision: Math.round(min * 0.8), level: Math.min(18, 6 + Math.round(min / 3)),
     items: [...(builds[championId] ?? []), 0, 0, 0, 0, 0, 0].slice(0, 6).concat(3340), spells: [4, 14],
     laneOpponent: lane, enemies: enemies(i, lane), teams: teams(i, championId, enemies(i, lane), result), lpChange: demoLpChange(i, queueId, result),
+    opggGame: null,
   }));
   const queueIds = [...new Set(matches.map((m) => m.queueId))];
   const modes = queueIds
@@ -359,6 +360,7 @@ export function demoOpggProfile(): MyProfile {
   const matches = p.matches.slice(2).map((m) => ({
     ...m, created: m.created - 2 * 86_400_000, vision: 0, laneOpponent: null, enemies: [], teams: [],
     queueId: m.queueId === 400 ? 0 : m.queueId, gameMode: m.queueId === 400 ? 'NORMAL' : m.gameMode,
+    opggGame: { id: `demo-${m.gameId}`, createdAt: new Date(m.created - 2 * 86_400_000).toISOString() },
   }));
   const queueIds = [...new Set(matches.map((m) => m.queueId))];
   const modes = queueIds
@@ -371,6 +373,16 @@ export function demoOpggProfile(): MyProfile {
     lpHistory: { solo: [{ at: Date.now() - 2 * 86_400_000, tier: 'GOLD', division: 'II', lp: 21, games: null }], flex: [] },
     source: 'opgg', updatedAt: Date.now() - 2 * 86_400_000, renewableAt: Date.now() - 60_000,
   };
+}
+
+/** A game's scoreboard as OP.GG has it: no vision scores, gold graph or trinkets. */
+export function demoOpggPostGame(): PostGame {
+  const g = demoPostGame();
+  const teams = g.teams.map((t) => ({
+    ...t,
+    players: t.players.map((p) => ({ ...p, vision: 0, clientGrade: null, items: [...p.items.slice(0, 6), 0] })),
+  }));
+  return { ...g, teams, goldLead: [], lpChange: null, noVision: true };
 }
 
 function demoToughest(stats: Map<number, ChampStat>): ChampStat[] {
@@ -424,7 +436,7 @@ function demoGoldLead(duration: number, final: number): GoldPoint[] {
   return points;
 }
 
-/** Made-up ranks for the demo scoreboard; one player is unranked. */
+/** Made-up ranks for the demo scoreboard; one player is unranked, and one has no losses (as the client sends other players). */
 export function demoRanks(puuids: string[]): Record<string, PlayerRanks> {
   const tiers = ['SILVER', 'GOLD', 'GOLD', 'PLATINUM', 'EMERALD', 'GOLD', 'DIAMOND', 'SILVER', 'MASTER'];
   const divisions = ['IV', 'III', 'II', 'I'];
@@ -435,7 +447,7 @@ export function demoRanks(puuids: string[]): Record<string, PlayerRanks> {
       return;
     }
     const tier = tiers[i % tiers.length];
-    const rank = (division: string, lp: number) => ({ tier, division: tier === 'MASTER' ? '' : division, lp, wins: 40 + i * 7, losses: 38 + i * 5 });
+    const rank = (division: string, lp: number) => ({ tier, division: tier === 'MASTER' ? '' : division, lp, wins: 40 + i * 7, losses: id === 'e3' ? 0 : 38 + i * 5 });
     out[id] = { solo: rank(divisions[i % 4], (i * 23) % 100), flex: i % 3 ? null : rank(divisions[(i + 1) % 4], 50) };
   });
   return out;
@@ -448,12 +460,14 @@ export function demoPostGame(bad = false): PostGame {
     puuid: string, name: string | null, championId: number, k: number, d: number, a: number,
     cs: number, gold: number, damage: number, vision: number, items: number[], isMe = false,
   ): PostPlayer => ({
-    puuid, name, isMe, position: null, championId, level: 13 + ((k + a) % 5), kills: k, deaths: d, assists: a, cs, gold, damage, vision,
+    puuid, name, isMe, position: null, clientGrade: null, championId, level: 13 + ((k + a) % 5), kills: k, deaths: d, assists: a, cs, gold, damage, vision,
     items: [...items, 0, 0, 0, 0, 0, 0].slice(0, 6).concat(3340), spells: [4, 14],
   });
   const me = bad
     ? p('me', 'Dom#NA1', 103, 2, 11, 3, 128, 8400, 9100, 41, [3118, 3020, 1058], true)
     : p('me', 'Dom#NA1', 103, 11, 2, 9, 226, 14650, 32400, 22, [3118, 3020, 4645, 3157, 1058], true);
+  // League's own grade, as the client's post-game mastery update gives it.
+  me.clientGrade = bad ? 'D+' : 'S-';
   const [mineKills, theirKills] = bad ? [22, 31] : [31, 20];
   const mine = [
     p('a1', 'TreeHugger#NA1', 516, 2, 4, 9, 198, 10900, 14200, 18, [3020, 1058]),

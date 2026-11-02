@@ -6,15 +6,17 @@
 //! games from `lol_list_summoner_matches` (at most 20, only your own line in
 //! each, so there are no enemy or lane-opponent stats). OP.GG only knows what
 //! it fetched from Riot at its last update (`updated_at`), which can be days
-//! old; `renew` gets it to fetch again, like the button on op.gg.
+//! old; `renew` gets it to fetch again, like the button on op.gg. A game's
+//! full scoreboard comes from `lol_get_summoner_game_detail` (`load_game`).
 
 use crate::lp_history::{LpHistory, LpPoint};
 use crate::opgg::{parse_compact, OpGg};
-use crate::postgame::PlayerLine;
+use crate::postgame::{self, PlayerLine, PostGame, PostPlayer, PostTeam};
 use crate::profile::{self, MatchLine, MyProfile};
 use crate::scout::RankLine;
-use crate::util::{int, list, text};
+use crate::util::{flag, int, list, text};
 use anyhow::{anyhow, bail, Context, Result};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::time::Duration;
 
@@ -38,6 +40,24 @@ const MATCH_FIELDS: &[&str] = &[
     "data.game_history[].participants[].{champion_id,items[],spells[],team_key}",
     "data.game_history[].participants[].stats.{assist,champion_level,death,gold_earned,kill,minion_kill,neutral_minion_kill,result,total_damage_dealt_to_champions}",
 ];
+
+const GAME_FIELDS: &[&str] = &[
+    "data.game_detail.{created_at,game_length_second,game_map,game_type,id}",
+    "data.game_detail.teams[].{key}",
+    "data.game_detail.teams[].game_stat.{is_win,baron_kill,dragon_kill,tower_kill}",
+    "data.game_detail.teams[].participants[].summoner.{game_name,puuid,tagline}",
+    "data.game_detail.teams[].participants[].{champion_id,items[],position,spells[],team_key}",
+    "data.game_detail.teams[].participants[].stats.{assist,champion_level,death,gold_earned,kill,minion_kill,neutral_minion_kill,result,total_damage_dealt_to_champions}",
+];
+
+/// A game in OP.GG's match list, for loading its full scoreboard (`load_game`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct OpggGame {
+    pub id: String,
+    /// As OP.GG gave it (ISO-8601); its game detail tool needs it with the id.
+    pub created_at: String,
+}
 
 /// A Riot ID as OP.GG takes it: "Name#TAG" split at the last `#`.
 pub fn split_riot_id(riot_id: &str) -> Result<(&str, &str)> {
@@ -173,26 +193,7 @@ pub fn parse_matches(v: &Value, puuid: &str) -> Vec<MatchLine> {
             let parts = list(g, "participants");
             // Only the player looked up is listed; match by puuid in case that changes.
             let p = parts.iter().find(|p| text(p, "/summoner/puuid") == puuid).or(parts.first())?;
-            let st = |k: &str| int(p, &format!("/stats/{k}"));
-            let mut items: Vec<i64> = list(p, "items").iter().filter_map(Value::as_i64).take(6).collect();
-            // Six item slots plus the trinket, like the client's lines; OP.GG
-            // doesn't say which is the trinket, so that slot stays empty.
-            items.resize(7, 0);
-            let spells: Vec<i64> = list(p, "spells").iter().filter_map(Value::as_i64).collect();
-            let line = PlayerLine {
-                champion_id: int(p, "champion_id"),
-                level: st("champion_level"),
-                kills: st("kill"),
-                deaths: st("death"),
-                assists: st("assist"),
-                cs: st("minion_kill") + st("neutral_minion_kill"),
-                gold: st("gold_earned"),
-                damage: st("total_damage_dealt_to_champions"),
-                // Not in OP.GG's match list.
-                vision: 0,
-                items,
-                spells: [spells.first().copied().unwrap_or(0), spells.get(1).copied().unwrap_or(0)],
-            };
+            let line = player_line(p);
             let qid = queue_id(game_type);
             let mode = if game_type == "BRAWL" { "BRAWL" } else { game_type };
             let allowed = game_type != "CUSTOM" && profile::allowed(&json!({ "gameMode": mode, "queueId": qid }), line.champion_id);
@@ -204,22 +205,137 @@ pub fn parse_matches(v: &Value, puuid: &str) -> Vec<MatchLine> {
                 game_mode: game_type.to_string(),
                 created,
                 duration: int(g, "game_length_second"),
-                result: match text(p, "/stats/result") {
-                    "WIN" => "win",
-                    "LOSE" => "loss",
-                    _ => "remake",
-                }
-                .to_string(),
+                result: result(p).to_string(),
                 line,
                 lane_opponent: None,
                 enemies: Vec::new(),
                 teams: Vec::new(),
                 lp_change: None,
+                opgg_game: Some(OpggGame { id: text(g, "id").to_string(), created_at: text(g, "created_at").to_string() }),
             })
         })
         .collect();
     out.sort_by(|a, b| b.created.cmp(&a.created));
     out
+}
+
+/// One player's numbers from OP.GG's match list or game detail.
+fn player_line(p: &Value) -> PlayerLine {
+    let st = |k: &str| int(p, &format!("/stats/{k}"));
+    let mut items: Vec<i64> = list(p, "items").iter().filter_map(Value::as_i64).take(6).collect();
+    // Six item slots plus the trinket, like the client's lines; OP.GG
+    // doesn't say which is the trinket, so that slot stays empty.
+    items.resize(7, 0);
+    let spells: Vec<i64> = list(p, "spells").iter().filter_map(Value::as_i64).collect();
+    PlayerLine {
+        champion_id: int(p, "champion_id"),
+        level: st("champion_level"),
+        kills: st("kill"),
+        deaths: st("death"),
+        assists: st("assist"),
+        cs: st("minion_kill") + st("neutral_minion_kill"),
+        gold: st("gold_earned"),
+        damage: st("total_damage_dealt_to_champions"),
+        // OP.GG has no vision score.
+        vision: 0,
+        items,
+        spells: [spells.first().copied().unwrap_or(0), spells.get(1).copied().unwrap_or(0)],
+    }
+}
+
+/// "win", "loss" or "remake" for one of OP.GG's participants.
+fn result(p: &Value) -> &'static str {
+    match text(p, "/stats/result") {
+        "WIN" => "win",
+        "LOSE" => "loss",
+        _ => "remake",
+    }
+}
+
+/// OP.GG's position as the scoreboard's ("MID" → "mid").
+fn position(s: &str) -> Option<&'static str> {
+    match s {
+        "TOP" => Some("top"),
+        "JUNGLE" => Some("jungle"),
+        "MID" => Some("mid"),
+        "ADC" => Some("adc"),
+        "SUPPORT" => Some("support"),
+        _ => None,
+    }
+}
+
+/// The full scoreboard of a game from `lol_get_summoner_game_detail`, seen
+/// from `puuid`'s side (like `postgame::parse` for the client's record).
+/// OP.GG has no vision score or gold timeline, so those stay empty.
+pub fn parse_game(v: &Value, puuid: &str, queue_name: &str) -> Option<PostGame> {
+    let g = v.pointer("/data/game_detail")?;
+    let raw_teams = list(g, "teams");
+    let me = raw_teams.iter().flat_map(|t| list(t, "participants")).find(|p| text(p, "/summoner/puuid") == puuid)?;
+    let mut teams: Vec<PostTeam> = raw_teams
+        .iter()
+        .map(|t| {
+            let parts = list(t, "participants");
+            // Positions only mean something in a 5v5 on Summoner's Rift, one player in each.
+            let lanes: Vec<Option<&'static str>> = parts.iter().map(|p| position(text(p, "position"))).collect();
+            let mut distinct: Vec<_> = lanes.iter().flatten().collect();
+            distinct.sort();
+            distinct.dedup();
+            let rift = text(g, "game_map") == "SUMMONERS_RIFT" && raw_teams.len() == 2 && distinct.len() == 5;
+            let mut players: Vec<PostPlayer> = parts
+                .iter()
+                .zip(lanes)
+                .map(|(p, lane)| {
+                    let id = text(p, "/summoner/puuid").to_string();
+                    let name = match (text(p, "/summoner/game_name"), text(p, "/summoner/tagline")) {
+                        ("", _) => None,
+                        (n, "") => Some(n.to_string()),
+                        (n, t) => Some(format!("{n}#{t}")),
+                    };
+                    let is_me = id == puuid;
+                    PostPlayer { puuid: id, name, is_me, position: lane.filter(|_| rift), client_grade: None, line: player_line(p) }
+                })
+                .collect();
+            // Top to support, so each row sits across from its lane opponent.
+            players.sort_by_key(|p| postgame::lane_rank(p.position));
+            PostTeam {
+                team_id: if text(t, "key") == "RED" { 200 } else { 100 },
+                win: flag(t, "/game_stat/is_win"),
+                is_mine: players.iter().any(|p| p.is_me),
+                kills: players.iter().map(|p| p.line.kills).sum(),
+                gold: players.iter().map(|p| p.line.gold).sum(),
+                dragons: int(t, "/game_stat/dragon_kill"),
+                barons: int(t, "/game_stat/baron_kill"),
+                towers: int(t, "/game_stat/tower_kill"),
+                players,
+            }
+        })
+        .collect();
+    teams.sort_by_key(|t| !t.is_mine);
+    let game_type = text(g, "game_type");
+    let created = iso_ms(text(g, "created_at")).unwrap_or(0);
+    Some(PostGame {
+        // The same id as the game's `MatchLine`.
+        game_id: created,
+        queue_id: queue_id(game_type),
+        queue_name: queue_name.to_string(),
+        game_mode: game_type.to_string(),
+        duration: int(g, "game_length_second"),
+        result: result(me).to_string(),
+        teams,
+        gold_lead: Vec::new(),
+        lp_change: None,
+        no_vision: true,
+    })
+}
+
+/// One game's full scoreboard from OP.GG (`region` is OP.GG's code), seen from `puuid`'s side.
+pub async fn load_game(opgg: &OpGg, region: &str, game: &OpggGame, puuid: &str, queue_name: &str) -> Result<PostGame> {
+    let args = json!({
+        "region": region, "lang": "en_US", "game_id": game.id, "created_at": game.created_at, "desired_output_fields": GAME_FIELDS,
+    });
+    let answer = opgg.call_tool("lol_get_summoner_game_detail", args).await.context("couldn't load this game from OP.GG")?;
+    let v = parse_compact(&answer).context("couldn't read OP.GG's game")?;
+    parse_game(&v, puuid, queue_name).ok_or_else(|| anyhow!("OP.GG's record of this game doesn't list this player"))
 }
 
 /// Your profile from OP.GG. `region` is OP.GG's code ("na", "euw"…).
@@ -337,5 +453,31 @@ mod tests {
         assert_eq!(first.line.spells, [4, 14]);
         assert_eq!((first.queue_id, first.game_mode.as_str()), (0, "NORMAL"));
         assert_eq!(m.iter().filter(|m| m.result == "win").count(), 3);
+        let g = first.opgg_game.as_ref().unwrap();
+        assert_eq!((g.id.as_str(), g.created_at.as_str()), ("eq3KyFixtgU9bkMbEfF5ClYI4Gc4d4Sb6LErihpUUC0=", "2026-10-22T15:34:37+09:00"));
+    }
+
+    #[test]
+    fn game_from_opgg() {
+        let v = fixture("opgg_mcp_game_detail.txt");
+        // Seen from the red side: their team comes first.
+        let g = parse_game(&v, "puuid-7", "Normal").unwrap();
+        assert_eq!((g.game_id, g.queue_id, g.game_mode.as_str(), g.duration), (iso_ms("2026-11-02T06:35:59+09:00").unwrap(), 0, "NORMAL", 1705));
+        assert_eq!((g.result.as_str(), g.no_vision), ("win", true));
+        let [mine, theirs] = &g.teams[..] else { panic!("two teams") };
+        assert_eq!((mine.team_id, mine.is_mine, mine.win, theirs.team_id, theirs.win), (200, true, true, 100, false));
+        assert_eq!((mine.dragons, mine.barons, mine.towers, mine.kills), (4, 1, 14, 39));
+        // Top to support on both sides.
+        let order = |t: &PostTeam| t.players.iter().map(|p| p.position.unwrap()).collect::<Vec<_>>();
+        assert_eq!(order(mine), ["top", "jungle", "mid", "adc", "support"]);
+        assert_eq!(order(theirs), order(mine));
+        let me = &mine.players[0];
+        assert_eq!((me.is_me, me.name.as_deref(), me.line.champion_id), (true, Some("Player 7#NA7"), 24));
+        assert_eq!((me.line.kills, me.line.deaths, me.line.assists, me.line.cs), (9, 7, 2, 164));
+        assert_eq!(me.line.items, vec![3157, 3091, 2510, 3115, 3153, 6333, 0]);
+        assert!(g.teams.iter().flat_map(|t| &t.players).filter(|p| p.is_me).count() == 1);
+        // From the blue side, a loss.
+        assert_eq!(parse_game(&v, "puuid-2", "Normal").unwrap().result, "loss");
+        assert!(parse_game(&v, "someone-else", "Normal").is_none());
     }
 }

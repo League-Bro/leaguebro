@@ -18,6 +18,7 @@ import {
   PlayerHit,
   PlayerRef,
   GoldPoint,
+  OpggGame,
   OverlayState,
   PatchInfo,
   PatchNotes,
@@ -43,6 +44,7 @@ import {
   demoConfig,
   demoPatch,
   demoPatchList,
+  demoOpggPostGame,
   demoPostGame,
   demoRanks,
   demoProfile,
@@ -412,9 +414,13 @@ export class RiftService {
     this.navTo.set('profile');
   }
 
-  /** Full scoreboard of a past game, seen from `puuid` (another player's profile) or else from you. */
-  getMatch(gameId: number, queueName: string, puuid: string | null = null): Promise<PostGame> {
-    return this.call('get_match', { gameId, queueName, puuid }, () => ({ ...demoPostGame(), gameId, queueName }), 300);
+  /**
+   * Full scoreboard of a past game, seen from `puuid` (another player's profile) or else from you.
+   * Games from OP.GG's match list (`opggGame`) load from OP.GG and need `puuid`.
+   */
+  getMatch(gameId: number, queueName: string, puuid: string | null = null, opggGame: OpggGame | null = null): Promise<PostGame> {
+    const demo = () => (opggGame ? demoOpggPostGame() : demoPostGame());
+    return this.call('get_match', { gameId, queueName, puuid, opggGame }, () => ({ ...demo(), gameId, queueName }), 300);
   }
 
   /** Current ranks of scoreboard players, by puuid; players the client couldn't look up are left out. */

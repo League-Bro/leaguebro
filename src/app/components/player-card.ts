@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
-import { championIcon, formatTier, positionLabel, rankCrest, tierClass, winPct } from '../core/assets';
+import { championIcon, formatTier, positionLabel, rankCrest, rankRecord, tierClass } from '../core/assets';
 import { Loader } from './loader';
 
 @Component({
@@ -36,7 +36,7 @@ import { Loader } from './loader';
             @if (p.solo; as r) {
               <span [class]="tierCls(r.tier)">{{ tier(r.tier, r.division) }}</span>
               <span class="muted mono">{{ r.lp }} LP</span>
-              <span class="faint mono">{{ r.wins }}W {{ r.losses }}L · {{ wr(r.wins, r.losses) }}%</span>
+              <span class="faint mono">{{ record(r) }}</span>
             } @else if (p.flex; as r) {
               <span [class]="tierCls(r.tier)">{{ tier(r.tier, r.division) }}</span>
               <span class="faint">Flex</span>
@@ -136,5 +136,5 @@ export class PlayerCard {
   protected tierCls = tierClass;
   protected tier = formatTier;
   protected crest = rankCrest;
-  protected wr = (w: number, l: number) => winPct(w, w + l);
+  protected record = rankRecord;
 }

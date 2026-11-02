@@ -323,6 +323,7 @@ pub struct AppState {
     pub tiers: crate::tierlist::TierLists,
     pub guides: crate::guide::Guides,
     pub lp: crate::lp_history::LpStore,
+    pub grades: postgame::GradeStore,
     pub overlay_input: std::sync::Mutex<OverlayInput>,
 }
 
@@ -1115,15 +1116,29 @@ impl Engine {
                 (summary, int(&game, "gameCreation"), false)
             }
         };
+        let played = summary.result != "remake";
+        let ranked = matches!(summary.queue_id, 420 | 440) && played;
+        let mut changed = !shown;
         // The client usually has the new LP by the time the game is in match history.
-        summary.lp_change = self.record_ranks(lcu).await.and_then(|h| h.change(summary.queue_id, created));
-        if !shown || summary.lp_change.is_some() {
+        if !shown || (ranked && summary.lp_change.is_none()) {
+            summary.lp_change = self.record_ranks(lcu).await.and_then(|h| h.change(summary.queue_id, created));
+            changed |= summary.lp_change.is_some();
+        }
+        // League's own grade comes with the post-game screen's mastery update.
+        if played && postgame::my_grade(&summary).is_none() {
+            let grades = postgame::client_grades(lcu, summary.game_id, &self.my_puuid).await;
+            if postgame::apply_grades(&mut summary, &grades) {
+                self.state().grades.save(summary.game_id, &grades);
+                changed = true;
+            }
+        }
+        if changed {
             self.state().shared.lock().await.post_game = Some(summary.clone());
             let _ = self.app.emit("post-game", Some(summary.clone()));
         }
-        // A ranked game whose LP isn't in the ranked stats yet: show the summary
-        // now and keep reading the ranks until they count the game.
-        let waiting = matches!(summary.queue_id, 420 | 440) && summary.result != "remake" && summary.lp_change.is_none();
+        // Show the summary now and keep looking for what isn't there yet: a
+        // ranked game's LP (until the ranked stats count it) and League's grade.
+        let waiting = (ranked && summary.lp_change.is_none()) || (played && postgame::my_grade(&summary).is_none());
         match self.pending_post_game.as_mut() {
             Some(p) if waiting => p.shown = Some((summary, created)),
             _ => self.pending_post_game = None,

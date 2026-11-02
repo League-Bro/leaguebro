@@ -14,13 +14,20 @@ export interface Roast {
   line: string;
 }
 
+/** The Bro's own grades. League's have a + or − on most letters ("A-"). */
 export type Grade = 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
 
 /** The Bro's whole take on one player's game. */
 export interface Review {
-  /** League-style letter grade from the stats, against what their role should hit. */
-  grade: Grade;
-  /** 0 to 100, what the grade comes from. */
+  /**
+   * League's own grade when the client gave one (`clientGrade`: yours, and
+   * your party's), else the Bro's letter grade from the stats, against what
+   * their role should hit.
+   */
+  grade: string;
+  /** `grade` is League's, not the Bro's. */
+  fromLeague: boolean;
+  /** 0 to 100, the Bro's grade from the stats (what the scoreboard ranks by). */
   score: number;
   /** A one-liner for the grade. */
   verdict: string;
@@ -815,10 +822,12 @@ export function review(game: PostGame, team: PostTeam, me: PostPlayer, champName
   }
 
   // Vision only counts on the Rift: supports are meant to ward, everyone else a little.
+  // OP.GG's games have no vision score.
   const [visLow, visHigh] = support ? [1.2, 2.2] : [0.35, 1.3];
-  if (pos && vpm < visLow && (support || min >= 20)) {
+  const vision = pos && !game.noVision;
+  if (vision && vpm < visLow && (support || min >= 20)) {
     add(bad, 'vision', support ? 'vision' : 'visionLow', `${me.vision} vision`, `Under ${visLow} vision score a minute for ${who}`);
-  } else if (pos && vpm >= visHigh) {
+  } else if (vision && vpm >= visHigh) {
     add(good, 'vision', 'visionGood', `${me.vision} vision`, `${visHigh}+ vision score a minute for ${who}`);
   }
 
@@ -850,7 +859,7 @@ export function review(game: PostGame, team: PostTeam, me: PostPlayer, champName
     { kind: 'deaths', stat: vars['deathsText'] as string, v: 1 - ramp(deathsPer10, aram ? 2 : 1, aram ? 6.5 : 4.5), w: 1.2 },
   ];
   if (pos && !support) parts.push({ kind: 'cs', stat: `${vars['cs']} CS/min`, v: ramp(csMin, csLow - 1.5, csHigh), w: 1 });
-  if (pos) parts.push({ kind: 'vision', stat: `${me.vision} vision`, v: ramp(vpm, visLow - (support ? 0.3 : 0.1), visHigh), w: support ? 1 : 0.4 });
+  if (vision) parts.push({ kind: 'vision', stat: `${me.vision} vision`, v: ramp(vpm, visLow - (support ? 0.3 : 0.1), visHigh), w: support ? 1 : 0.4 });
   if (opp) {
     const stat = `${goldDiff >= 0 ? '+' : '−'}${vars['goldDiff']} vs ${vars['opp']}`;
     parts.push({ kind: 'lane', stat, v: ramp(goldDiff, -100 * min, 100 * min), w: 0.8 });
@@ -875,11 +884,25 @@ export function review(game: PostGame, team: PostTeam, me: PostPlayer, champName
   const weight = parts.reduce((a, p) => a + p.w, 0);
   const raw = parts.reduce((a, p) => a + p.v * p.w, 0) / weight + (team.win ? 0.06 : 0);
   const score = Math.round(Math.min(1, Math.max(0, raw)) * 100);
-  const grade: Grade = score >= 88 ? 'S+' : score >= 77 ? 'S' : score >= 64 ? 'A' : score >= 50 ? 'B' : score >= 36 ? 'C' : 'D';
-  const verdictPool = VERDICT_POOL[grade];
+  const bro: Grade = score >= 88 ? 'S+' : score >= 77 ? 'S' : score >= 64 ? 'A' : score >= 50 ? 'B' : score >= 36 ? 'C' : 'D';
+  // The Bro's formula can only guess at League's grade (which compares you with
+  // others on your champion), so when the client gave one the badge and the verdict follow it.
+  const league = me.clientGrade && /^[SABCD][+-]?$/.test(me.clientGrade) ? me.clientGrade : null;
+  const grade = league ?? bro;
+  const verdictPool = VERDICT_POOL[tierOf(grade)];
   const verdict = fill(pickLine(verdictPool, `${seed}:${verdictPool}`, false), vars).trim();
 
-  return { grade, score, verdict, lines };
+  return { grade, fromLeague: !!league, score, verdict, lines };
+}
+
+/** The Bro's tier for a grade: League's "S-" counts as S, "A+" as A. */
+function tierOf(g: string): Grade {
+  return g === 'S+' ? 'S+' : (['S', 'A', 'B', 'C', 'D'] as const).find((t) => g.startsWith(t)) ?? 'D';
+}
+
+/** Hover text for a review's grade badge. */
+export function gradeTitle(r: Review): string {
+  return r.fromLeague ? `League's grade for this game · Bro score: ${r.score} out of 100` : `Bro score: ${r.score} out of 100`;
 }
 
 /** The review as plain text, for sharing. */
@@ -909,7 +932,8 @@ export function killShare(p: PostPlayer, team: PostTeam): number {
 }
 
 /** The grade's colour, as a `tone-…` class (styles.css). */
-export function gradeTone(g: Grade): string {
+export function gradeTone(grade: string): string {
+  const g = tierOf(grade);
   return g === 'S+' || g === 'S' ? 'top' : g === 'A' ? 'good' : g === 'B' ? 'mid' : g === 'C' ? 'meh' : 'bad';
 }
 

@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, Injector, afterNextRender, computed, effect, inject, signal, untracked } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RiftService } from '../core/rift.service';
-import { championIcon, formatTier, kdaRatio, profileIcon, queueLabel, rankCrest, tierClass, winPct } from '../core/assets';
+import { championIcon, formatTier, kdaRatio, profileIcon, queueLabel, rankCrest, rankRecord, tierClass, winPct } from '../core/assets';
 import { ago, perMin } from '../core/format';
 import { LpPoint, MatchLine, MyProfile, PostGame, RankLine } from '../core/models';
-import { Review, gradeTone, review } from '../core/roast';
+import { Review, gradeTitle, gradeTone, review } from '../core/roast';
 import { PostGameView } from './post-game';
 import { ItemTip } from './item-tip';
 import { LpGraph } from './lp-graph';
@@ -90,7 +90,7 @@ const REGIONS = [
                 <div class="faint cap">{{ r.label }}</div>
                 @if (r.line; as l) {
                   <div [class]="tierCls(l.tier)">{{ tier(l.tier, l.division) }} <span class="muted mono">{{ l.lp }} LP</span></div>
-                  <div class="faint small mono">{{ l.wins }}W {{ l.losses }}L · {{ pct(l.wins, l.wins + l.losses) }}%</div>
+                  <div class="faint small mono">{{ record(l) }}</div>
                 } @else {
                   <div class="tier-none">Unranked</div>
                 }
@@ -263,7 +263,7 @@ const REGIONS = [
           </div>
           @for (m of day.matches; track m.gameId) {
           <div class="item" [class.open]="openId() === m.gameId" [class.shown]="openId() === m.gameId && detail()">
-          <button class="match" [class]="m.result" [class.static]="p.source === 'opgg'" [attr.aria-expanded]="openId() === m.gameId" (click)="toggle(m, $event)">
+          <button class="match" [class]="m.result" [attr.aria-expanded]="openId() === m.gameId" (click)="toggle(m, $event)">
             <div class="who">
               <img class="champ-icon" [src]="champIcon(m.championId)" [title]="rift.champName(m.championId)" alt="" />
               <div class="spells">
@@ -317,7 +317,7 @@ const REGIONS = [
             </div>
             @if (bro()[m.gameId]; as r) {
               <div class="bro c-bro" [class]="'tone-' + tone(r.grade)">
-                <span class="grade" [title]="'Bro score: ' + r.score + ' out of 100'">{{ r.grade }}</span>
+                <span class="grade" [title]="gradeTitle(r)">{{ r.grade }}</span>
                 <div class="bro-text">
                   <span class="bro-title">The Bro's review</span>
                   <span class="verdict">{{ r.verdict }}</span>
@@ -452,13 +452,12 @@ const REGIONS = [
       padding: 8px 14px; border: 1px solid var(--line); border-left: 3px solid var(--text-faint); border-radius: 12px;
     }
     .match { width: 100%; text-align: left; background: var(--glass), var(--bg-raised); color: var(--text); content-visibility: auto; contain-intrinsic-size: auto 130px; transition: transform 0.15s var(--ease-out), border-color 0.15s; }
-    .match:hover:not(.static) { transform: translateX(3px); }
+    .match:hover { transform: translateX(3px); }
     .match-head {
       padding-top: 0; padding-bottom: 2px; border-color: transparent;
       font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
     }
     .match:hover { border-color: var(--line-strong); }
-    .match.static { cursor: default; }
     .actions { display: flex; align-items: center; gap: 8px; }
     .riot-form { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 14px 0 6px; }
     .riot-form input { flex: 1 1 180px; max-width: 240px; }
@@ -761,8 +760,6 @@ export class ProfileView {
   }
 
   async toggle(m: MatchLine, ev?: Event): Promise<void> {
-    // OP.GG's match list has no full scoreboards.
-    if (this.profile()?.source === 'opgg') return;
     this.keepInPlace((ev?.currentTarget as HTMLElement | undefined)?.parentElement ?? undefined);
     if (this.openId() === m.gameId) {
       this.openId.set(null);
@@ -780,14 +777,15 @@ export class ProfileView {
     }
   }
 
-  /** A game's full record, asked of the client once per session. */
+  /** A game's full record, asked of the client (or OP.GG, for its games) once per session. */
   private game(m: MatchLine): Promise<PostGame> {
-    // Another player's games are seen from their side of the scoreboard.
-    const puuid = this.viewing() ? (this.profile()?.puuid ?? null) : null;
+    // Another player's games are seen from their side of the scoreboard. OP.GG
+    // doesn't know who "you" are, so its games always say whose they are.
+    const puuid = this.viewing() || m.opggGame ? (this.profile()?.puuid ?? null) : null;
     const key = `${puuid ?? 'me'}:${m.gameId}`;
     let g = this.games.get(key);
     if (!g) {
-      g = this.rift.getMatch(m.gameId, this.queue(m.queueId, m.gameMode), puuid);
+      g = this.rift.getMatch(m.gameId, this.queue(m.queueId, m.gameMode), puuid, m.opggGame);
       // A failed load is asked again next time.
       g.catch(() => this.games.delete(key));
       this.games.set(key, g);
@@ -819,6 +817,7 @@ export class ProfileView {
   }
   private previewSeq = 0;
   protected readonly tone = gradeTone;
+  protected readonly gradeTitle = gradeTitle;
   private previewOf = '';
 
   /**
@@ -859,6 +858,7 @@ export class ProfileView {
   /** Ranked queues, which get an LP graph (or, before two saved ranks, a division meter). */
   readonly ranked = (p: MyProfile) => this.ranks(p).filter((r) => r.line);
   pct = winPct;
+  record = rankRecord;
   ratio = kdaRatio;
   /** "Name#TAG" → "Name"; the full Riot ID is in the hover title. */
   shortName = (name: string) => name.split('#')[0] || '?';

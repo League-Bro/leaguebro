@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { RiftService } from '../core/rift.service';
-import { championIcon, clock, formatTier, kdaRatio, queueLabel, rankCrest, tierClass, winPct } from '../core/assets';
+import { championIcon, clock, formatTier, kdaRatio, queueLabel, rankCrest, rankRecord, tierClass } from '../core/assets';
 import { kilo, perMin, signed } from '../core/format';
 import { PlayerRanks, PostGame, PostPlayer, PostTeam, RankLine } from '../core/models';
-import { Grade, gradeTone, kdaOf, killShare, review, reviewText } from '../core/roast';
+import { gradeTitle, gradeTone, kdaOf, killShare, review, reviewText } from '../core/roast';
 import { GoldGraph } from './gold-graph';
 import { ItemTip } from './item-tip';
 import { LpChangeTag } from './lp-change';
@@ -43,7 +43,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
             <div><b class="mono">{{ perMin(m.cs) }}</b><span class="faint">CS/min</span></div>
             <div><b class="mono">{{ k(m.damage) }}</b><span class="faint">damage</span></div>
             <div><b class="mono">{{ k(m.gold) }}</b><span class="faint">gold</span></div>
-            <div><b class="mono">{{ m.vision }}</b><span class="faint">vision</span></div>
+            @if (!g.noVision) { <div><b class="mono">{{ m.vision }}</b><span class="faint">vision</span></div> }
             @if (killShare(); as ks) {
               <div><b class="mono">{{ ks }}%</b><span class="faint">kill share</span></div>
             }
@@ -66,7 +66,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     @if (review(); as r) {
       <section #reviewCard class="roast card" [class]="'tone-' + tone(r.review.grade)" aria-live="polite">
         <div class="roast-head">
-          <span class="grade" [title]="'Bro score: ' + r.review.score + ' out of 100'">{{ r.review.grade }}</span>
+          <span class="grade" [title]="gradeTitle(r.review)">{{ r.review.grade }}</span>
           <div class="verdict">
             <h3>
               The Bro's review
@@ -129,7 +129,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
                       <span class="ctip" role="tooltip">
                         <span class="ctip-head"><span><b>{{ pl.label }}</b><span class="sub">{{ pl.nth }} of {{ pl.of }} players</span></span></span>
                         <span class="ctip-row"><span>Bro score</span><b class="mono">{{ pl.score }} / 100</b></span>
-                        <span class="ctip-row"><span>Grade</span><b class="mono">{{ pl.grade }}</b></span>
+                        <span class="ctip-row"><span>{{ pl.fromLeague ? "League's grade" : 'Grade' }}</span><b class="mono">{{ pl.grade }}</b></span>
                         <span class="ctip-note">KDA, kill share, damage, deaths, CS, vision and lane gold, judged for their role.</span>
                       </span>
                     </span>
@@ -151,7 +151,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
                         </span>
                         @if (r.line; as l) {
                           <span class="ctip-row"><span>LP</span><b class="mono">{{ l.lp }}</b></span>
-                          <span class="ctip-row"><span>Record</span><b class="mono">{{ l.wins }}W {{ l.losses }}L · {{ pct(l.wins, l.wins + l.losses) }}%</b></span>
+                          <span class="ctip-row"><span>Record</span><b class="mono">{{ record(l) }}</b></span>
                         }
                         <span class="ctip-note">Their rank now, not at the time of this game.</span>
                       </span>
@@ -165,7 +165,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
                   <span class="bar"><span [style.width.%]="(p.damage / maxDamage()) * 100"></span></span>
                 </div>
                 <span class="mono muted">{{ k(p.gold) }}</span>
-                <span class="mono muted">{{ p.vision }}</span>
+                @if (g.noVision) { <span class="faint" title="OP.GG doesn't have vision scores">–</span> } @else { <span class="mono muted">{{ p.vision }}</span> }
                 <div class="items sm">
                   @for (id of p.spells; track $index) {
                     <span class="slot spell" [rlItemTip]="id" tipKind="spell">@if (rift.spellIcon(id); as url) { <img [src]="url" alt="" /> }</span>
@@ -496,7 +496,7 @@ export class PostGameView {
   private readonly ranks = signal<Record<string, PlayerRanks>>({});
   protected tierCls = tierClass;
   protected crest = rankCrest;
-  protected pct = winPct;
+  protected record = rankRecord;
 
   /** The rank shown by a player's name: Flex in Flex games, else Solo/Duo, falling back to the other queue. */
   protected rankOf(p: PostPlayer): { line: RankLine | null; label: string; queue: string } | null {
@@ -532,7 +532,7 @@ export class PostGameView {
    * THE GOAT, 2nd, 3rd… and WOAT last. Off with roasts, and for remakes and short games.
    */
   protected readonly places = computed(() => {
-    const out = new Map<string, { label: string; cls: string; nth: string; of: number; score: number; grade: Grade }>();
+    const out = new Map<string, { label: string; cls: string; nth: string; of: number; score: number; grade: string; fromLeague: boolean }>();
     if (!this.roastsOn()) return out;
     const g = this.game();
     const scored = g.teams.flatMap((t) =>
@@ -544,7 +544,7 @@ export class PostGameView {
     const last = scored.length - 1;
     scored.forEach((x, i) => {
       const label = i === 0 ? 'The GOAT' : i === last ? 'WOAT' : ordinal(i + 1);
-      out.set(x.key, { label, cls: i === 0 ? 'goat' : i === last ? 'woat' : '', nth: ordinal(i + 1), of: scored.length, score: x.r!.score, grade: x.r!.grade });
+      out.set(x.key, { label, cls: i === 0 ? 'goat' : i === last ? 'woat' : '', nth: ordinal(i + 1), of: scored.length, score: x.r!.score, grade: x.r!.grade, fromLeague: x.r!.fromLeague });
     });
     return out;
   });
@@ -633,6 +633,7 @@ export class PostGameView {
     );
   }
   protected readonly tone = gradeTone;
+  protected readonly gradeTitle = gradeTitle;
   isPicked(t: PostTeam, seat: number): boolean {
     const at = this.picked();
     return !!at && at.teamId === t.teamId && at.seat === seat;
