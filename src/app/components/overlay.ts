@@ -23,13 +23,7 @@ const PREVIEW: OverlayState = {
     { key: 'baron', label: 'Baron', spawnAt: 1200, side: 'neutral' },
   ],
   nextItems: [
-    {
-      id: 6655, name: "Luden's Companion", price: 2850, affordable: false,
-      components: [
-        { id: 3802, name: 'Lost Chapter', price: 1200, affordable: true },
-        { id: 1026, name: 'Blasting Wand', price: 850, affordable: true },
-      ],
-    },
+    { id: 6655, name: "Luden's Companion", price: 2850, affordable: false },
     { id: 4645, name: 'Shadowflame', price: 3200, affordable: false },
     { id: 3089, name: "Rabadon's Deathcap", price: 3600, affordable: false },
     { id: 3135, name: 'Void Staff', price: 3000, affordable: false },
@@ -185,20 +179,12 @@ const PREVIEW: OverlayState = {
           }
           <div class="build">
             <div class="cap">Next · OP.GG build</div>
-            <!-- The next item, then its components left to buy; bought ones drop off. -->
+            <!-- Just the next item; Buy now lists the pieces of it your gold covers. -->
             <div class="item" [class.ready]="it.affordable">
               @if (rift.itemIcon(it.id); as url) { <img [src]="url" alt="" /> }
               <span class="name">{{ it.name }}</span>
               <span class="price">{{ it.price }}</span>
             </div>
-            @for (c of it.components ?? []; track $index) {
-              <div class="item comp" [class.ready]="c.affordable">
-                <span class="n">{{ $index + 1 }}</span>
-                @if (rift.itemIcon(c.id); as url) { <img [src]="url" alt="" /> }
-                <span class="name">{{ c.name }}</span>
-                <span class="price">{{ c.price }}</span>
-              </div>
-            }
           </div>
         } @else if (o.hasBuild) {
           <div class="build"><div class="cap">Build complete</div></div>
@@ -343,10 +329,6 @@ const PREVIEW: OverlayState = {
     .buy .chip .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .buy .chip .price { font: 11.5px var(--mono); color: var(--win); }
     .buy .chip .count { margin-left: 3px; font: 11.5px var(--mono); color: var(--text-dim); }
-    .comp { padding-left: 14px; font-size: 12px; color: var(--text-dim); }
-    .comp .name { font-weight: 400; }
-    .comp img { width: 20px; height: 20px; }
-    .comp .n { width: 10px; margin-left: -14px; font: 10px var(--mono); color: var(--text-faint); text-align: right; }
     /* Blue, not red or green, so it doesn't read like the gold diffs. */
     .sit .tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #7cc4ff; }
     /* Wraps instead of cutting off: the click-through overlay can't show a tooltip. */
@@ -435,13 +417,12 @@ export class Overlay {
     const pick = p && p.lineup === this.lineup() ? l.foes?.find((f) => f.opponent === p.name) : undefined;
     return pick ?? { opponent: l.opponent, championId: l.championId, position: this.lanePos(), theirs: l.theirs };
   });
-  /** The shopping list, unless it only repeats rows the build card already marks green. */
+  /** The shopping list, unless it's only the next item, which the build card already marks green. */
   protected readonly buyNow = computed(() => {
     const o = this.state();
     const list = o?.buyNow ?? [];
     const it = o?.nextItems[0];
-    const ready = new Set([it, ...(it?.components ?? [])].filter((x) => x?.affordable).map((x) => x!.id));
-    return list.every((b) => ready.has(b.id) && b.count === 1) ? [] : list;
+    return list.every((b) => it?.affordable && b.id === it.id && b.count === 1) ? [] : list;
   });
   protected time = clock;
   protected champIcon = championIcon;

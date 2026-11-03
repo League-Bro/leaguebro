@@ -1,7 +1,7 @@
 import { Injectable, computed, effect, signal } from '@angular/core';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { LogicalSize, PhysicalPosition, getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
   AbilityKeys,
   CacheInfo,
@@ -541,31 +541,15 @@ export class RiftService {
   }
 
   private lastOverlaySize = [0, 0];
-  private fitting: Promise<void> = Promise.resolve();
   /**
    * Sizes the overlay window to its contents (CSS px), so nothing is cut off at the bottom.
-   * With "grow upward" on, it also moves up or down by the change so the bottom edge stays put.
+   * The backend keeps it where it was dragged (its bottom edge with "grow upward" on) and on screen (see `fit_overlay`).
    */
   fitOverlay(width: number, height: number): void {
     if (this.demo || this.windowLabel() !== 'overlay') return;
     const [w, h] = [Math.ceil(width), Math.ceil(height)];
     if (w <= 0 || h <= 0 || (w === this.lastOverlaySize[0] && h === this.lastOverlaySize[1])) return;
     this.lastOverlaySize = [w, h];
-    const growUp = !!this.config()?.overlayGrowUp;
-    // One at a time, so a quick second resize measures the window after the first.
-    this.fitting = this.fitting
-      .then(async () => {
-        const win = getCurrentWindow();
-        if (!growUp) return win.setSize(new LogicalSize(w, h));
-        const [pos, before] = await Promise.all([win.outerPosition(), win.outerSize()]);
-        await win.setSize(new LogicalSize(w, h));
-        const after = await win.outerSize();
-        if (after.height !== before.height) {
-          await win.setPosition(new PhysicalPosition(pos.x, pos.y + before.height - after.height));
-        }
-      })
-      .catch(() => {
-        this.lastOverlaySize = [0, 0];
-      });
+    invoke('fit_overlay', { width: w, height: h }).catch(() => (this.lastOverlaySize = [0, 0]));
   }
 }

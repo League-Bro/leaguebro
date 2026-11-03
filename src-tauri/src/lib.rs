@@ -418,10 +418,23 @@ fn drag_overlay(app: AppHandle, state: State<'_, AppState>, step: String) {
         input.drag = Some(([cursor.x, cursor.y], [pos.x, pos.y]));
         return;
     }
-    let Some(([cx, cy], [x, y])) = input.drag else { return };
-    let to = tauri::PhysicalPosition::new(x + (cursor.x - cx).round() as i32, y + (cursor.y - cy).round() as i32);
+    let (Some(([cx, cy], [x, y])), Ok(size)) = (input.drag, w.outer_size()) else { return };
+    // Stops at the screen's edges; onto another monitor once its middle gets there.
+    let at = [x + (cursor.x - cx).round() as i32, y + (cursor.y - cy).round() as i32];
+    let [x, y] = engine::on_screen(at, [size.width as i32, size.height as i32], &engine::monitor_rects(&w));
+    let to = tauri::PhysicalPosition::new(x, y);
     if to != pos {
         let _ = w.set_position(to);
+    }
+}
+
+/// Sizes the overlay window to its contents (CSS px), then puts it back at
+/// the player's spot for that size, kept on screen (`engine::place_overlay`).
+#[tauri::command]
+fn fit_overlay(app: AppHandle, width: f64, height: f64) {
+    let Some(w) = app.get_webview_window("overlay") else { return };
+    if w.set_size(tauri::LogicalSize::new(width, height)).is_ok() {
+        engine::place_overlay(&app, &w);
     }
 }
 
@@ -548,6 +561,7 @@ pub fn run() {
             clear_cache,
             set_overlay_buttons,
             drag_overlay,
+            fit_overlay,
             send_feedback,
             champion_guide,
             open_guide_videos

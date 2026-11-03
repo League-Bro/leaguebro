@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow};
 use tokio::sync::Mutex;
 
 // ---------- shared state ----------
@@ -338,6 +338,9 @@ pub struct OverlayInput {
     pub passthrough: bool,
     /// Where the cursor and the window were (physical px) when the current drag started.
     pub drag: Option<([f64; 2], [i32; 2])>,
+    /// Where the player put the overlay (left, top and bottom edges, physical
+    /// px). It goes back there whenever its size changes (`place_overlay`).
+    pub spot: Option<[i32; 3]>,
 }
 
 impl AppState {
@@ -739,54 +742,104 @@ fn item_effects(html: &str) -> Vec<ItemEffect> {
 
 pub fn set_overlay_visible(app: &AppHandle, visible: bool) {
     let Some(w) = app.get_webview_window("overlay") else { return };
+    let state = app.state::<AppState>();
     if visible {
-        let cfg = app.state::<AppState>().config();
-        let height = w.outer_size().map(|s| s.height as i32).ok();
-        let pos = match (cfg.overlay_x, cfg.overlay_y) {
-            // Growing upward: keep the bottom edge where it was, at today's height.
-            (Some(x), Some(_)) if cfg.overlay_grow_up && cfg.overlay_bottom.is_some() && height.is_some() => {
-                Some(PhysicalPosition::new(x, cfg.overlay_bottom.unwrap() - height.unwrap()))
+        if !w.is_visible().unwrap_or(false) {
+            {
+                let mut input = state.overlay_input.lock().unwrap();
+                input.spot = saved_overlay_spot(&w, &state.config());
+                // Clicks go through to the game; the move handle stays clickable.
+                input.passthrough = true;
             }
-            (Some(x), Some(y)) => Some(PhysicalPosition::new(x, y)),
-            _ => w.primary_monitor().ok().flatten().map(|m| {
-                let scale = m.scale_factor();
-                let width = w.outer_size().map(|s| s.width as i32).unwrap_or((340.0 * scale) as i32);
-                PhysicalPosition::new(m.position().x + m.size().width as i32 - width - (24.0 * scale) as i32, m.position().y + (140.0 * scale) as i32)
-            }),
-        };
-        let already_visible = w.is_visible().unwrap_or(false);
-        if !already_visible {
-            if let Some(p) = pos {
-                let _ = w.set_position(p);
-            }
-            // Clicks go through to the game; the move handle stays clickable.
-            app.state::<AppState>().overlay_input.lock().unwrap().passthrough = true;
+            place_overlay(app, &w);
             let _ = w.set_ignore_cursor_events(true);
         }
         let _ = w.set_always_on_top(true);
         let _ = w.show();
     } else {
         // Keeps the spot of a drag that never got its release.
-        if w.is_visible().unwrap_or(false) {
+        if w.is_visible().unwrap_or(false) && state.overlay_input.lock().unwrap().drag.take().is_some() {
             save_overlay_position(app);
         }
         let _ = w.hide();
     }
 }
 
-/// Saves where the overlay is, so the next game shows it there.
+/// Where the player last put the overlay (left, top and bottom edges), for a
+/// window its current size. Nothing saved: the top right of the main monitor.
+fn saved_overlay_spot(w: &WebviewWindow, cfg: &Config) -> Option<[i32; 3]> {
+    let size = w.outer_size().ok()?;
+    Some(match (cfg.overlay_x, cfg.overlay_y) {
+        (Some(x), Some(y)) => [x, y, cfg.overlay_bottom.unwrap_or(y + size.height as i32)],
+        _ => {
+            let m = w.primary_monitor().ok().flatten()?;
+            let scale = m.scale_factor();
+            let y = m.position().y + (140.0 * scale) as i32;
+            [m.position().x + m.size().width as i32 - size.width as i32 - (24.0 * scale) as i32, y, y + size.height as i32]
+        }
+    })
+}
+
+/// Puts the overlay at the player's spot for its current size (its top edge
+/// there, or its bottom edge when it grows upward), moved only as far as it
+/// takes to stay on screen. The spot itself stays, so a tall overlay pushed
+/// up from the bottom of the screen goes back down when it gets shorter.
+/// Mid-drag the drag places it.
+pub fn place_overlay(app: &AppHandle, w: &WebviewWindow) {
+    let state = app.state::<AppState>();
+    let spot = {
+        let input = state.overlay_input.lock().unwrap();
+        if input.drag.is_some() {
+            return;
+        }
+        input.spot
+    };
+    let (Some([x, top, bottom]), Ok(size)) = (spot, w.outer_size()) else { return };
+    let size = [size.width as i32, size.height as i32];
+    let y = if state.config().overlay_grow_up { bottom - size[1] } else { top };
+    let [x, y] = on_screen([x, y], size, &monitor_rects(w));
+    let to = PhysicalPosition::new(x, y);
+    if w.outer_position().ok() != Some(to) {
+        let _ = w.set_position(to);
+    }
+}
+
+/// Each monitor's bounds (x, y, width, height), physical px.
+pub fn monitor_rects(w: &WebviewWindow) -> Vec<[i32; 4]> {
+    let monitors = w.available_monitors().unwrap_or_default();
+    monitors.iter().map(|m| [m.position().x, m.position().y, m.size().width as i32, m.size().height as i32]).collect()
+}
+
+/// Moves a window (top-left corner `at`, physical px) as little as it takes to
+/// be all on one monitor: the one under its middle, else the nearest. Bigger
+/// than the monitor, it keeps its top-left corner on it.
+pub fn on_screen([x, y]: [i32; 2], [w, h]: [i32; 2], monitors: &[[i32; 4]]) -> [i32; 2] {
+    let (cx, cy) = (x + w / 2, y + h / 2);
+    // How far the window's middle is from each monitor (0 inside it).
+    let gap = |&[mx, my, mw, mh]: &[i32; 4]| {
+        let dx = (mx - cx).max(cx - (mx + mw)).max(0) as i64;
+        let dy = (my - cy).max(cy - (my + mh)).max(0) as i64;
+        dx * dx + dy * dy
+    };
+    let Some(&[mx, my, mw, mh]) = monitors.iter().min_by_key(|m| gap(m)) else { return [x, y] };
+    [x.min(mx + mw - w).max(mx), y.min(my + mh - h).max(my)]
+}
+
+/// Saves where the overlay is, so it goes back there as it resizes and the
+/// next game shows it there.
 pub fn save_overlay_position(app: &AppHandle) {
     let Some(w) = app.get_webview_window("overlay") else { return };
-    let Ok(pos) = w.outer_position() else { return };
-    let bottom = w.outer_size().ok().map(|s| pos.y + s.height as i32);
+    let (Ok(pos), Ok(size)) = (w.outer_position(), w.outer_size()) else { return };
+    let bottom = pos.y + size.height as i32;
     let state = app.state::<AppState>();
+    state.overlay_input.lock().unwrap().spot = Some([pos.x, pos.y, bottom]);
     let mut cfg = state.config();
-    if cfg.overlay_x == Some(pos.x) && cfg.overlay_y == Some(pos.y) && cfg.overlay_bottom == bottom {
+    if cfg.overlay_x == Some(pos.x) && cfg.overlay_y == Some(pos.y) && cfg.overlay_bottom == Some(bottom) {
         return;
     }
     cfg.overlay_x = Some(pos.x);
     cfg.overlay_y = Some(pos.y);
-    cfg.overlay_bottom = bottom;
+    cfg.overlay_bottom = Some(bottom);
     if let Err(e) = cfg.save(&state.config_path) {
         return eprintln!("couldn't save the overlay position: {e:#}");
     }
@@ -2137,6 +2190,26 @@ mod tests {
         assert_eq!(sh.live_champion("", "悟空").map(|c| c.id), Some(62));
         assert_eq!(sh.live_champion("Nobody", "Zed").map(|c| c.id), Some(238));
         assert!(sh.live_champion("Nobody", "Nobody").is_none());
+    }
+
+    #[test]
+    fn overlay_stays_on_screen() {
+        // Two 1920×1080 monitors side by side, the second one left of the main one.
+        let monitors = [[0, 0, 1920, 1080], [-1920, 0, 1920, 1080]];
+        // Inside: stays put.
+        assert_eq!(on_screen([1500, 140], [340, 600], &monitors), [1500, 140]);
+        // Grown past the bottom: moved up just enough.
+        assert_eq!(on_screen([1500, 700], [340, 600], &monitors), [1500, 480]);
+        // Off the right edge and above the top.
+        assert_eq!(on_screen([1700, -50], [340, 600], &monitors), [1580, 0]);
+        // Mostly on the second monitor: kept all on that one.
+        assert_eq!(on_screen([-200, 100], [340, 600], &monitors), [-340, 100]);
+        // Off every monitor (one unplugged): onto the nearest.
+        assert_eq!(on_screen([3000, 200], [340, 600], &monitors), [1580, 200]);
+        // Taller than the monitor: its top stays on it.
+        assert_eq!(on_screen([1500, 300], [340, 1300], &monitors), [1500, 0]);
+        // No monitors known: left alone.
+        assert_eq!(on_screen([5, 5], [340, 600], &[]), [5, 5]);
     }
     use serde_json::json;
 

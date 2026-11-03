@@ -7,8 +7,6 @@
     "overlay"
   ],
   "permissions": [
-    "core:default",
-    "core:window:allow-set-size",
-    "core:window:allow-set-position"
+    "core:default"
   ]
 }
