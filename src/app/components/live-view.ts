@@ -62,7 +62,7 @@ import { ImportEvent, LoadPlayer, OverlayState, RecChoice, RecState, SwiftplaySl
             </div>
             <button class="primary" [disabled]="!cs.myChampionId || busy()" (click)="importNow()">{{ busy() ? 'Importing…' : 'Import now' }}</button>
           </section>
-          <rl-rec-card [bare]="true" />
+          <rl-rec-card [bare]="true" [locked]="cs.locked" />
         </div>
       </ng-template>
       @if (cs.myChampionId > 0) {

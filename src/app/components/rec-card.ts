@@ -230,10 +230,20 @@ interface ChoiceRow {
 
             <div class="stack">
               @if (r.spells.length === 2 && !inGame()) {
-                <div class="part">
-                  <header><h4>Summoner spells</h4></header>
+                <div class="part spells-line">
+                  <h4>Spells</h4>
                   @if (spellRows(); as rows) {
-                    <ng-container *ngTemplateOutlet="chips; context: { $implicit: rows, kind: 'spells', head: '', sel: s.choice.spells }" />
+                    <!-- One slim line: both icons + win rate per option; names live in the tooltip. -->
+                    <div class="spell-opts" role="radiogroup" aria-label="Summoner spells">
+                      @for (p of rows; track $index) {
+                        @let i = $index;
+                        <button class="sp" role="radio" [attr.aria-checked]="s.choice.spells === i" [class.on]="s.choice.spells === i" [disabled]="pickBusy()"
+                          [attr.title]="p.tip" (click)="s.choice.spells !== i && pick('spells', i)">
+                          @for (u of p.icons; track $index) { <img [src]="u" alt="" /> }
+                          <span class="num">{{ pct(p.o.winRate) }}</span>
+                        </button>
+                      }
+                    </div>
                   } @else {
                     <div class="spells">
                       @for (id of r.spells; track $index) {
@@ -244,7 +254,7 @@ interface ChoiceRow {
                   }
                 </div>
               }
-              @if (r.skillMax.length) {
+              @if (r.skillMax.length && locked()) {
                 <div class="part">
                   <header><h4>Skill order</h4><span class="hint">Max in this order</span></header>
                   <div class="max">
@@ -330,15 +340,10 @@ interface ChoiceRow {
                     </div>
                   }
                 </div>
-                @if (bootsRows() || coreRows()) {
+                <!-- No boots options: the overlay and the in-game shop show them anyway. -->
+                @if (coreRows(); as rows) {
                   <div class="item-choices">
-                    @if (coreRows(); as rows) {
-                      <ng-container *ngTemplateOutlet="choices; context: { $implicit: rows, kind: 'core', head: 'Core items', sel: s.choice.core }" />
-                    }
-                    <!-- Boots as one row of chips under the core builds, not a table of their own. -->
-                    @if (bootsRows(); as rows) {
-                      <ng-container *ngTemplateOutlet="chips; context: { $implicit: rows, kind: 'boots', head: 'Boots', sel: s.choice.boots }" />
-                    }
+                    <ng-container *ngTemplateOutlet="choices; context: { $implicit: rows, kind: 'core', head: 'Core items', sel: s.choice.core }" />
                   </div>
                 }
               </div>
@@ -512,6 +517,18 @@ interface ChoiceRow {
     .spells span { margin-right: 10px; }
     .spells img, .icons img { width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--line-strong); }
     .max { display: flex; align-items: center; gap: 8px; }
+    /* Summoner spells as one slim line: label, then icon pairs with their win rate. */
+    .part.spells-line { flex-direction: row; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .spell-opts { display: flex; gap: 6px; flex-wrap: wrap; }
+    .sp {
+      display: inline-flex; align-items: center; gap: 3px; padding: 3px 8px 3px 3px; border-radius: 8px;
+      border: 1px solid var(--line-strong); background: var(--bg-hover); color: var(--text-dim); cursor: pointer;
+    }
+    .sp img { width: 22px; height: 22px; border-radius: 5px; }
+    .sp .num { margin-left: 4px; }
+    .sp:hover:not(:disabled) { color: var(--text); border-color: var(--accent-soft); }
+    .sp.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); cursor: default; }
+    .sp:disabled:not(.on) { cursor: progress; }
     .key {
       display: inline-flex; align-items: center; justify-content: center;
       width: 30px; height: 30px; border-radius: 9px; box-shadow: inset 0 0 0 1px var(--accent-soft);
@@ -587,6 +604,8 @@ export class RecCard {
   readonly inGame = input(false);
   /** Inside another card (champ select's champion card): no card of its own. */
   readonly bare = input(false);
+  /** Champ select: false while only hovering, which hides the skill order until the pick is locked in. */
+  readonly locked = input(true);
   protected readonly minGames = MIN_GAMES;
   protected readonly champIcon = championIcon;
   protected readonly showWhy = signal(false);
@@ -755,7 +774,6 @@ export class RecCard {
   });
 
   protected readonly coreRows = computed(() => this.itemRows(this.state()?.rec?.coreOptions ?? []));
-  protected readonly bootsRows = computed(() => this.itemRows(this.state()?.rec?.bootsOptions ?? []));
 
   private itemRows(opts: ItemSet[]): ChoiceRow[] | null {
     if (opts.length < 2) return null;

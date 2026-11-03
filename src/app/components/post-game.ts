@@ -355,7 +355,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .big { width: 96px; height: 96px; border-radius: 22px; border: 2px solid var(--accent); }
     .grow { flex: 1; gap: 10px; min-width: 0; }
     .title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-    .title h2 { font-size: 44px; font-weight: 700; letter-spacing: -0.015em; line-height: 1; }
+    .title h2 { font-size: 34px; font-weight: 700; letter-spacing: -0.015em; line-height: 1; }
     .hero.win h2 { text-shadow: 0 0 36px rgba(60, 207, 142, 0.45); }
     .hero.loss h2 { text-shadow: 0 0 36px rgba(255, 90, 78, 0.4); }
     .title .lp { font-size: 18px; }
@@ -400,7 +400,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     }
     .row-p > .items { grid-column: 2 / -1; align-items: center; }
     /* The Bro's ranking of all players: its own column right of the champion. */
-    .board.ranked .row-p { grid-template-columns: 34px 76px minmax(0, 1fr) 60px 30px 50px 40px 26px; }
+    .board.ranked .row-p { grid-template-columns: 34px 56px minmax(0, 1fr) 60px 30px 50px 40px 26px; }
     .board.ranked .row-p.head .h-who { grid-column: 1 / 4; }
     .board.ranked .row-p > .items { grid-column: 3 / -1; }
     .place {
@@ -408,7 +408,10 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
       font-size: 10.5px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
       color: var(--text-dim); background: var(--bg-sunken); border: 1px solid var(--line-strong);
     }
-    .place.goat { color: #f4d27a; border-color: #f4d27a; background: rgba(244, 210, 122, 0.12); box-shadow: 0 0 8px rgba(244, 210, 122, 0.35); }
+    /* "The GOAT" on two lines, so the column stays narrow. */
+    .place.goat {
+      width: min-content; white-space: normal; text-align: center; line-height: 1.15; border-radius: 10px; padding: 4px 8px;
+      color: #f4d27a; border-color: #f4d27a; background: rgba(244, 210, 122, 0.12); box-shadow: 0 0 8px rgba(244, 210, 122, 0.35); }
     /* Hover cards in the app's tooltip style (like the item and LP cards), not the browser's. */
     .has-tip { position: relative; cursor: default; }
     .ctip {
@@ -426,7 +429,6 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     .ctip-row { display: flex; justify-content: space-between; gap: 16px; color: var(--text-dim); }
     .ctip-row b { color: var(--text); font-weight: 600; }
     .ctip-note { margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--text-faint); font-size: 11px; }
-    .place.woat { color: var(--loss); border-color: var(--loss); background: color-mix(in srgb, var(--loss) 12%, transparent); }
     .row-p.head {
       background: none; border-color: transparent; padding-top: 0; padding-bottom: 0;
       font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
@@ -529,7 +531,7 @@ export class PostGameView {
   });
   /**
    * Every player ranked by the Bro's score (all stats, role-aware), keyed "teamId:seat":
-   * THE GOAT, 2nd, 3rd… and WOAT last. Off with roasts, and for remakes and short games.
+   * The GOAT, then 2nd, 3rd… down to last. Off with roasts, and for remakes and short games.
    */
   protected readonly places = computed(() => {
     const out = new Map<string, { label: string; cls: string; nth: string; of: number; score: number; grade: string; fromLeague: boolean }>();
@@ -541,10 +543,9 @@ export class PostGameView {
     if (scored.length < 3 || scored.some((x) => !x.r)) return out;
     // Ties go to the better KDA, then more damage.
     scored.sort((a, b) => b.r!.score - a.r!.score || kdaOf(b.p) - kdaOf(a.p) || b.p.damage - a.p.damage);
-    const last = scored.length - 1;
     scored.forEach((x, i) => {
-      const label = i === 0 ? 'The GOAT' : i === last ? 'WOAT' : ordinal(i + 1);
-      out.set(x.key, { label, cls: i === 0 ? 'goat' : i === last ? 'woat' : '', nth: ordinal(i + 1), of: scored.length, score: x.r!.score, grade: x.r!.grade, fromLeague: x.r!.fromLeague });
+      const label = i === 0 ? 'The GOAT' : ordinal(i + 1);
+      out.set(x.key, { label, cls: i === 0 ? 'goat' : '', nth: ordinal(i + 1), of: scored.length, score: x.r!.score, grade: x.r!.grade, fromLeague: x.r!.fromLeague });
     });
     return out;
   });
