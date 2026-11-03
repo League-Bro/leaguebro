@@ -94,7 +94,7 @@ interface Note {
     .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: row dense; column-gap: 22px; row-gap: 4px; }
     .grid > * { grid-column: 1; }
     .grid > .enemy, .grid > .row-e { grid-column: 2; }
-    /* Stacks when the card itself is narrow (the side rail takes part of the window). */
+    /* Stacks when the card itself is narrow. */
     @container (max-width: 860px) {
       .grid { grid-template-columns: minmax(0, 1fr); }
       .grid > .enemy, .grid > .row-e { grid-column: 1; }

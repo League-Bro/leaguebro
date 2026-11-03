@@ -376,8 +376,7 @@ const REGIONS = [
     .side { grid-area: side; display: flex; align-items: center; justify-content: flex-end; gap: 18px; }
     .graph { display: flex; flex-direction: column; gap: 2px; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    /* 1400 rather than 1100: the side rail takes ~216px of the window. */
-    @media (max-width: 1400px) {
+    @media (max-width: 1100px) {
       .head { grid-template-columns: 1fr auto; grid-template-areas: 'me side' 'ranks ranks'; row-gap: 14px; }
     }
     @media (max-width: 760px) {

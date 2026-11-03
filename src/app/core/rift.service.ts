@@ -378,7 +378,7 @@ export class RiftService {
 
   /** Profiles shown this session, by `profileKey`, so going back to one shows it at once while it refreshes. */
   readonly profileCache = new Map<string, MyProfile>();
-  /** Your profile icon for the side rail's "you" card: set when your profile loads, remembered for the next start. */
+  /** Your profile icon for the header: set when your profile loads, remembered for the next start. */
   readonly myIconId = signal<number>(Number(readLocal('lb.myIconId')) || 0);
   setMyIcon(id: number): void {
     if (!id || id === this.myIconId()) return;

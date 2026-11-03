@@ -1,7 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { DamageSplit } from '../core/damage';
 
-/** The three damage colours, shared by the bar and its legend. */
+/**
+ * The three damage colours, shared by the bar and its legend. Kept inside each component's own stylesheet: the
+ * same string listed on its own in two components of one file gave Angular's builder two identical stylesheet
+ * keys, and the esbuild context it lost track of kept `ng build` from ever exiting.
+ */
 const COLORS = `
   .ad { --c: #f26b3a; }
   .ap { --c: #8f7dff; }
@@ -24,7 +28,7 @@ const COLORS = `
       <span class="none faint">No picks yet</span>
     }
   `,
-  styles: [COLORS, `
+  styles: `${COLORS}
     :host { position: relative; display: flex; gap: 2px; height: var(--bar-h, 22px); }
     .gl { position: absolute; top: -4px; bottom: -4px; width: 1px; background: var(--line); pointer-events: none; }
     .part { position: relative; display: flex; align-items: center; padding: 0 7px; min-width: 3px; background: var(--c); transition: width 0.4s ease; }
@@ -32,7 +36,7 @@ const COLORS = `
     .part.last { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
     .part b { font-size: 11.5px; color: #17131d; }
     .none { align-self: center; font-size: 12px; }
-  `],
+  `,
 })
 export class DamageBar {
   readonly split = input<DamageSplit | null>(null);
@@ -61,10 +65,10 @@ export class DamageBar {
     <span><i class="ap"></i>AP</span>
     <span><i class="tr"></i>True</span>
   `,
-  styles: [COLORS, `
+  styles: `${COLORS}
     :host { display: flex; gap: 12px; font-size: 12px; color: var(--text-dim); }
     span { display: flex; align-items: center; gap: 5px; }
     i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; background: var(--c); }
-  `],
+  `,
 })
 export class DamageLegend {}
