@@ -284,7 +284,7 @@ export class LiveView {
   protected readonly swiftHasChamp = computed(() => this.rift.swiftplay().some((s) => s.championId > 0));
   protected readonly swiftAutoText = computed(() => {
     const c = this.rift.config();
-    if (c?.recSource !== 'opgg') return 'OP.GG recommendations are off (Settings → Recommendations), so there are no builds to pick from.';
+    if (c?.recSource !== 'opgg') return 'OP.GG recommendations are off (Settings → Champ select), so there are no builds to pick from.';
     if (!c.autoImportRunes) return 'Auto-import is off: anything you pick below goes into that slot.';
     return 'Set when you pick a champion. Change anything below before you hit Find Match.';
   });

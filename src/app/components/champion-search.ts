@@ -6,6 +6,11 @@ import { MOD_KEY } from '../core/platform';
 import { Loader } from './loader';
 
 const MAX_RESULTS = 8;
+/** The results box's width when it opens from the header's search field (wider than the field). */
+const ANCHORED_WIDTH = 560;
+
+/** Where the header's search field is (viewport px), so the search opens on top of it. */
+export interface SearchAnchor { left: number; top: number; width: number }
 
 /** A row in the results: a champion, or a player (a friend, or a lookup of the typed name with no puuid). */
 type Option =
@@ -30,7 +35,8 @@ function norm(s: string): string {
   imports: [Loader],
   template: `
     <div class="backdrop" (mousedown)="closed.emit()"></div>
-    <div class="box card" role="dialog" aria-label="Find a champion or player">
+    <div class="box card" role="dialog" aria-label="Find a champion or player" [class.anchored]="!!place()"
+         [style.left.px]="place()?.left" [style.top.px]="place()?.top" [style.width.px]="place()?.width">
       <div class="field">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
         <input #field type="text" placeholder="Find a champion or player…" autocomplete="off" spellcheck="false"
@@ -78,6 +84,14 @@ function norm(s: string): string {
   styles: `
     :host { position: fixed; inset: 0; z-index: 50; display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; }
     .backdrop { position: absolute; inset: 0; background: rgba(8, 7, 12, 0.55); backdrop-filter: blur(2px); }
+    :host:has(.anchored) { padding-top: 0; }
+    :host:has(.anchored) .backdrop { background: rgba(8, 7, 12, 0.4); backdrop-filter: none; }
+    /* Opened from the header: the box sits where the field was, so the field seems to grow into it. */
+    .box.anchored { position: absolute; border-color: var(--line-strong); animation: drop 0.14s var(--ease-out) both; }
+    .box.anchored .field { padding: 7px 10px 7px 14px; }
+    .box.anchored .field input { font-size: 14.5px; }
+    @keyframes drop { from { opacity: 0; transform: translateY(-4px); } }
+    @media (prefers-reduced-motion: reduce) { .box.anchored { animation: none; } }
     .box { position: relative; width: min(520px, calc(100vw - 32px)); padding: 0; overflow: hidden; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5); }
     .field { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
     .field svg { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--text-faint); stroke-width: 2; stroke-linecap: round; }
@@ -103,6 +117,8 @@ export class ChampionSearch implements OnInit, AfterViewInit {
   protected readonly rift = inject(RiftService);
   /** What was typed to open it (typing on a page starts the search with that letter). */
   readonly initial = input('');
+  /** The header's search field, when it was opened from there or by a shortcut; null centres it. */
+  readonly anchor = input<SearchAnchor | null>(null);
   readonly closed = output<void>();
 
   protected readonly modKey = MOD_KEY;
@@ -110,6 +126,15 @@ export class ChampionSearch implements OnInit, AfterViewInit {
   protected readonly query = signal('');
   protected readonly active = signal(0);
   private readonly field = viewChild.required<ElementRef<HTMLInputElement>>('field');
+
+  /** The box's spot over the header field: centred on it, at least ANCHORED_WIDTH wide, kept 16px inside the window. */
+  protected readonly place = computed(() => {
+    const a = this.anchor();
+    if (!a) return null;
+    const width = Math.min(Math.max(a.width, ANCHORED_WIDTH), window.innerWidth - 32);
+    const left = Math.max(16, Math.min(a.left + (a.width - width) / 2, window.innerWidth - width - 16));
+    return { left, top: Math.max(8, a.top - 4), width };
+  });
 
   protected readonly favorites = computed(() => new Set(this.rift.config()?.favoriteChampions ?? []));
 

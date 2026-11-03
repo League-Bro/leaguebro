@@ -3,7 +3,7 @@ import { ConfigPage } from './config-page';
 import { FullscreenHint } from './fullscreen-hint';
 import { Overlay } from './overlay';
 
-/** The Overlay page: the in-game overlay's look, position and parts (moved out of Settings). */
+/** Settings → Overlay: the in-game overlay's look, position and parts. */
 @Component({
   selector: 'rl-overlay-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -116,7 +116,9 @@ import { Overlay } from './overlay';
     }
   `,
   styles: `
-    /* Two even columns: what the overlay shows on the left, the overlay itself (preview) and its size on the right. */
+    /* Two even columns: what the overlay shows on the left, the overlay itself (preview) and its size on the right.
+       Sized by Settings' pane, not the window, since the section list sits beside it. */
+    :host { display: block; container-type: inline-size; }
     .page { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
     .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
     .card { gap: 6px; }
@@ -129,7 +131,7 @@ import { Overlay } from './overlay';
     .frame.off { filter: grayscale(1); opacity: 0.45; }
     .frame + .small { text-align: center; }
     /* One column on a narrow window, the preview first. */
-    @media (max-width: 1100px) {
+    @container (max-width: 760px) {
       .page { grid-template-columns: minmax(0, 1fr); }
       .col:last-child { order: -1; }
     }

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, computed, effect, inject, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, OnInit, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { RiftService, inTauri } from '../core/rift.service';
 import { UpdateService } from '../core/update.service';
@@ -7,16 +7,15 @@ import { profileIcon } from '../core/assets';
 import { LiveView } from './live-view';
 import { ChampionsView } from './champions-view';
 import { SettingsView } from './settings-view';
-import { OverlaySettingsView } from './overlay-settings';
 import { PatchView } from './patch-view';
 import { ProfileView } from './profile-view';
 import { FeedbackView } from './feedback-view';
 import { ItemTipPopup } from './item-tip';
-import { ChampionSearch } from './champion-search';
+import { ChampionSearch, SearchAnchor } from './champion-search';
 import { UpdateSplash } from './update-splash';
 
 /** 'profile' isn't in the tab bar; the brand and your name open it. */
-type Tab = 'live' | 'champions' | 'patch' | 'overlay' | 'settings' | 'feedback' | 'profile';
+type Tab = 'live' | 'champions' | 'patch' | 'settings' | 'feedback' | 'profile';
 
 /** A key press aimed at a text field, which typing-to-search must leave alone. */
 function isTyping(target: EventTarget | null): boolean {
@@ -44,7 +43,7 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
 @Component({
   selector: 'rl-shell',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LiveView, ChampionsView, PatchView, OverlaySettingsView, SettingsView, FeedbackView, ProfileView, ItemTipPopup, ChampionSearch, UpdateSplash],
+  imports: [LiveView, ChampionsView, PatchView, SettingsView, FeedbackView, ProfileView, ItemTipPopup, ChampionSearch, UpdateSplash],
   template: `
     <!-- The window has no Windows title bar (tauri.conf.json): the header moves it (double-click maximizes)
          and holds its buttons. A Mac keeps its native title bar, so they're left out there. -->
@@ -64,11 +63,14 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
         }
       </nav>
       <div class="spacer" data-tauri-drag-region></div>
-      <button class="find" [title]="'Find a champion, or a player by Name#TAG (' + modKey + 'K, or just start typing)'" (click)="openSearch('')">
+      <!-- Looks like a text field and opens the search right on top of itself (champion-search.ts anchor). -->
+      <button #find class="find" [class.open]="!!search()" [title]="'Find a champion, or a player by Name#TAG (' + modKey + 'K, or just start typing)'"
+              aria-haspopup="dialog" (click)="openSearch('')">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-        <span>Search</span>
+        <span class="hint">Search champions or players</span>
         <kbd>{{ modKey }}K</kbd>
       </button>
+      <div class="spacer" data-tauri-drag-region></div>
       <div class="status" [class.on]="rift.status().connected">
         <span class="dot"></span>
         <span class="phase">{{ statusText() }}</span>
@@ -124,7 +126,6 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
         @case ('live') { <rl-live (open)="go($event)" /> }
         @case ('champions') { <rl-champions /> }
         @case ('patch') { <rl-patch /> }
-        @case ('overlay') { <rl-overlay-settings /> }
         @case ('settings') { <rl-settings /> }
         @case ('feedback') { <rl-feedback /> }
         @case ('profile') { <rl-profile /> }
@@ -133,7 +134,7 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
     <rl-item-tip />
     <rl-update-splash />
     @if (search(); as s) {
-      <rl-champion-search [initial]="s.text" (closed)="search.set(null)" />
+      <rl-champion-search [initial]="s.text" [anchor]="s.anchor" (closed)="search.set(null)" />
     }
   `,
   host: {
@@ -185,22 +186,28 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
     }
     .status .who img { width: 20px; height: 20px; border-radius: 50%; margin: -4px 0; }
     .status .who:hover:not(:disabled) { color: var(--accent-2); background: none; border-color: var(--line-strong); }
+    /* Takes up to 420px of the header's free space; the spacers on both sides stay draggable. */
     .find {
-      display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-radius: 999px;
-      color: var(--text-faint); background: var(--bg-sunken); border: 1px solid var(--line); font-weight: 400;
+      flex: 0 1 420px; min-width: 0; height: 38px;
+      display: flex; align-items: center; gap: 10px; padding: 0 8px 0 14px; border-radius: 12px;
+      color: var(--text-faint); background: var(--bg-sunken); border: 1px solid var(--line); font-weight: 400; text-align: left;
+      transition: border-color 0.15s, box-shadow 0.15s, color 0.15s;
     }
-    .find:hover:not(:disabled) { color: var(--text); border-color: var(--line-strong); }
-    .find svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
-    .find kbd { font: 500 11px var(--mono); color: var(--text-dim); border: 1px solid var(--line-strong); border-radius: 5px; padding: 0 5px; }
+    .find:hover:not(:disabled), .find.open { color: var(--text-dim); border-color: var(--line-strong); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .find svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+    .find .hint { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .find kbd { flex: none; font: 500 11px var(--mono); color: var(--text-dim); border: 1px solid var(--line-strong); border-radius: 5px; padding: 1px 6px; }
     .version { color: var(--text-faint); font: 500 12px var(--mono); margin-left: -12px; }
-    /* A narrower window drops the search label and version first, then the brand name and the client phase (the dot still shows it's connected). */
-    @media (max-width: 1280px) { .find span, .version { display: none; } }
+    /* A narrower window drops the version first, then the brand name, the shortcut and the client phase (the dot still shows it's connected),
+       and the search field shrinks to its icon last. */
+    @media (max-width: 1280px) { .version { display: none; } }
     @media (max-width: 1180px) {
       header { gap: 14px; }
       .brand span { display: none; }
       nav button { padding: 6px 12px; }
     }
-    @media (max-width: 1080px) { .find kbd, .status .phase { display: none; } .find { padding: 7px; } }
+    @media (max-width: 1080px) { .find kbd, .status .phase { display: none; } }
+    @media (max-width: 920px) { .find { flex: none; width: 38px; padding: 0; justify-content: center; } .find .hint { display: none; } }
     /* The smallest window (860px, tauri.conf.json): just your icon and the connection dot. */
     @media (max-width: 960px) { .status .who .name { display: none; } .status { padding: 6px 10px; } }
     /* Windows-sized window buttons at the header's right end, full height. */
@@ -244,7 +251,6 @@ export class Shell implements OnInit {
     { id: 'live', label: 'Live' },
     { id: 'champions', label: 'Champions' },
     { id: 'patch', label: 'Patch Notes' },
-    { id: 'overlay', label: 'Overlay' },
     { id: 'settings', label: 'Settings' },
     { id: 'feedback', label: 'Feedback' },
   ];
@@ -344,13 +350,15 @@ export class Shell implements OnInit {
   protected readonly myIcon = computed(() => profileIcon(this.rift.myIconId()));
 
   /** The champion search, with what was typed to open it. */
-  protected readonly search = signal<{ text: string } | null>(null);
+  protected readonly search = signal<{ text: string; anchor: SearchAnchor | null } | null>(null);
+  private readonly findButton = viewChild<ElementRef<HTMLElement>>('find');
 
   protected openSearch(text: string): void {
-    this.search.set({ text });
+    const r = this.findButton()?.nativeElement.getBoundingClientRect();
+    this.search.set({ text, anchor: r?.width ? { left: r.left, top: r.top, width: r.width } : null });
   }
 
-  /** Ctrl+1…6 (Cmd+1…6 on a Mac) switch tabs; Ctrl+K, or typing a letter outside a text field, finds a champion. */
+  /** Ctrl+1…5 (Cmd+1…5 on a Mac) switch tabs; Ctrl+K, or typing a letter outside a text field, finds a champion. */
   protected tabKey(e: KeyboardEvent): void {
     if (this.search()) return;
     const mod = IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;

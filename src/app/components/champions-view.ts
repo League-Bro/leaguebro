@@ -69,7 +69,7 @@ const ROLES = [
           </section>
         } @else {
           @if (rift.config()?.recSource !== 'opgg') {
-            <p class="faint small note">OP.GG recommendations are off (Settings → Recommendations).</p>
+            <p class="faint small note">OP.GG recommendations are off (Settings → Champ select).</p>
           }
           @if (lobbySlot(); as slot) {
             <p class="faint small note">{{ slotNote() || 'In your Swiftplay lobby: picks here go straight into its ' + rift.champName(slot.championId) + ' slot.' }}</p>
