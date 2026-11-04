@@ -178,8 +178,9 @@ interface ChoiceRow {
                   <span class="muted small">{{ perkLabel(ru.perkIds[0], ru.keystoneName) }} · {{ styleName(ru.primaryStyleId, ru.primaryName) }} + {{ styleName(ru.subStyleId, ru.secondaryName) }}</span>
                   @if (ru.custom) { <span class="faint small">· your own page</span> }
                 </header>
+                <!-- Keystones and secondary trees side by side on one wrapping line, above the page. -->
+                <div class="rune-picks">
                 @if (keystones(); as keys) {
-                  <!-- The most played keystones; each one's secondary trees are listed under the page. -->
                   <div class="keystones" role="radiogroup" aria-label="Keystones">
                     @for (k of keys; track k.id) {
                       <button class="ks" role="radio" [attr.aria-checked]="k.on" [class.on]="k.on" [disabled]="pickBusy()"
@@ -193,6 +194,12 @@ interface ChoiceRow {
                     }
                   </div>
                 }
+                @if (ru.custom) {
+                  <button class="ghost reset-runes" [disabled]="pickBusy()" (click)="resetRunes()">Back to OP.GG's page</button>
+                } @else if (runePages(); as rows) {
+                  <ng-container *ngTemplateOutlet="chips; context: { $implicit: rows, kind: 'runes', head: keystones() ? 'Secondary' : 'Pages', sel: s.choice.custom ? -1 : s.choice.runes }" />
+                }
+                </div>
                 <!-- The whole page, picked runes lit; any click is set in the client right away. -->
                 @if (hasTrees()) {
                   <rl-rune-editor [page]="ru" [disabled]="pickBusy()" (change)="pickCustom($event)" />
@@ -219,11 +226,6 @@ interface ChoiceRow {
                     }
                   </div>
                 </div>
-                }
-                @if (ru.custom) {
-                  <button class="ghost reset-runes" [disabled]="pickBusy()" (click)="resetRunes()">Back to OP.GG's page</button>
-                } @else if (runePages(); as rows) {
-                  <ng-container *ngTemplateOutlet="chips; context: { $implicit: rows, kind: 'runes', head: keystones() ? 'Secondary' : 'Pages', sel: s.choice.custom ? -1 : s.choice.runes }" />
                 }
               </div>
             }
@@ -439,7 +441,7 @@ interface ChoiceRow {
     /* No situational items to show: no empty grid row either. */
     rl-situational:empty { display: none; }
     .panel header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-    .reset-runes { margin-top: 10px; padding: 3px 10px; font-size: 12.5px; color: var(--accent); }
+    .reset-runes { margin: 0; padding: 3px 10px; font-size: 12.5px; color: var(--accent); }
     .panel h4 { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
     .hint { font-size: 12px; color: var(--text-faint); }
     .sub { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
@@ -552,6 +554,15 @@ interface ChoiceRow {
     .chip-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     .chip-row .sub { min-width: 64px; }
     .ks-icons { display: flex; gap: 3px; flex: none; }
+    /* Keystones + secondary trees: slim one-line chips (name and win rate), secondary split off by a hairline. */
+    .rune-picks { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+    .rune-picks .keystones { gap: 6px; }
+    .rune-picks .ks, .rune-picks .chip-row .ks { padding: 3px 10px 3px 3px; gap: 6px; }
+    .rune-picks .ks img, .rune-picks .chip-row .ks img { width: 24px; height: 24px; }
+    .rune-picks .ks-text { flex-direction: row; align-items: baseline; gap: 8px; }
+    .rune-picks .ks-stats .faint { display: none; }
+    .rune-picks .chip-row { gap: 8px; border-left: 1px solid var(--line); padding-left: 14px; }
+    .rune-picks .chip-row .sub { min-width: 0; }
     .chip-row .ks img { width: 26px; height: 26px; border-radius: 6px; }
     .chip-row .ks img.round { border-radius: 50%; }
     .chip-row .ks { padding: 5px 10px 5px 5px; }

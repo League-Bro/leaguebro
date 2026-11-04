@@ -54,10 +54,15 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
       </button>
       <nav>
         @for (t of tabs; track t.id) {
-          <button [class.active]="tab() === t.id" [title]="t.label + ' (' + modKey + ($index + 1) + ')'" (click)="go(t.id)">
-            {{ t.label }}
-            @if (t.id === 'live' && tab() !== 'live' && liveActivity(); as what) {
-              <span class="live-dot" [title]="what"></span>
+          <button [class.active]="tab() === t.id" [class.hot]="t.id === 'live' && !!liveActivity()"
+                  [title]="t.label + ' (' + modKey + ($index + 1) + ')' + (t.id === 'live' && liveActivity() ? ': ' + liveActivity() : '')" (click)="go(t.id)">
+            @if (t.id === 'live') {
+              <!-- Heartbeat line: always there, pink and beating while something is on the Live tab. -->
+              <svg class="pulse" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h4.5l2.5-7 4.5 14 3-7H22" /></svg>
+            }
+            <span class="label">{{ t.label }}</span>
+            @if (t.id === 'live' && liveActivity() === 'In game') {
+              <span class="live-tag">LIVE</span>
             }
           </button>
         }
@@ -145,38 +150,76 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
   styles: `
     :host { display: flex; flex-direction: column; height: 100vh; }
     /* No backdrop blur: nothing scrolls under the header. */
+    /* Neon sign over a dark wall: a pink→teal hairline along the bottom with a soft glow under it. */
     header {
+      position: relative;
       display: flex; align-items: center; gap: 22px;
       padding: 0 0 0 20px; height: 64px; flex: none;
-      border-bottom: 1px solid var(--line);
-      background: var(--rail);
+      background:
+        radial-gradient(420px 90px at 8% 0%, rgba(255, 79, 163, 0.10), transparent 70%),
+        radial-gradient(420px 90px at 92% 100%, rgba(47, 212, 196, 0.07), transparent 70%),
+        var(--rail);
+    }
+    header::after {
+      content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; pointer-events: none;
+      background: linear-gradient(90deg, transparent, var(--accent) 18%, rgba(255, 79, 163, 0.35) 50%, var(--accent-2) 82%, transparent);
+      box-shadow: 0 0 10px rgba(255, 79, 163, 0.45);
     }
     header.mac { padding-right: 20px; }
+    /* Graffiti tag: marker font, pink with a teal misprint offset, a little tilted. */
     .brand {
-      display: flex; align-items: center; gap: 10px; font: 800 15px var(--display); letter-spacing: 0.01em; white-space: nowrap;
-      background: none; border: none; padding: 4px 12px 4px 6px; margin-left: -6px; color: var(--text);
+      display: flex; align-items: center; gap: 10px; white-space: nowrap;
+      font: 400 19px/1 var(--marker); letter-spacing: 0.02em;
+      background: none; border: none; padding: 4px 12px 4px 6px; margin-left: -6px; color: var(--accent);
     }
-    .brand:hover:not(:disabled), .brand.active { background: var(--accent-soft); color: var(--accent); }
-    .brand img { width: 28px; height: 28px; filter: drop-shadow(0 0 8px var(--accent-glow)); }
-    nav {
-      display: flex; gap: 2px; padding: 4px;
-      background: var(--bg-sunken); border: 1px solid var(--line); border-radius: 999px;
+    .brand span { display: inline-block; transform: rotate(-3deg) translateY(1px); text-shadow: 2px 2px 0 rgba(47, 212, 196, 0.55), 0 0 14px var(--accent-glow); transition: transform 0.2s var(--ease-out); }
+    .brand:hover:not(:disabled), .brand.active { background: none; color: var(--accent); }
+    .brand:hover:not(:disabled) span, .brand.active span { transform: rotate(-5deg) translateY(1px) scale(1.04); }
+    .brand img { width: 30px; height: 30px; filter: drop-shadow(0 0 8px var(--accent-glow)); transition: transform 0.2s var(--ease-out); }
+    .brand:hover:not(:disabled) img { transform: rotate(-8deg); }
+    nav { display: flex; gap: 4px; }
+    nav button {
+      position: relative; isolation: isolate; display: flex; align-items: center; gap: 7px;
+      background: none; border: none; padding: 8px 14px; color: var(--text-dim); font-weight: 600; white-space: nowrap; letter-spacing: 0.01em;
     }
-    nav button { position: relative; background: none; border: none; padding: 6px 16px; color: var(--text-dim); font-weight: 500; white-space: nowrap; }
-    .live-dot {
-      position: absolute; top: 5px; right: 7px; width: 7px; height: 7px; border-radius: 50%;
-      background: var(--accent); box-shadow: 0 0 8px var(--accent-glow); animation: pulse 1.4s ease-in-out infinite;
+    /* Hover: a teal marker scribble underneath. */
+    nav button::after {
+      content: ''; position: absolute; left: 14px; right: 14px; bottom: 3px; height: 2px; border-radius: 2px;
+      background: var(--accent-2); box-shadow: 0 0 8px rgba(47, 212, 196, 0.6);
+      transform: scaleX(0) rotate(-1.5deg); transform-origin: left; transition: transform 0.18s var(--ease-out);
     }
-    @keyframes pulse { 50% { opacity: 0.35; } }
-    nav button:hover:not(:disabled) { color: var(--text); background: var(--bg-hover); }
-    nav button.active, nav button.active:hover:not(:disabled) {
-      color: var(--on-accent); background: var(--accent); font-weight: 600; box-shadow: 0 2px 14px var(--accent-glow);
+    nav button:hover:not(:disabled) { color: var(--text); background: none; }
+    nav button:hover:not(:disabled):not(.active)::after { transform: scaleX(1) rotate(-1.5deg); }
+    /* Active: a slanted pink marker swipe behind the label, rough at the ends. */
+    nav button::before {
+      content: ''; position: absolute; inset: 5px 4px; z-index: -1; border-radius: 3px;
+      background: linear-gradient(100deg, #ff3d97, var(--accent) 45%, #ff6fb4);
+      clip-path: polygon(3% 8%, 98% 0, 100% 86%, 96% 100%, 1% 94%, 0 30%);
+      transform: skewX(-12deg) scaleX(0.6); opacity: 0; transition: transform 0.2s var(--ease-out), opacity 0.15s;
+      box-shadow: 0 0 18px var(--accent-glow);
     }
+    nav button.active, nav button.active:hover:not(:disabled) { color: var(--on-accent); background: none; }
+    nav button.active::before { transform: skewX(-12deg) scaleX(1); opacity: 1; }
+    /* The Live tab's heartbeat. */
+    .pulse { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; opacity: 0.75; }
+    nav button.hot:not(.active) { color: var(--text); }
+    nav button.hot:not(.active) .pulse { color: var(--accent); opacity: 1; filter: drop-shadow(0 0 4px var(--accent-glow)); }
+    nav button.hot .pulse path { stroke-dasharray: 40; animation: beat 1.6s linear infinite; }
+    @keyframes beat { 0% { stroke-dashoffset: 40; } 55%, 100% { stroke-dashoffset: 0; } }
+    nav button.active .pulse { opacity: 1; }
+    .live-tag {
+      font: 700 9.5px/1 var(--mono); letter-spacing: 0.08em; color: var(--on-accent); background: var(--accent-2);
+      padding: 3px 5px; border-radius: 4px; box-shadow: 0 0 10px rgba(47, 212, 196, 0.55); animation: blink 1.6s ease-in-out infinite;
+    }
+    nav button.active .live-tag { background: var(--on-accent); color: var(--accent-2); box-shadow: none; }
+    @keyframes blink { 50% { opacity: 0.55; } }
     .spacer { flex: 1; align-self: stretch; }
     .status {
       display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 13px; white-space: nowrap;
       padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg-hover);
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
+    .status.on { border-color: rgba(47, 212, 196, 0.28); box-shadow: inset 0 0 12px rgba(47, 212, 196, 0.06); }
     .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); }
     .status.on .dot { background: var(--win); box-shadow: 0 0 8px var(--win); }
     .status .who {
@@ -193,7 +236,7 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
       color: var(--text-faint); background: var(--bg-sunken); border: 1px solid var(--line); font-weight: 400; text-align: left;
       transition: border-color 0.15s, box-shadow 0.15s, color 0.15s;
     }
-    .find:hover:not(:disabled), .find.open { color: var(--text-dim); border-color: var(--line-strong); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .find:hover:not(:disabled), .find.open { color: var(--text-dim); border-color: rgba(255, 79, 163, 0.5); box-shadow: 0 0 0 3px var(--accent-soft), 0 0 16px rgba(255, 79, 163, 0.18); }
     .find svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
     .find .hint { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .find kbd { flex: none; font: 500 11px var(--mono); color: var(--text-dim); border: 1px solid var(--line-strong); border-radius: 5px; padding: 1px 6px; }
@@ -204,7 +247,8 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
     @media (max-width: 1180px) {
       header { gap: 14px; }
       .brand span { display: none; }
-      nav button { padding: 6px 12px; }
+      nav button { padding: 8px 10px; }
+      nav button::after { left: 10px; right: 10px; }
     }
     @media (max-width: 1080px) { .find kbd, .status .phase { display: none; } }
     @media (max-width: 920px) { .find { flex: none; width: 38px; padding: 0; justify-content: center; } .find .hint { display: none; } }
