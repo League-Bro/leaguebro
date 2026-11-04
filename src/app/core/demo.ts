@@ -3,6 +3,7 @@
 // without League running.
 import {
   CacheInfo,
+  BanSuggestions,
   ChampSelectView,
   PickSuggestions,
   ChampStat,
@@ -168,7 +169,7 @@ export function demoSnapshot(): Snapshot {
   };
 }
 
-/** The demo snapshot for `?scene=` (champselect, pick, swiftplay, bots, postgame, postgame-bad, early-back, idle, queue, offline); in game otherwise. */
+/** The demo snapshot for `?scene=` (champselect, ban, pick, swiftplay, bots, postgame, postgame-bad, early-back, idle, queue, offline); in game otherwise. */
 export function demoScene(scene: string | null): Snapshot {
   const snap = demoSnapshot();
   const away = { loading: null, overlay: null };
@@ -179,6 +180,14 @@ export function demoScene(scene: string | null): Snapshot {
       const allies = cs.allies.map((p) => (p.isMe ? { ...p, championId: 0, pickIntent: 103 } : p));
       return { ...snap, ...away, status: { ...snap.status, phase: 'ChampSelect' }, rec: null, lastImport: null,
         champSelect: { ...cs, locked: false, myChampionId: 103, allies, enemies: cs.enemies.map((e, i) => (i === 2 ? { ...e, championId: 254 } : e)) },
+        situational: demoSituational(false) };
+    }
+    case 'ban': {
+      // Ban phase, your ban still to make: the ban suggestions show at the top.
+      const cs = demoChampSelect();
+      const allies = cs.allies.map((p) => (p.isMe ? { ...p, championId: 0, pickIntent: 103 } : { ...p, championId: 0 }));
+      return { ...snap, ...away, status: { ...snap.status, phase: 'ChampSelect' }, rec: null, lastImport: null,
+        champSelect: { ...cs, locked: false, banPending: true, myChampionId: 103, allies, bans: [157], enemies: cs.enemies.map((e) => ({ ...e, championId: 0 })) },
         situational: demoSituational(false) };
     }
     case 'champselect':
@@ -642,6 +651,7 @@ export function demoConfig(): Config {
     installDir: null,
     riotId: 'Dom#NA1',
     region: 'na',
+    suggestRank: '',
   };
 }
 
@@ -654,6 +664,7 @@ export function demoChampSelect(): ChampSelectView {
     myChampionId: 103,
     myPosition: 'middle',
     locked: true,
+    banPending: false,
     allies: [
       hidden(0, 'top', 516),
       { cellId: 1, championId: 0, pickIntent: 64, position: 'jungle', isMe: false, visible: true, name: 'Gank Plank#0001', puuid: 'a2' },
@@ -957,6 +968,28 @@ export function demoGoldHistory(now: number): GoldPoint[] {
   return points;
 }
 
+/** Bans for mid at your rank (Gold), as `bans.rs` sends them (numbers made up, shaped like Lolalytics'); you're 1-3 against Zed. */
+export function demoBanSuggestions(): BanSuggestions {
+  const ban = (championId: number, winRate: number, pickRate: number, tier: string, gamesVs = 0, winsVs = 0, laneGamesVs = 0, laneWinsVs = 0, personal = 0) =>
+    ({ championId, winRate, pickRate, banRate: 0.04, tier, gamesVs, winsVs, laneGamesVs, laneWinsVs, personal, score: winRate * 100 + personal });
+  return {
+    position: 'middle',
+    loading: false,
+    error: null,
+    personal: true,
+    rank: 'gold',
+    myRank: 'gold',
+    bans: [
+      ban(1, 0.5342, 0.041, 'S'),
+      ban(238, 0.5195, 0.072, 'A', 4, 1, 3, 0, 1.25),
+      ban(711, 0.5288, 0.063, 'S-', 3, 1, 1, 0, 0.25),
+      ban(61, 0.5261, 0.052, 'A+'),
+      ban(134, 0.5240, 0.038, 'A+'),
+      ban(90, 0.5212, 0.029, 'A'),
+    ],
+  };
+}
+
 /** Picks against Zed mid, as `picks.rs` sends them (numbers made up, shaped like OP.GG's). */
 export function demoPickSuggestions(): PickSuggestions {
   const pick = (championId: number, vsGames: number, vsWinRate: number, winRate: number, tier: string, masteryPoints = 0, masteryLevel = 0) =>
@@ -965,6 +998,8 @@ export function demoPickSuggestions(): PickSuggestions {
     position: 'middle',
     opponentId: 238,
     guessed: true,
+    rank: 'gold',
+    myRank: 'gold',
     loading: false,
     error: null,
     picks: [

@@ -65,7 +65,8 @@ import { ImportEvent, LoadPlayer, OverlayState, RecChoice, RecState, SwiftplaySl
           <rl-rec-card [bare]="true" [locked]="cs.locked" />
         </div>
       </ng-template>
-      @if (cs.myChampionId > 0) {
+      <!-- Bans and picks card first while your ban is still to make or nothing is hovered. -->
+      @if (cs.myChampionId > 0 && !cs.banPending) {
         <ng-container *ngTemplateOutlet="champBlock" />
         <rl-pick-suggest />
       } @else {

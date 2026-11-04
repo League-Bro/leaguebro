@@ -1,3 +1,4 @@
+mod bans;
 mod config;
 mod util;
 mod cache;
@@ -294,6 +295,23 @@ async fn get_pick_suggestions(app: AppHandle) -> Option<picks::PickSuggestions> 
     picks::current(&app).await
 }
 
+/// Hovers a champion for your pick or ban (`kind`) in champ select, without locking it in.
+#[tauri::command]
+async fn hover_champion(app: AppHandle, champion_id: i64, kind: String) -> Result<(), String> {
+    picks::hover(&app, champion_id, &kind).await.map_err(|e| format!("{e:#}"))
+}
+
+/// Your rank's filter ("gold", "master_plus"…) for the Champions tab; None when unranked or the client isn't running.
+#[tauri::command]
+async fn get_my_rank_filter(app: AppHandle) -> Option<String> {
+    picks::my_rank_filter(&app, 420).await
+}
+
+#[tauri::command]
+async fn get_ban_suggestions(app: AppHandle) -> Option<bans::BanSuggestions> {
+    bans::current(&app).await
+}
+
 /// A looked-up recommendation with picks in place (the Champions tab, which doesn't import).
 #[tauri::command]
 fn rec_with_choice(rec: opgg::Recommendation, choice: opgg::RecChoice) -> opgg::Recommendation {
@@ -504,6 +522,7 @@ pub fn run() {
                 overlay_input: std::sync::Mutex::new(engine::OverlayInput { passthrough: true, ..Default::default() }),
             });
             app.manage(picks::Picks::default());
+            app.manage(bans::Bans::default());
             // The main window draws its own title bar (shell.ts) on Windows; a Mac keeps its native one.
             #[cfg(target_os = "macos")]
             if let Some(main) = app.get_webview_window("main") {
@@ -543,6 +562,9 @@ pub fn run() {
             choose_rec_option,
             choose_lane_opponent,
             get_pick_suggestions,
+            get_ban_suggestions,
+            get_my_rank_filter,
+            hover_champion,
             rec_with_choice,
             global_item_sets,
             move_global_item_sets,

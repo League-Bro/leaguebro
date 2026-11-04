@@ -163,6 +163,8 @@ pub struct ChampSelectView {
     pub my_champion_id: i64,
     pub my_position: String,
     pub locked: bool,
+    /// You still have a ban to make (planning or ban phase); false once you've banned.
+    pub ban_pending: bool,
     pub allies: Vec<CsPlayer>,
     pub enemies: Vec<CsPlayer>,
     pub bans: Vec<i64>,
@@ -408,6 +410,13 @@ pub fn parse_champ_select(session: &Value) -> ChampSelectView {
     })
         // Modes without pick actions (ARAM) assign the champion directly.
         || (me.champion_id != 0 && actions.is_empty());
+    let my_bans: Vec<&Value> = actions
+        .iter()
+        .filter_map(Value::as_array)
+        .flatten()
+        .filter(|a| int(a, "actorCellId") == me_cell && text(a, "type") == "ban")
+        .collect();
+    let ban_pending = !my_bans.is_empty() && !my_bans.iter().any(|a| flag(a, "completed"));
 
     let bans = ["/bans/myTeamBans", "/bans/theirTeamBans"].iter().flat_map(|k| ints(session, k)).filter(|&x| x > 0).collect();
     ChampSelectView {
@@ -415,6 +424,7 @@ pub fn parse_champ_select(session: &Value) -> ChampSelectView {
         my_champion_id,
         my_position: me.position.clone(),
         locked,
+        ban_pending,
         allies,
         enemies,
         bans,
@@ -1253,6 +1263,7 @@ impl Engine {
         if prev == "ChampSelect" && phase != "ChampSelect" {
             self.state().shared.lock().await.champ_select = None;
             crate::picks::clear(&self.app).await;
+            crate::bans::clear(&self.app).await;
             let _ = self.app.emit("champ-select", Option::<ChampSelectView>::None);
         }
         if !matches!(phase, "InProgress" | "Reconnect") {
@@ -1312,6 +1323,7 @@ impl Engine {
             let _ = self.app.emit("champ-select", Some(view.clone()));
         }
         crate::picks::update(&self.app, &view).await;
+        crate::bans::update(&self.app, &view).await;
         if cfg.scout_in_champ_select {
             for p in view.allies.iter().filter(|p| p.visible && !p.is_me) {
                 if let Some(id) = &p.puuid {
@@ -2304,6 +2316,23 @@ mod tests {
         assert_eq!(v.enemies[0].champion_id, 238);
         assert!(v.enemies[0].name.is_none() && v.enemies[0].puuid.is_none());
         assert_eq!(v.bans, vec![157, 555]);
+        assert!(!v.ban_pending, "no ban action for me");
+    }
+
+    #[test]
+    fn ban_pending_until_my_ban_is_done() {
+        let ban = |done: bool| {
+            json!({
+                "localPlayerCellId": 1,
+                "myTeam": [{"cellId": 1, "championId": 0}],
+                "actions": [
+                    [{"actorCellId": 0, "type": "ban", "completed": true}, {"actorCellId": 1, "type": "ban", "completed": done}],
+                    [{"actorCellId": 1, "type": "pick", "completed": false}]
+                ]
+            })
+        };
+        assert!(parse_champ_select(&ban(false)).ban_pending);
+        assert!(!parse_champ_select(&ban(true)).ban_pending);
     }
 
     #[test]

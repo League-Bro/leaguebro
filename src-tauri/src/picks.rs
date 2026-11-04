@@ -6,13 +6,16 @@
 //!
 //! The lane opponent is `matchup::guess_opponent`'s guess unless the player
 //! chose one (`Shared::opponent_pick`, shared with the lane matchup).
+//!
+//! Stats are for your rank (`suggestion_rank`: the rank chosen on the card,
+//! `Config::suggest_rank`, else your Solo/Duo rank), shared with `bans.rs`.
 
 use crate::cache::now_secs;
 use crate::engine::{AppState, ChampSelectView};
 use crate::matchup;
 use crate::opgg::{self, WEB_API};
-use crate::tierlist::{Source, TierEntry};
-use crate::util::{get_json, int, list, web_client};
+use crate::tierlist::{rank_filter, Source, TierEntry, DEFAULT_RANK, RANKS};
+use crate::util::{get_json, int, list, text, web_client};
 use anyhow::Result;
 use serde::Serialize;
 use serde_json::Value;
@@ -39,6 +42,10 @@ pub struct PickSuggestions {
     pub opponent_id: i64,
     /// True when League Bro guessed the opponent; false when the player chose.
     pub guessed: bool,
+    /// The rank filter the stats are for ("gold", "emerald_plus"…).
+    pub rank: String,
+    /// Your own rank's filter (None = unranked or unknown).
+    pub my_rank: Option<String>,
     pub loading: bool,
     pub error: Option<String>,
     /// Best first.
@@ -73,7 +80,7 @@ pub struct Counter {
     pub wins: i64,
 }
 
-type Key = (i64, String, Vec<i64>, Vec<i64>, Vec<i64>, Option<i64>);
+type Key = (i64, String, Vec<i64>, Vec<i64>, Vec<i64>, Option<i64>, String);
 
 #[derive(Default)]
 pub struct Picks {
@@ -86,8 +93,8 @@ struct Inner {
     /// Bumped on every new key, so a slow lookup for old picks is dropped.
     round: u64,
     current: Option<PickSuggestions>,
-    /// By (champion, OP.GG position, game mode): fetched at, rows.
-    counters: HashMap<(i64, String, String), (u64, Vec<Counter>)>,
+    /// By (champion, OP.GG position, game mode, rank): fetched at, rows.
+    counters: HashMap<(i64, String, String, String), (u64, Vec<Counter>)>,
     /// Your champions, once per champ select: champion -> (points, level).
     mastery: Option<HashMap<i64, (i64, i64)>>,
     pickable: Option<HashSet<i64>>,
@@ -161,7 +168,7 @@ pub fn rank(
 
 /// What the picks depend on, or None when there's nothing to suggest:
 /// locked in, Swiftplay, or a mode without lanes or roles.
-fn key(view: &ChampSelectView, map_id: i64, opponent_pick: Option<i64>) -> Option<Key> {
+fn key(view: &ChampSelectView, map_id: i64, opponent_pick: Option<i64>, rank: &str) -> Option<Key> {
     let lanes = matches!(opgg::game_mode_for(view.queue_id, map_id), Some("ranked" | "flex"));
     let swiftplay = matches!(view.queue_id, 480 | 490);
     if view.locked || swiftplay || !lanes || map_id != 11 || view.my_position.is_empty() {
@@ -170,7 +177,27 @@ fn key(view: &ChampSelectView, map_id: i64, opponent_pick: Option<i64>) -> Optio
     let ids = |ps: &[crate::engine::CsPlayer]| ps.iter().filter(|p| !p.is_me).map(|p| p.champion_id).collect::<Vec<_>>();
     let mut bans = view.bans.clone();
     bans.sort_unstable();
-    Some((view.queue_id, view.my_position.to_lowercase(), ids(&view.enemies), ids(&view.allies), bans, opponent_pick))
+    Some((view.queue_id, view.my_position.to_lowercase(), ids(&view.enemies), ids(&view.allies), bans, opponent_pick, rank.to_string()))
+}
+
+/// Your rank's filter: Solo/Duo (Flex first in the Flex queue), else the
+/// other queue's. None when unranked or the client can't say.
+pub async fn my_rank_filter(app: &AppHandle, queue_id: i64) -> Option<String> {
+    let lcu = app.state::<AppState>().shared.lock().await.lcu.clone()?;
+    let me = lcu.summoner_ids().await.ok()?;
+    let puuid = text(&me, "puuid").to_string();
+    let r = crate::scout::ranks(&lcu, std::slice::from_ref(&puuid)).await.remove(&puuid)?;
+    let (first, then) = if queue_id == 440 { (r.flex, r.solo) } else { (r.solo, r.flex) };
+    first.into_iter().chain(then).find_map(|l| rank_filter(&l.tier)).map(String::from)
+}
+
+/// The rank filter for the suggestions: the one chosen on the card, else
+/// yours, else Emerald+. Also returns yours.
+pub async fn suggestion_rank(app: &AppHandle, queue_id: i64) -> (String, Option<String>) {
+    let mine = my_rank_filter(app, queue_id).await;
+    let chosen = app.state::<AppState>().config().suggest_rank;
+    let rank = if RANKS.contains(&chosen.as_str()) { chosen } else { mine.clone().unwrap_or_else(|| DEFAULT_RANK.to_string()) };
+    (rank, mine)
 }
 
 /// Called with every champ select update: starts a lookup when the picks
@@ -181,7 +208,7 @@ pub async fn update(app: &AppHandle, view: &ChampSelectView) {
         let sh = state.shared.lock().await;
         (sh.map(), sh.opponent_pick)
     };
-    let key = key(view, map_id, opponent_pick);
+    let key = key(view, map_id, opponent_pick, &state.config().suggest_rank);
     let round = {
         let picks = app.state::<Picks>();
         let mut p = picks.inner.lock().await;
@@ -254,8 +281,9 @@ async fn lookup(app: &AppHandle, view: &ChampSelectView, opponent_pick: Option<i
     };
     let enemies: Vec<i64> = view.enemies.iter().map(|e| e.champion_id).filter(|&c| c > 0).collect();
     let (opponent, guessed) = matchup::resolve_opponent(&state, opponent_pick, &position, &enemies).await;
-    let tiers = state.tiers.get(Source::Opgg, &position, "emerald_plus", names).await?;
-    let counters = if opponent > 0 { Some(counters(app, opponent, &position, mode).await?) } else { None };
+    let (rank, my_rank) = suggestion_rank(app, view.queue_id).await;
+    let tiers = state.tiers.get(Source::Opgg, &position, &rank, names).await?;
+    let counters = if opponent > 0 { Some(counters(app, opponent, &position, mode, &rank).await?) } else { None };
 
     // Yours to pick: owned (or free) and not taken. Asked once per champ select.
     let picks = app.state::<Picks>();
@@ -304,17 +332,45 @@ async fn lookup(app: &AppHandle, view: &ChampSelectView, opponent_pick: Option<i
         position,
         opponent_id: opponent,
         guessed,
+        rank,
+        my_rank,
         loading: false,
         error: None,
-        picks: rank(&tiers.entries, counters.as_deref(), &taken, pickable.as_ref(), &mastery),
+        picks: self::rank(&tiers.entries, counters.as_deref(), &taken, pickable.as_ref(), &mastery),
     })
 }
 
+/// Your `kind` ("pick" or "ban") action still to complete: the one in
+/// progress, else the first. Its id, for `hover`.
+pub fn my_open_action(session: &Value, kind: &str) -> Option<i64> {
+    let me = int(session, "localPlayerCellId");
+    let mine: Vec<&Value> = list(session, "actions")
+        .iter()
+        .filter_map(Value::as_array)
+        .flatten()
+        .filter(|a| int(a, "actorCellId") == me && text(a, "type") == kind && !crate::util::flag(a, "completed"))
+        .collect();
+    mine.iter().find(|a| crate::util::flag(a, "isInProgress")).or(mine.first()).map(|a| int(a, "id"))
+}
+
+/// Hovers a champion in the client for your pick or ban, without locking it
+/// in (the suggestion card's champion buttons). Before your turn a pick
+/// hover is your pick intent, like hovering in the planning phase.
+pub async fn hover(app: &AppHandle, champion_id: i64, kind: &str) -> Result<()> {
+    let lcu = app.state::<AppState>().shared.lock().await.lcu.clone().ok_or_else(|| anyhow::anyhow!("The League client isn't running"))?;
+    let session = lcu.get_req("/lol-champ-select/v1/session").await?;
+    let what = if kind == "ban" { "ban" } else { "pick" };
+    let id = my_open_action(&session, what).ok_or_else(|| anyhow::anyhow!("You have no {what} to make right now"))?;
+    lcu.patch(&format!("/lol-champ-select/v1/session/actions/{id}"), &serde_json::json!({ "championId": champion_id })).await?;
+    Ok(())
+}
+
 /// The opponent's counters in your lane, from OP.GG's champion page (~0.2 s,
-/// kept for a few hours).
-async fn counters(app: &AppHandle, champion_id: i64, position: &str, game_mode: &str) -> Result<Vec<Counter>> {
+/// kept for a few hours), for `rank` (OP.GG's `tier` filter, the same names
+/// as its tier list). If OP.GG won't take the filter, its default (Emerald+).
+async fn counters(app: &AppHandle, champion_id: i64, position: &str, game_mode: &str, rank: &str) -> Result<Vec<Counter>> {
     let pos = opgg::position_param(position, game_mode).to_string();
-    let key = (champion_id, pos.clone(), game_mode.to_string());
+    let key = (champion_id, pos.clone(), game_mode.to_string(), rank.to_string());
     let picks = app.state::<Picks>();
     if let Some((at, rows)) = picks.inner.lock().await.counters.get(&key) {
         if now_secs().saturating_sub(*at) < COUNTERS_TTL {
@@ -322,7 +378,13 @@ async fn counters(app: &AppHandle, champion_id: i64, position: &str, game_mode: 
         }
     }
     let url = format!("{WEB_API}/{game_mode}/{champion_id}/{pos}");
-    let main = get_json(web_client(10).get(url), "OP.GG").await?;
+    let main = match get_json(web_client(10).get(&url).query(&[("tier", rank)]), "OP.GG").await {
+        Ok(main) => main,
+        Err(e) => {
+            eprintln!("OP.GG counters for {rank}, trying without the rank: {e:#}");
+            get_json(web_client(10).get(&url), "OP.GG").await?
+        }
+    };
     let rows = parse_counters(&main);
     picks.inner.lock().await.counters.insert(key, (now_secs(), rows.clone()));
     Ok(rows)
@@ -393,6 +455,21 @@ mod tests {
     }
 
     #[test]
+    fn finds_my_open_action() {
+        let s = serde_json::json!({
+            "localPlayerCellId": 2,
+            "actions": [
+                [{"id": 1, "actorCellId": 2, "type": "ban", "completed": true}, {"id": 2, "actorCellId": 3, "type": "ban"}],
+                [{"id": 7, "actorCellId": 2, "type": "pick", "isInProgress": false}],
+                [{"id": 9, "actorCellId": 2, "type": "ban", "isInProgress": true}]
+            ]
+        });
+        assert_eq!(my_open_action(&s, "pick"), Some(7));
+        assert_eq!(my_open_action(&s, "ban"), Some(9));
+        assert_eq!(my_open_action(&serde_json::json!({}), "pick"), None);
+    }
+
+    #[test]
     fn only_before_lock_in_in_lane_modes() {
         let me = CsPlayer { is_me: true, champion_id: 103, ..Default::default() };
         let view = ChampSelectView {
@@ -403,15 +480,16 @@ mod tests {
             bans: vec![99, 84],
             ..Default::default()
         };
-        let k = key(&view, 11, None).unwrap();
-        assert_eq!(k, (420, "middle".into(), vec![238], vec![64], vec![84, 99], None));
-        // Your own hover doesn't start a new lookup.
+        let k = key(&view, 11, None, "").unwrap();
+        assert_eq!(k, (420, "middle".into(), vec![238], vec![64], vec![84, 99], None, String::new()));
+        // Your own hover doesn't start a new lookup; a new rank on the card does.
         let mut hover = view.clone();
         hover.allies[0].champion_id = 1;
-        assert_eq!(key(&hover, 11, None), Some(k));
-        assert_eq!(key(&ChampSelectView { locked: true, ..view.clone() }, 11, None), None);
-        assert_eq!(key(&ChampSelectView { queue_id: 480, ..view.clone() }, 11, None), None);
-        assert_eq!(key(&ChampSelectView { queue_id: 450, ..view.clone() }, 12, None), None);
-        assert_eq!(key(&ChampSelectView { my_position: String::new(), ..view }, 11, None), None);
+        assert_eq!(key(&hover, 11, None, ""), Some(k.clone()));
+        assert_ne!(key(&view, 11, None, "gold"), Some(k));
+        assert_eq!(key(&ChampSelectView { locked: true, ..view.clone() }, 11, None, ""), None);
+        assert_eq!(key(&ChampSelectView { queue_id: 480, ..view.clone() }, 11, None, ""), None);
+        assert_eq!(key(&ChampSelectView { queue_id: 450, ..view.clone() }, 12, None, ""), None);
+        assert_eq!(key(&ChampSelectView { my_position: String::new(), ..view }, 11, None, ""), None);
     }
 }

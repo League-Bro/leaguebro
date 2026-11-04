@@ -1,10 +1,11 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, output, signal, untracked, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, output, signal, untracked } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RiftService } from '../core/rift.service';
-import { POSITION_LABELS, championIcon, rankCrest } from '../core/assets';
+import { POSITION_LABELS, championIcon } from '../core/assets';
 import { ago, kilo } from '../core/format';
 import { TierEntry, TierSource } from '../core/models';
 import { Loader } from './loader';
+import { RANKS, RankPicker } from './rank-picker';
 
 type Lane = 'top' | 'jungle' | 'middle' | 'bottom' | 'utility';
 type SortKey = 'tier' | 'name' | 'winRate' | 'pickRate' | 'banRate' | 'games';
@@ -31,33 +32,6 @@ const LANE_ICONS: Record<Lane | 'all', { dim: string; main: string }> = {
   },
 };
 
-/**
- * Rank filters, the same for both sources (tierlist.rs `RANKS`). Below
- * `newPatchGames` the patch is too new for stable stats: about a quarter of a
- * normal week's Lolalytics games for that filter (October 2026: Emerald+
- * ~12.5M a week, Master+ ~2.2M; single ranks scaled from the same day's
- * counts). OP.GG counts games differently, so the warning only uses
- * Lolalytics' numbers. Listed in rank order, each "+" right after its rank.
- */
-const RANKS = [
-  { id: 'all', label: 'All ranks', newPatchGames: 11_600_000 },
-  { id: 'iron', label: 'Iron', newPatchGames: 400_000 },
-  { id: 'bronze', label: 'Bronze', newPatchGames: 1_300_000 },
-  { id: 'silver', label: 'Silver', newPatchGames: 2_000_000 },
-  { id: 'gold', label: 'Gold', newPatchGames: 2_500_000 },
-  { id: 'gold_plus', label: 'Gold+', newPatchGames: 7_900_000 },
-  { id: 'platinum', label: 'Platinum', newPatchGames: 2_400_000 },
-  { id: 'platinum_plus', label: 'Platinum+', newPatchGames: 5_400_000 },
-  { id: 'emerald', label: 'Emerald', newPatchGames: 1_750_000 },
-  { id: 'emerald_plus', label: 'Emerald+', newPatchGames: 3_000_000 },
-  { id: 'diamond', label: 'Diamond', newPatchGames: 775_000 },
-  { id: 'diamond_plus', label: 'Diamond+', newPatchGames: 1_300_000 },
-  { id: 'master', label: 'Master', newPatchGames: 525_000 },
-  { id: 'master_plus', label: 'Master+', newPatchGames: 500_000 },
-  { id: 'grandmaster', label: 'Grandmaster', newPatchGames: 35_000 },
-  { id: 'challenger', label: 'Challenger', newPatchGames: 11_000 },
-];
-
 const SOURCES: { id: TierSource; label: string }[] = [
   { id: 'lolalytics', label: 'Lolalytics' },
   { id: 'opgg', label: 'OP.GG' },
@@ -79,7 +53,10 @@ interface Highlight {
   tone: 'win' | 'accent' | 'loss' | 'teal';
 }
 
-/** Filters and sort, kept for the whole session so they survive tab switches. */
+/** Whether the rank filter has started from your own rank yet (once per session, unless you've picked one). */
+let rankDefaulted = false;
+
+/** Filters and sort, kept for the whole session so they survive tab switches. The rank starts at yours. */
 const prefs = signal({
   lane: 'all' as Lane | 'all',
   rank: 'emerald_plus',
@@ -97,8 +74,7 @@ const prefs = signal({
 @Component({
   selector: 'rl-champion-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { '(document:click)': 'closeRankMenu($event)' },
-  imports: [DecimalPipe, Loader],
+  imports: [DecimalPipe, Loader, RankPicker],
   template: `
     <div class="top">
       <div>
@@ -126,23 +102,7 @@ const prefs = signal({
             </button>
           }
         </div>
-        <div class="rank-pick" #rankPicker (keydown.escape)="rankOpen.set(false)">
-          <button class="rank-btn" aria-haspopup="listbox" [attr.aria-expanded]="rankOpen()" (click)="rankOpen.set(!rankOpen())">
-            <img [src]="crest(p().rank)" alt="" />
-            <span>{{ rankLabel() }}</span>
-            <span class="caret">▾</span>
-          </button>
-          @if (rankOpen()) {
-            <div class="rank-menu" role="listbox">
-              @for (r of ranks; track r.id) {
-                <button role="option" [attr.aria-selected]="p().rank === r.id" [class.on]="p().rank === r.id" (click)="pickRank(r.id)">
-                  <img [src]="crest(r.id)" alt="" />
-                  <span>{{ r.label }}</span>
-                </button>
-              }
-            </div>
-          }
-        </div>
+        <rl-rank-picker [value]="p().rank" (picked)="pickRank($event)" />
         <div class="seg">
           @for (s of sources; track s.id) {
             <button [class.on]="p().source === s.id" (click)="set({ source: s.id })">{{ s.label }}</button>
@@ -278,19 +238,7 @@ const prefs = signal({
     .lanes svg { width: 18px; height: 18px; flex: none; }
     .lane-label { font-size: 12.5px; }
 
-    .rank-pick { position: relative; }
-    .rank-btn { display: flex; align-items: center; gap: 8px; padding: 5px 12px 5px 8px; background: var(--bg-sunken); }
-    .rank-btn img, .rank-menu img { width: 22px; height: 22px; flex: none; }
-    .caret { color: var(--text-faint); font-size: 11px; }
     .note { margin: 0; color: var(--gold); background: var(--gold-soft); border-radius: var(--radius-sm); padding: 8px 12px; }
-    .rank-menu {
-      position: absolute; top: calc(100% + 6px); left: 0; z-index: 10; min-width: 100%;
-      display: flex; flex-direction: column; gap: 1px; padding: 5px;
-      max-height: 420px; overflow: auto;
-      background: var(--bg-raised); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); box-shadow: var(--shadow);
-    }
-    .rank-menu button { display: flex; align-items: center; gap: 9px; text-align: left; white-space: nowrap; border: none; border-radius: 8px; background: none; padding: 5px 12px 5px 7px; }
-    .rank-menu button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
     .fav-chip { background: var(--bg-sunken); color: var(--text-dim); }
     .fav-chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
 
@@ -395,7 +343,6 @@ export class ChampionList {
 
   protected readonly p = prefs;
   protected readonly game = this.rift.championsGame;
-  protected readonly ranks = RANKS;
   protected readonly sources = SOURCES;
   protected readonly laneTabs = (['all', ...LANES] as const).map((id) => ({
     id,
@@ -411,8 +358,6 @@ export class ChampionList {
     { key: 'games', label: 'Games' },
   ];
   protected readonly query = signal('');
-  protected readonly rankOpen = signal(false);
-  private readonly rankPicker = viewChild<ElementRef<HTMLElement>>('rankPicker');
   protected readonly rankLabel = computed(() => RANKS.find((r) => r.id === this.p().rank)?.label ?? this.p().rank);
 
   /** Loaded lanes for the current source and rank. */
@@ -535,14 +480,27 @@ export class ChampionList {
 
   protected readonly arrow = computed(() => (this.p().desc ? '▼' : '▲'));
   protected icon = championIcon;
-  protected crest = rankCrest;
   protected abs = Math.abs;
+
+  /** False until your rank is known, so the first list loads for it. */
+  private readonly ready = signal(rankDefaulted);
 
   constructor() {
     effect(() => {
       const { source, rank, lane } = this.p();
-      untracked(() => this.load(source, rank, lane));
+      if (this.ready()) untracked(() => this.load(source, rank, lane));
     });
+    if (!rankDefaulted) {
+      this.loading.set(true);
+      this.rift
+        .myRankFilter()
+        .catch(() => null)
+        .then((rank) => {
+          if (!rankDefaulted && rank && RANKS.some((r) => r.id === rank)) this.set({ rank });
+          rankDefaulted = true;
+          this.ready.set(true);
+        });
+    }
     const timer = setInterval(() => this.now.set(Date.now()), 30_000);
     inject(DestroyRef).onDestroy(() => clearInterval(timer));
   }
@@ -559,12 +517,8 @@ export class ChampionList {
   }
 
   pickRank(rank: string): void {
-    this.rankOpen.set(false);
+    rankDefaulted = true;
     this.set({ rank });
-  }
-
-  closeRankMenu(event: MouseEvent): void {
-    if (this.rankOpen() && !this.rankPicker()?.nativeElement.contains(event.target as Node)) this.rankOpen.set(false);
   }
 
   reload(): void {

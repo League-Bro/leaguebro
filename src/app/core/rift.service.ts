@@ -436,6 +436,16 @@ export class RiftService {
     return this.call('get_patch', { url }, () => demoPatch(url));
   }
 
+  /** Your rank's filter ("gold", "master_plus"…); null when unranked or the client isn't running. */
+  myRankFilter(): Promise<string | null> {
+    return this.call('get_my_rank_filter', {}, () => 'gold', 100);
+  }
+
+  /** Hovers a champion for your pick or ban in champ select (not locked in). */
+  hoverChampion(championId: number, kind: 'pick' | 'ban'): Promise<void> {
+    return this.call('hover_champion', { championId, kind }, () => undefined, 150);
+  }
+
   /** One lane's tier list. Position: top|jungle|middle|bottom|utility; rank is a filter like "emerald_plus" for either source. */
   getTierList(source: TierSource, position: string, rank: string): Promise<TierList> {
     return this.call('get_tier_list', { source, position, rank }, () => demoTierList(source, position, rank), 250);

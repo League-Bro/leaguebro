@@ -120,6 +120,9 @@ pub struct Config {
     pub riot_id: Option<String>,
     /// OP.GG's region code for `riot_id` ("na", "euw", "kr"…).
     pub region: String,
+    /// Rank filter for champ select's pick and ban suggestions ("gold",
+    /// "emerald_plus"…, `tierlist::RANKS`); empty = your own rank.
+    pub suggest_rank: String,
 }
 
 impl Default for Config {
@@ -157,6 +160,7 @@ impl Default for Config {
             install_dir: None,
             riot_id: None,
             region: "na".into(),
+            suggest_rank: String::new(),
         }
     }
 }

@@ -30,6 +30,8 @@ export interface ChampSelectView {
   myChampionId: number;
   myPosition: string;
   locked: boolean;
+  /** You still have a ban to make; false once you've banned. */
+  banPending: boolean;
   allies: CsPlayer[];
   enemies: CsPlayer[];
   bans: number[];
@@ -811,6 +813,8 @@ export interface Config {
   installDir: string | null;
   /** Your Riot ID ("Name#TAG") for the Profile page while the client isn't running. */
   riotId: string | null;
+  /** Rank filter for champ select's pick and ban suggestions; '' = your own rank. */
+  suggestRank: string;
   /** OP.GG region code for riotId ("na", "euw"…). */
   region: string;
 }
@@ -888,6 +892,10 @@ export interface PickSuggestions {
   /** Your lane opponent; 0 = not picked yet, so the picks are the lane's strongest. */
   opponentId: number;
   guessed: boolean;
+  /** The rank filter the stats are for ("gold", "emerald_plus"…). */
+  rank: string;
+  /** Your own rank's filter; null = unranked or unknown. */
+  myRank: string | null;
   loading: boolean;
   error: string | null;
   /** Best first. */
@@ -905,6 +913,41 @@ export interface SuggestedPick {
   tier: string;
   masteryPoints: number;
   masteryLevel: number;
+  score: number;
+}
+
+/** Champions to ban while your ban is still to make (`bans.rs`). */
+export interface BanSuggestions {
+  /** The client's lane name ("middle"). */
+  position: string;
+  loading: boolean;
+  error: string | null;
+  /** False when your match history couldn't be read (win rates only). */
+  personal: boolean;
+  /** The rank filter the win rates are for. */
+  rank: string;
+  /** Your own rank's filter; null = unranked or unknown. */
+  myRank: string | null;
+  /** Best ban first. */
+  bans: SuggestedBan[];
+}
+
+export interface SuggestedBan {
+  championId: number;
+  /** In your lane (Lolalytics, for the rank filter), 0.523 = 52.3 %. */
+  winRate: number;
+  pickRate: number;
+  banRate: number;
+  /** Lolalytics' tier label ("S+" … "D-"). */
+  tier: string;
+  /** Your recent games against it (anywhere on the enemy team) and your wins. */
+  gamesVs: number;
+  winsVs: number;
+  /** The same with it as your lane opponent. */
+  laneGamesVs: number;
+  laneWinsVs: number;
+  /** Win rate points added for your losses against it. */
+  personal: number;
   score: number;
 }
 

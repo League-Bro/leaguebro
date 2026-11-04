@@ -421,6 +421,12 @@ pub fn insights<'a>(matches: impl IntoIterator<Item = &'a MatchLine>) -> Insight
 /// your lane opponent, remakes left out. Uses the same full-record fetches as
 /// the Profile page, kept for the session.
 pub async fn record_against(lcu: &Lcu, opponent_id: i64) -> anyhow::Result<ChampStat> {
+    Ok(lane_record(&my_recent_games(lcu).await?, opponent_id))
+}
+
+/// Your recent games with lane opponents and enemies filled in (the same
+/// fetches as the Profile page, kept for the session).
+pub async fn my_recent_games(lcu: &Lcu) -> anyhow::Result<Vec<MatchLine>> {
     let me = lcu.summoner_ids().await?;
     let puuid = text(&me, "puuid").to_string();
     let history = lcu
@@ -429,7 +435,7 @@ pub async fn record_against(lcu: &Lcu, opponent_id: i64) -> anyhow::Result<Champ
         .ok_or_else(|| anyhow::anyhow!("the client has no match history for you"))?;
     let mut matches = parse_matches(&history);
     fill_opponents(lcu, &puuid, &mut matches, true).await;
-    Ok(lane_record(&matches, opponent_id))
+    Ok(matches)
 }
 
 fn lane_record(matches: &[MatchLine], opponent_id: i64) -> ChampStat {

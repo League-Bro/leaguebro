@@ -47,6 +47,25 @@ pub const RANKS: &[&str] = &[
     "all", "gold_plus", "platinum_plus", "emerald_plus", "diamond_plus", "master_plus",
     "iron", "bronze", "silver", "gold", "platinum", "emerald", "diamond", "master", "grandmaster", "challenger",
 ];
+/// What the suggestions and the Champions tab use when your rank isn't known.
+pub const DEFAULT_RANK: &str = "emerald_plus";
+
+/// The rank filter for a ranked tier ("GOLD" -> "gold"). Master and up use
+/// "master_plus": single ranks up there have too few games. None = unranked.
+pub fn rank_filter(tier: &str) -> Option<&'static str> {
+    Some(match tier.to_ascii_uppercase().as_str() {
+        "IRON" => "iron",
+        "BRONZE" => "bronze",
+        "SILVER" => "silver",
+        "GOLD" => "gold",
+        "PLATINUM" => "platinum",
+        "EMERALD" => "emerald",
+        "DIAMOND" => "diamond",
+        "MASTER" | "GRANDMASTER" | "CHALLENGER" => "master_plus",
+        _ => return None,
+    })
+}
+
 /// Lolalytics lists every champion seen in the lane. Below these (percent of
 /// the champion's games in this lane, and of all games in the lane) it's an
 /// off-role pick, not part of the lane's tier list.
@@ -372,6 +391,18 @@ mod tests {
     use super::*;
 
     use crate::util::fixture_json;
+
+    #[test]
+    fn rank_filters_from_tiers() {
+        assert_eq!(rank_filter("GOLD"), Some("gold"));
+        assert_eq!(rank_filter("Emerald"), Some("emerald"));
+        assert_eq!(rank_filter("GRANDMASTER"), Some("master_plus"));
+        assert_eq!(rank_filter(""), None);
+        assert_eq!(rank_filter("NONE"), None);
+        for t in ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND", "MASTER"] {
+            assert!(RANKS.contains(&rank_filter(t).unwrap()));
+        }
+    }
 
     #[test]
     fn lolalytics_top_lane() {
