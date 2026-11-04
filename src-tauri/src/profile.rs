@@ -46,6 +46,13 @@ pub struct MatchLine {
     pub lp_change: Option<crate::lp_history::LpChange>,
     /// OP.GG's id for the game, in games from OP.GG's match list (`get_match` loads it from there).
     pub opgg_game: Option<crate::opgg_profile::OpggGame>,
+    /// Your team's champion kills, for kill participation; None when the
+    /// game's full record didn't load, and in Arena.
+    pub team_kills: Option<i64>,
+    /// Your damage to turrets, dragons, Baron and the rest; None from OP.GG.
+    pub objective_damage: Option<i64>,
+    /// "top", "jungle", "mid", "adc" or "support", when that's clear (Summoner's Rift only).
+    pub position: Option<String>,
 }
 
 /// One player in a game, for the names beside each match.
@@ -173,6 +180,9 @@ pub fn parse_matches(history: &Value) -> Vec<MatchLine> {
                 teams: Vec::new(),
                 lp_change: None,
                 opgg_game: None,
+                team_kills: None,
+                objective_damage: Some(int(p, "/stats/damageDealtToObjectives")),
+                position: None,
             })
         })
         .collect();
@@ -186,6 +196,8 @@ pub struct Opponents {
     pub lane: Option<i64>,
     pub enemies: Vec<i64>,
     pub teams: Vec<Vec<GamePlayer>>,
+    pub team_kills: Option<i64>,
+    pub position: Option<&'static str>,
 }
 
 /// Your lane opponent, the enemy team and both teams' players from a game's
@@ -222,6 +234,13 @@ pub fn opponents(game: &Value, my_puuid: &str) -> Option<Opponents> {
         players.into_iter().map(|(_, p)| p).collect::<Vec<_>>()
     };
     let teams = if arena { Vec::new() } else { vec![roster(&mine), roster(&theirs)] };
+    let team_kills = (!arena).then(|| mine.iter().map(|p| int(p, "/stats/kills")).sum());
+    let position = (int(game, "mapId") == 11)
+        .then(|| {
+            let at = mine.iter().position(|p| int(p, "participantId") == my_pid)?;
+            positions(&mine)[at]
+        })
+        .flatten();
     // Lanes only mean something in a 5v5 on Summoner's Rift.
     let lane = (int(game, "mapId") == 11 && mine.len() == 5 && theirs.len() == 5)
         .then(|| {
@@ -237,7 +256,7 @@ pub fn opponents(game: &Value, my_puuid: &str) -> Option<Opponents> {
             Some(int(theirs[at], "championId"))
         })
         .flatten();
-    Some(Opponents { lane, enemies, teams })
+    Some(Opponents { lane, enemies, teams, team_kills, position })
 }
 
 /// Best guess at each player's position. The client's `timeline.lane`/`role`
@@ -334,6 +353,8 @@ async fn fill_opponents(lcu: &Lcu, puuid: &str, matches: &mut [MatchLine], fetch
             m.lane_opponent = o.lane;
             m.enemies = o.enemies.clone();
             m.teams = o.teams.clone();
+            m.team_kills = o.team_kills;
+            m.position = o.position.map(str::to_string);
         }
     }
     failed

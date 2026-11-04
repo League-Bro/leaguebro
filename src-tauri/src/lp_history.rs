@@ -302,6 +302,9 @@ mod tests {
             teams: Vec::new(),
             lp_change: None,
             opgg_game: None,
+            team_kills: None,
+            objective_damage: None,
+            position: None,
         };
         let mut one = vec![m(20)];
         h.fill(&mut one);

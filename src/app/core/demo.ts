@@ -319,6 +319,8 @@ export function demoProfile(): MyProfile {
     items: [...(builds[championId] ?? []), 0, 0, 0, 0, 0, 0].slice(0, 6).concat(3340), spells: [4, 14],
     laneOpponent: lane, enemies: enemies(i, lane), teams: teams(i, championId, enemies(i, lane), result), lpChange: demoLpChange(i, queueId, result),
     opggGame: null,
+    teamKills: result === 'remake' ? null : Math.max(kills + assists, Math.round((kills + assists) / (championId === 99 ? 0.68 : 0.52))),
+    objectiveDamage: Math.round(min * (championId === 99 ? 90 : 140 + kills * 8)), position: queueId === 450 ? null : championId === 99 ? 'support' : 'mid',
   }));
   const queueIds = [...new Set(matches.map((m) => m.queueId))];
   const modes = queueIds
@@ -367,7 +369,7 @@ function demoLpHistory(): LpPoint[] {
 export function demoOpggProfile(): MyProfile {
   const p = demoProfile();
   const matches = p.matches.slice(2).map((m) => ({
-    ...m, created: m.created - 2 * 86_400_000, vision: 0, laneOpponent: null, enemies: [], teams: [],
+    ...m, created: m.created - 2 * 86_400_000, vision: 0, laneOpponent: null, enemies: [], teams: [], objectiveDamage: null,
     queueId: m.queueId === 400 ? 0 : m.queueId, gameMode: m.queueId === 400 ? 'NORMAL' : m.gameMode,
     opggGame: { id: `demo-${m.gameId}`, createdAt: new Date(m.created - 2 * 86_400_000).toISOString() },
   }));

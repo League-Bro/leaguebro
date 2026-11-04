@@ -111,6 +111,12 @@ export interface MatchLine {
   lpChange: LpChange | null;
   /** OP.GG's id for the game, in games from OP.GG's match list (the scoreboard loads from there). */
   opggGame: OpggGame | null;
+  /** Your team's champion kills, for kill participation; null when the game's full record didn't load, and in Arena. */
+  teamKills: number | null;
+  /** Your damage to turrets, dragons, Baron and the rest; null from OP.GG. */
+  objectiveDamage: number | null;
+  /** Where you played ('top', 'jungle', 'mid', 'adc', 'support'), when that's clear (Summoner's Rift only). */
+  position: string | null;
 }
 
 export interface OpggGame {

@@ -10,6 +10,7 @@ import { ItemTip } from './item-tip';
 import { LpGraph } from './lp-graph';
 import { LpChangeTag } from './lp-change';
 import { Loader } from './loader';
+import { PlaystyleRadar } from './playstyle-radar';
 
 const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as const;
 
@@ -24,7 +25,7 @@ const REGIONS = [
 @Component({
   selector: 'rl-profile',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe, NgTemplateOutlet, PostGameView, ItemTip, LpGraph, LpChangeTag, Loader],
+  imports: [DecimalPipe, NgTemplateOutlet, PostGameView, ItemTip, LpGraph, LpChangeTag, Loader, PlaystyleRadar],
   template: `
     @if (rift.viewedPlayer(); as v) {
       <div class="viewing">
@@ -161,7 +162,21 @@ const REGIONS = [
         </div>
 
         <div class="grid">
-          <section class="card stack">
+          <section class="card stack combo">
+          @if (mode() === 'all') {
+            <div class="part">
+              <h3>Queues</h3>
+              @for (q of ins.queues; track q.queueId) {
+                <button class="qrow" (click)="pick(q.queueId)">
+                  <span class="grow">{{ queue(q.queueId, modeName(p, q.queueId)) }}</span>
+                  <span class="mono faint">{{ q.wins }}W {{ q.games - q.wins }}L</span>
+                  <span class="bar"><span [style.width.%]="pct(q.wins, q.games)"></span></span>
+                  <span class="mono wr">{{ pct(q.wins, q.games) }}%</span>
+                </button>
+              }
+            </div>
+          }
+            <div class="part">
             <h3>Champions</h3>
             @for (c of ins.champions.slice(0, 6); track c.championId) {
               <button class="crow" [title]="rift.champName(c.championId) + ': open the build'" (click)="openBuild(c.championId)">
@@ -172,22 +187,9 @@ const REGIONS = [
                 <span class="mono muted kda">{{ ratio(c.kills, c.deaths, c.assists) }} KDA</span>
               </button>
             }
-          </section>
-          @if (mode() === 'all') {
-            <section class="card stack">
-              <h3>Queues</h3>
-              @for (q of ins.queues; track q.queueId) {
-                <button class="qrow" (click)="pick(q.queueId)">
-                  <span class="grow">{{ queue(q.queueId, modeName(p, q.queueId)) }}</span>
-                  <span class="mono faint">{{ q.wins }}W {{ q.games - q.wins }}L</span>
-                  <span class="bar"><span [style.width.%]="pct(q.wins, q.games)"></span></span>
-                  <span class="mono wr">{{ pct(q.wins, q.games) }}%</span>
-                </button>
-              }
-            </section>
-          }
+            </div>
           @if (hasLanes() || hasEnemies()) {
-            <section class="card stack">
+            <div class="part">
               <div class="card-head">
                 <h3>Toughest {{ tough() === 'lane' ? 'lane opponents' : 'enemies' }}</h3>
                 @if (hasLanes() && hasEnemies()) {
@@ -212,8 +214,10 @@ const REGIONS = [
                 }
                 <p class="faint small foot">Anywhere on the enemy team. {{ viewing() ? 'Their' : 'Your' }} K/D/A in those games.</p>
               }
-            </section>
+            </div>
           }
+          </section>
+          <rl-playstyle-radar [matches]="matches()" [who]="viewing() ? 'Them' : 'You'" [tier]="p.solo?.tier ?? p.flex?.tier ?? null" />
         </div>
       }
       }
@@ -402,7 +406,9 @@ const REGIONS = [
     .modes .count { opacity: 0.6; margin-left: 4px; }
     .now { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--win); margin-right: 5px; vertical-align: 1px; }
     /* Cards in a row share its height, so the row has no ragged gaps under the shorter ones. */
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-top: 12px; }
+    /* Two cards a row; one column when the window is narrow. */
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+    @media (max-width: 820px) { .grid { grid-template-columns: minmax(0, 1fr); } }
     .card.stack { gap: 6px; }
     h3 { margin: 0; }
     /* Same header height with or without tabs, so rows line up across cards. */
@@ -411,6 +417,11 @@ const REGIONS = [
     .crow, .qrow { width: 100%; padding: 2px 0; background: none; border: none; border-radius: 6px; color: var(--text); text-align: left; font-weight: 400; }
     .crow:hover:not(:disabled), .qrow:hover:not(:disabled) { background: var(--bg-hover); }
     .foot { margin-top: auto; padding-top: 6px; }
+    /* Champions, Toughest and Queues share one card beside the Playstyle chart. */
+    .combo { gap: 0; }
+    .combo .part { display: flex; flex-direction: column; gap: 6px; }
+    .combo .part > h3 { min-height: 26px; display: flex; align-items: center; }
+    .combo .part + .part { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
     .card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 26px; }
     .seg.mini { padding: 2px; }
     .seg.mini button { padding: 1px 10px; font-size: 12px; }

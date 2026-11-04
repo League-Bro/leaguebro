@@ -37,8 +37,10 @@ const PROFILE_FIELDS: &[&str] = &[
 const MATCH_FIELDS: &[&str] = &[
     "data.game_history[].{created_at,game_length_second,game_map,game_type,id}",
     "data.game_history[].participants[].summoner.{game_name,puuid,tagline}",
-    "data.game_history[].participants[].{champion_id,items[],spells[],team_key}",
+    "data.game_history[].participants[].{champion_id,items[],position,spells[],team_key}",
     "data.game_history[].participants[].stats.{assist,champion_level,death,gold_earned,kill,minion_kill,neutral_minion_kill,result,total_damage_dealt_to_champions}",
+    "data.game_history[].teams[].{key}",
+    "data.game_history[].teams[].game_stat.{champion_kill}",
 ];
 
 const GAME_FIELDS: &[&str] = &[
@@ -198,6 +200,11 @@ pub fn parse_matches(v: &Value, puuid: &str) -> Vec<MatchLine> {
             let mode = if game_type == "BRAWL" { "BRAWL" } else { game_type };
             let allowed = game_type != "CUSTOM" && profile::allowed(&json!({ "gameMode": mode, "queueId": qid }), line.champion_id);
             let created = iso_ms(text(g, "created_at")).unwrap_or(0);
+            let team = text(p, "team_key");
+            let team_kills = list(g, "teams")
+                .iter()
+                .find(|t| !team.is_empty() && text(t, "key") == team)
+                .map(|t| int(t, "/game_stat/champion_kill"));
             allowed.then(|| MatchLine {
                 // OP.GG's game ids are strings; the start time is unique per player.
                 game_id: created,
@@ -212,6 +219,10 @@ pub fn parse_matches(v: &Value, puuid: &str) -> Vec<MatchLine> {
                 teams: Vec::new(),
                 lp_change: None,
                 opgg_game: Some(OpggGame { id: text(g, "id").to_string(), created_at: text(g, "created_at").to_string() }),
+                team_kills,
+                // OP.GG's match list has no objective damage.
+                objective_damage: None,
+                position: (text(g, "game_map") == "SUMMONERS_RIFT").then(|| position(text(p, "position"))).flatten().map(str::to_string),
             })
         })
         .collect();
