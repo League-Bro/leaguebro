@@ -71,7 +71,7 @@ const REGIONS = [
         }
         <div class="me">
         @if (icon(p.iconId); as url) { <img class="avatar" [src]="url" alt="" /> } @else { <div class="avatar"></div> }
-        <div class="who" [title]="p.name">
+        <div class="ident" [title]="p.name">
           <h2>{{ p.name }}</h2>
           <div class="muted small">Level {{ p.level }}</div>
           @if (p.source === 'opgg') {
@@ -358,35 +358,30 @@ const REGIONS = [
     .empty { max-width: 560px; margin: 40px auto; text-align: center; }
     .viewing { display: flex; align-items: center; gap: 10px; margin: -4px 0 12px; }
     .viewing button { margin-left: -10px; }
-    /* You on the left, your ranks centered, LP graphs and buttons on the right.
-       When space runs short a long name is cut with "…" rather than running
-       under the ranks; on a narrow window the ranks drop to their own row. */
-    .head {
-      display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
-      grid-template-areas: 'me ranks side'; align-items: center; gap: 20px;
-    }
+    /* You on the left, your ranks in the middle, LP graphs and buttons on the right.
+       You always keep room for your name; when the row runs out of space the graphs
+       and buttons wrap to their own line instead of squeezing you. */
+    .head { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px; }
     .head { position: relative; padding: 30px 28px; min-height: 190px; overflow: hidden; }
     .head > :not(.splash) { position: relative; }
     .head .splash img { object-position: 60% 22%; opacity: 0.7; }
     .head .splash::after { background: linear-gradient(90deg, var(--bg-raised) 22%, rgba(20, 18, 25, 0.7) 55%, rgba(20, 18, 25, 0.35)), linear-gradient(0deg, var(--bg-raised), transparent 60%); }
-    .me { grid-area: me; display: flex; align-items: center; gap: 16px; min-width: 0; }
+    .me { flex: 1 1 260px; min-width: min(260px, 100%); display: flex; align-items: center; gap: 16px; }
     .avatar { flex: none; }
-    .who h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .head .ranks { grid-area: ranks; justify-content: center; }
-    .side { grid-area: side; display: flex; align-items: center; justify-content: flex-end; gap: 18px; }
+    .ident h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .head .ranks { flex: 1 1 auto; justify-content: center; }
+    .side { flex: 0 1 auto; margin-left: auto; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 18px; }
     .graph { display: flex; flex-direction: column; gap: 2px; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    @media (max-width: 1100px) {
-      .head { grid-template-columns: 1fr auto; grid-template-areas: 'me side' 'ranks ranks'; row-gap: 14px; }
-    }
     @media (max-width: 760px) {
-      .head { grid-template-columns: 1fr; grid-template-areas: 'me' 'ranks' 'side'; }
-      .side { justify-content: center; flex-wrap: wrap; }
+      .head { flex-direction: column; align-items: stretch; }
+      .side { margin-left: 0; justify-content: center; }
     }
     .avatar { width: clamp(60px, 5.5vw, 84px); height: clamp(60px, 5.5vw, 84px); border-radius: 50%; border: 2px solid var(--accent); background: var(--bg-sunken); box-shadow: 0 0 22px var(--accent-glow); }
-    .who { min-width: 0; }
+    /* Name on top, then level, then the OP.GG line (which may wrap under it). */
+    .ident { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
     /* Shrinks with the window so a long Name#TAG fits before it gets cut with "…". */
-    .who h2 { font-size: clamp(18px, 1.7vw, 26px); letter-spacing: -0.02em; }
+    .ident h2 { font-size: clamp(18px, 1.7vw, 26px); letter-spacing: -0.02em; margin: 0; }
     .ranks { display: flex; gap: 36px; flex-wrap: wrap; }
     .rank { display: flex; align-items: center; gap: 12px; }
     .rank-text { display: flex; flex-direction: column; gap: 2px; }
@@ -475,7 +470,7 @@ const REGIONS = [
     .slot img { display: block; width: 100%; height: 100%; }
     .slot:last-child { border-radius: 50%; margin-left: 3px; }
     .detail { padding: 10px 4px 4px; }
-    .who { display: flex; align-items: center; gap: 3px; }
+    .match .who { display: flex; align-items: center; gap: 3px; }
     .spells { display: flex; flex-direction: column; gap: 3px; }
     .spell { width: 19px; height: 19px; border-radius: 5px; overflow: hidden; border: 1px solid var(--line-strong); background: var(--bg-sunken); }
     .spell img { display: block; width: 100%; height: 100%; }

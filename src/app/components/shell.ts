@@ -9,13 +9,12 @@ import { ChampionsView } from './champions-view';
 import { SettingsView } from './settings-view';
 import { PatchView } from './patch-view';
 import { ProfileView } from './profile-view';
-import { FeedbackView } from './feedback-view';
 import { ItemTipPopup } from './item-tip';
 import { ChampionSearch, SearchAnchor } from './champion-search';
 import { UpdateSplash } from './update-splash';
 
 /** 'profile' isn't in the tab bar; the brand and your name open it. */
-type Tab = 'live' | 'champions' | 'patch' | 'settings' | 'feedback' | 'profile';
+type Tab = 'live' | 'champions' | 'patch' | 'settings' | 'profile';
 
 /** A key press aimed at a text field, which typing-to-search must leave alone. */
 function isTyping(target: EventTarget | null): boolean {
@@ -43,7 +42,7 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
 @Component({
   selector: 'rl-shell',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LiveView, ChampionsView, PatchView, SettingsView, FeedbackView, ProfileView, ItemTipPopup, ChampionSearch, UpdateSplash],
+  imports: [LiveView, ChampionsView, PatchView, SettingsView, ProfileView, ItemTipPopup, ChampionSearch, UpdateSplash],
   template: `
     <!-- The window has no Windows title bar (tauri.conf.json): the header moves it (double-click maximizes)
          and holds its buttons. A Mac keeps its native title bar, so they're left out there. -->
@@ -132,7 +131,6 @@ const BUSY_PHASES = new Set(Object.keys(PHASE_LABELS).filter((p) => p !== 'None'
         @case ('champions') { <rl-champions /> }
         @case ('patch') { <rl-patch /> }
         @case ('settings') { <rl-settings /> }
-        @case ('feedback') { <rl-feedback /> }
         @case ('profile') { <rl-profile /> }
       }
     </main>
@@ -296,7 +294,6 @@ export class Shell implements OnInit {
     { id: 'champions', label: 'Champions' },
     { id: 'patch', label: 'Patch Notes' },
     { id: 'settings', label: 'Settings' },
-    { id: 'feedback', label: 'Feedback' },
   ];
   ngOnInit(): void {
     this.updates.start();
@@ -402,7 +399,7 @@ export class Shell implements OnInit {
     this.search.set({ text, anchor: r?.width ? { left: r.left, top: r.top, width: r.width } : null });
   }
 
-  /** Ctrl+1…5 (Cmd+1…5 on a Mac) switch tabs; Ctrl+K, or typing a letter outside a text field, finds a champion. */
+  /** Ctrl+1…4 (Cmd+1…4 on a Mac) switch tabs; Ctrl+K, or typing a letter outside a text field, finds a champion. */
   protected tabKey(e: KeyboardEvent): void {
     if (this.search()) return;
     const mod = IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;

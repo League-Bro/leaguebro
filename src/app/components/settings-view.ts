@@ -4,16 +4,17 @@ import { IS_MAC } from '../core/platform';
 import { AbilityKeys, CacheInfo, CacheName, GlobalSets } from '../core/models';
 import { ConfigPage } from './config-page';
 import { OverlaySettingsView } from './overlay-settings';
+import { FeedbackView } from './feedback-view';
 
-type Section = 'champselect' | 'overlay' | 'display' | 'app';
+type Section = 'overlay' | 'champselect' | 'display' | 'app' | 'feedback';
 
 /** The section you were on, so leaving Settings and coming back opens it again (this run only). */
-let lastSection: Section = 'champselect';
+let lastSection: Section = 'overlay';
 
 @Component({
   selector: 'rl-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [OverlaySettingsView],
+  imports: [OverlaySettingsView, FeedbackView],
   template: `
     @if (rift.config(); as cfg) {
       <div class="layout">
@@ -116,6 +117,7 @@ let lastSection: Section = 'champselect';
               </div>
             }
             @case ('overlay') { <rl-overlay-settings /> }
+            @case ('feedback') { <rl-feedback /> }
             @case ('display') {
               <div class="grid">
               <section class="card stack">
@@ -250,10 +252,11 @@ let lastSection: Section = 'champselect';
 export class SettingsView extends ConfigPage {
   /** Icons are 24×24 stroke paths. */
   protected readonly sections: { id: Section; label: string; hint: string; icon: string }[] = [
-    { id: 'champselect', label: 'Champ select', hint: 'Builds, runes and scouting', icon: 'M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z M9 12l2 2 4-4' },
     { id: 'overlay', label: 'Overlay', hint: 'The in-game panel', icon: 'M3 5h18v12H3z M8 21h8 M14 8h4v4h-4z' },
+    { id: 'champselect', label: 'Champ select', hint: 'Builds, runes and scouting', icon: 'M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z M9 12l2 2 4-4' },
     { id: 'display', label: 'Display', hint: 'Ability keys, post-game', icon: 'M4 7h16v10H4z M8 11h1 M11.5 11h1 M15 11h1 M8 14h8' },
     { id: 'app', label: 'App', hint: 'Updates, privacy, cache', icon: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z M12 2v3 M12 19v3 M4.9 4.9l2.1 2.1 M17 17l2.1 2.1 M2 12h3 M19 12h3 M4.9 19.1 7 17 M17 7l2.1-2.1' },
+    { id: 'feedback', label: 'Feedback', hint: 'Report a bug, share an idea', icon: 'M4 5h16v11H9l-5 4z M8 9h8 M8 12h5' },
   ];
   protected readonly section = signal<Section>(lastSection);
   protected show(s: Section): void {
