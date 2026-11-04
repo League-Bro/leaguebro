@@ -98,6 +98,16 @@ const REGIONS = [
               </div>
             </div>
           }
+          <!-- Over every queue, whichever tab is picked below. -->
+          @if (p.insights.games > 0) {
+            <div class="rank streak">
+              <div class="rank-text">
+                <div class="faint cap">Streak</div>
+                <div [class.win]="p.insights.streak > 1" [class.loss]="p.insights.streak < -1">{{ abs(p.insights.streak) }}{{ p.insights.streak >= 0 ? 'W' : 'L' }}</div>
+                <div class="faint small">{{ abs(p.insights.streak) === 1 ? 'last game' : 'in a row' }}</div>
+              </div>
+            </div>
+          }
         </div>
         <div class="side">
           <!-- Only your own LP is tracked. -->
@@ -149,16 +159,15 @@ const REGIONS = [
             <div class="big mono">{{ ratio(ins.kills, ins.deaths, ins.assists) }}</div>
             <div class="faint small">KDA · {{ ins.kills / ins.games | number: '1.1-1' }} / {{ ins.deaths / ins.games | number: '1.1-1' }} / {{ ins.assists / ins.games | number: '1.1-1' }}</div>
           </div>
+          @if (killShare(); as kp) {
+            <div class="tile" title="Your kills and assists out of your team's kills"><div class="big mono">{{ kp }}%</div><div class="faint small">kill participation</div></div>
+          }
           <div class="tile"><div class="big mono">{{ ins.csPerMin | number: '1.1-1' }}</div><div class="faint small">CS per minute</div></div>
           <div class="tile"><div class="big mono">{{ ins.damagePerMin | number: '1.0-0' }}</div><div class="faint small">damage per minute</div></div>
           <div class="tile"><div class="big mono">{{ ins.goldPerMin | number: '1.0-0' }}</div><div class="faint small">gold per minute</div></div>
           @if (p.source !== 'opgg') {
             <div class="tile"><div class="big mono">{{ ins.visionPerGame | number: '1.0-0' }}</div><div class="faint small">vision per game</div></div>
           }
-          <div class="tile">
-            <div class="big mono" [class.win]="ins.streak > 1" [class.loss]="ins.streak < -1">{{ abs(ins.streak) }}{{ ins.streak >= 0 ? 'W' : 'L' }}</div>
-            <div class="faint small">current streak</div>
-          </div>
         </div>
 
         <div class="grid">
@@ -394,7 +403,7 @@ const REGIONS = [
     .crest.unranked { opacity: 0.45; }
     .cap { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; }
     .note { margin-top: 8px; }
-    /* The numbers as one strip instead of seven boxes. */
+    /* The numbers as one strip instead of separate boxes. */
     .tiles {
       display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); margin-top: 12px;
       background: var(--glass), var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
@@ -628,6 +637,12 @@ export class ProfileView {
   /** The Toughest card's tab; falls back to whichever list has data. */
   protected readonly toughTab = signal<'lane' | 'enemy'>('enemy');
   protected readonly tough = computed(() => (this.hasLanes() && this.hasEnemies() ? this.toughTab() : this.hasLanes() ? 'lane' : 'enemy'));
+  /** Kill participation over the tab's games (same count as the Playstyle chart's Team fights); null when no game has team kills. */
+  protected readonly killShare = computed(() => {
+    const known = this.matches().filter((m) => m.result !== 'remake' && m.teamKills != null);
+    const team = known.reduce((a, m) => a + m.teamKills!, 0);
+    return team > 0 ? Math.round((100 * known.reduce((a, m) => a + m.kills + m.assists, 0)) / team) : null;
+  });
   protected readonly winRate = computed(() => {
     const i = this.ins();
     return i ? this.pct(i.wins, i.games) : 0;

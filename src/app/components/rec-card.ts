@@ -466,7 +466,7 @@ interface ChoiceRow {
     .src img { width: 18px; height: 18px; }
     .src:hover:not(:disabled) { border-color: var(--line-strong); color: var(--text); }
     .src.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
-    .src:disabled { cursor: progress; }
+    .src:disabled { cursor: default; }
 
     /* Runes: keystone, then each tree's runes by name, then the shards. */
     .rune-main { display: flex; align-items: center; gap: 12px; }
@@ -489,7 +489,7 @@ interface ChoiceRow {
     }
     .ks:hover:not(:disabled) { color: var(--text); border-color: var(--accent-soft); }
     .ks.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); cursor: default; }
-    .ks:disabled:not(.on) { cursor: progress; }
+    .ks:disabled:not(.on) { cursor: default; }
     .ks img { width: 30px; height: 30px; flex: none; }
     .ks-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
     .ks-name { font-size: 13px; font-weight: 600; white-space: nowrap; }
@@ -507,7 +507,7 @@ interface ChoiceRow {
     }
     .choice:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
     .choice.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
-    .choice:disabled { cursor: progress; }
+    .choice:disabled { cursor: default; }
     .choice-what { display: flex; align-items: center; gap: 6px; min-width: 0; }
     .choice-what img { width: 22px; height: 22px; flex: none; border-radius: 5px; }
     .choice-what img.round { border-radius: 50%; }
@@ -530,7 +530,7 @@ interface ChoiceRow {
     .sp .num { margin-left: 4px; }
     .sp:hover:not(:disabled) { color: var(--text); border-color: var(--accent-soft); }
     .sp.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); cursor: default; }
-    .sp:disabled:not(.on) { cursor: progress; }
+    .sp:disabled:not(.on) { cursor: default; }
     .key {
       display: inline-flex; align-items: center; justify-content: center;
       width: 30px; height: 30px; border-radius: 9px; box-shadow: inset 0 0 0 1px var(--accent-soft);

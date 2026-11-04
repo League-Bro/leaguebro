@@ -331,7 +331,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     }
     @keyframes line-in { from { opacity: 0; transform: translateY(4px); } }
     .roast-line .stat {
-      justify-self: start; padding: 1px 7px; border-radius: 6px; font-size: 12px; white-space: nowrap; cursor: help;
+      justify-self: start; padding: 1px 7px; border-radius: 6px; font-size: 12px; white-space: nowrap; cursor: default;
       color: var(--loss); background: rgba(255, 90, 78, 0.1); border: 1px solid rgba(255, 90, 78, 0.35);
     }
     /* Highlights (praise) in green, against the red for bad play. */

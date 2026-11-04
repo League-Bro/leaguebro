@@ -19,7 +19,7 @@ import { LpChange } from '../core/models';
   styles: `
     :host { display: inline-flex; align-items: baseline; gap: 6px; }
     .rank { font-size: 0.8em; font-weight: 600; color: var(--text-dim); white-space: nowrap; }
-    .lp { font-weight: 600; color: var(--text-dim); cursor: help; white-space: nowrap; }
+    .lp { font-weight: 600; color: var(--text-dim); cursor: default; white-space: nowrap; }
     .moved { font-size: 0.85em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
     .gain { color: var(--win); }
   `,

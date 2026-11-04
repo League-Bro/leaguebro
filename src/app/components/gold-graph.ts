@@ -51,7 +51,7 @@ let nextId = 0;
     :host { display: block; --gg-up-c: var(--gg-up, var(--ally)); --gg-down-c: var(--gg-down, var(--enemy)); }
     .graph { display: grid; grid-template-columns: 40px 1fr; column-gap: 8px; row-gap: 4px; }
     .yaxis { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; font-size: 11px; height: 120px; }
-    .area { position: relative; height: 120px; cursor: crosshair; border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .area { position: relative; height: 120px; cursor: default; border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); }
     svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
     .mid { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
     .fill { opacity: 0.16; }

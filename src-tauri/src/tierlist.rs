@@ -99,6 +99,9 @@ pub struct TierEntry {
     pub pick_rate: f64,
     pub ban_rate: f64,
     pub games: i64,
+    /// The average (kills + assists) / deaths in those games (OP.GG only;
+    /// the Profile page's Playstyle chart uses it as a real per-rank goal).
+    pub kda: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -181,6 +184,7 @@ pub fn parse_lolalytics(body: &Value, position: &str, rank: &str, names: &HashMa
                 pick_rate: f(c, "pr"),
                 ban_rate: f(c, "br"),
                 games: int(c, "games"),
+                kda: None,
             })
         })
         .collect();
@@ -232,6 +236,7 @@ pub fn parse_opgg(body: &Value, rank: &str, names: &HashMap<i64, String>) -> Res
                         pick_rate: f(stats, "pick_rate") * 100.0,
                         ban_rate: f(stats, "ban_rate") * 100.0,
                         games: int(stats, "play"),
+                        kda: stats.get("kda").and_then(Value::as_f64).filter(|k| k.is_finite() && *k > 0.0),
                     })
                 })
                 .collect();
@@ -453,13 +458,15 @@ mod tests {
     fn opgg_op_tier() {
         // Shape from a real Challenger answer (October 2026): tier 0 = "OP".
         let body = serde_json::json!({"meta": {"version": "16.21", "match_count": 5133}, "data": [
-            {"id": 64, "positions": [{"name": "JUNGLE", "stats": {"play": 79, "win_rate": 0.43, "pick_rate": 0.14, "ban_rate": 0.19,
+            {"id": 64, "positions": [{"name": "JUNGLE", "stats": {"play": 79, "kda": 2.5, "win_rate": 0.43, "pick_rate": 0.14, "ban_rate": 0.19,
                 "tier_data": {"tier": 0, "rank": 1, "rank_prev": 1}}}]},
             {"id": 254, "positions": [{"name": "JUNGLE", "stats": {"play": 60, "win_rate": 0.55, "pick_rate": 0.1, "ban_rate": 0.01,
                 "tier_data": {"tier": 1, "rank": 2, "rank_prev": 3}}}]}]});
         let lists = parse_opgg(&body, "challenger", &HashMap::new()).unwrap();
         let jungle: Vec<(&str, &str)> = lists[1].entries.iter().map(|e| (e.tier.as_str(), e.label.as_str())).collect();
         assert_eq!(jungle, [("S", "OP"), ("S", "1")]);
+        // KDA comes through where OP.GG gives it.
+        assert_eq!((lists[1].entries[0].kda, lists[1].entries[1].kda), (Some(2.5), None));
     }
 
     /// Calls the real sites: `cargo test live_tier_lists -- --ignored --nocapture`
@@ -501,6 +508,7 @@ mod tests {
             pick_rate: 1.0,
             ban_rate: 0.0,
             games,
+            kda: None,
         };
         let out = finish(vec![entry(9, 400), entry(2, 3), entry(4, MIN_GAMES)]);
         let ranks: Vec<(i64, i64)> = out.iter().map(|e| (e.champion_id, e.rank)).collect();

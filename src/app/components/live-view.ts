@@ -231,7 +231,7 @@ import { ImportEvent, LoadPlayer, OverlayState, RecChoice, RecState, SwiftplaySl
     .swift h2 { font-size: 22px; }
     .swift .row { align-items: center; gap: 14px; }
     .slot { padding: 10px 12px; border-radius: 12px; background: var(--bg-sunken); }
-    .slot .import { text-align: right; white-space: nowrap; cursor: help; }
+    .slot .import { text-align: right; white-space: nowrap; cursor: default; }
     .swift-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; align-items: start; }
     .swift-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
     .swift-col .slot { border: 1px solid var(--line); align-items: center; gap: 12px; }

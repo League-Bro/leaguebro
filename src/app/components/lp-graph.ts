@@ -135,7 +135,7 @@ function smooth(pts: { x: number; y: number }[]): string {
   `,
   styles: `
     :host { display: flex; flex-direction: column; gap: 3px; width: ${W}px; }
-    .plot { position: relative; cursor: crosshair; }
+    .plot { position: relative; cursor: default; }
     svg { display: block; overflow: visible; }
     .cross { stroke: var(--line-strong); stroke-width: 1; }
     .ring { stroke-width: 2; }

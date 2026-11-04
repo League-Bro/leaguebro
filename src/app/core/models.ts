@@ -843,6 +843,8 @@ export interface TierEntry {
   pickRate: number;
   banRate: number;
   games: number;
+  /** Average (kills + assists) / deaths in those games; OP.GG only. */
+  kda?: number | null;
 }
 
 export interface TierList {

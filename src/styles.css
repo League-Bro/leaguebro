@@ -59,6 +59,8 @@ html, body {
   font: 14px/1.45 var(--font);
   -webkit-font-smoothing: antialiased;
   user-select: none;
+  /* The plain arrow everywhere, even over text and hover-only tips; the hand only on things that do something when clicked. */
+  cursor: default;
 }
 
 html.overlay-window, body.overlay-window {
@@ -106,6 +108,9 @@ input[type='text'], input[type='number'], select {
   padding: 7px 12px;
   user-select: text;
 }
+input[type='text'], input[type='number'], input[type='search'], textarea { cursor: text; }
+select, input[type='range'], input[type='checkbox'], input[type='radio'], a[href], summary, [role='button'], [role='tab'] { cursor: pointer; }
+select:disabled, input:disabled, .toggle:has(input:disabled) { cursor: default; }
 input:focus, select:focus { outline: 3px solid var(--accent-soft); border-color: var(--accent); }
 input[type='number'] { width: 90px; }
 
@@ -162,7 +167,7 @@ input[type='number'] { width: 90px; }
 .tone-meh { --tone: #ff9a4e; }
 .tone-bad { --tone: var(--loss); }
 .grade {
-  flex: none; display: grid; place-items: center; cursor: help; color: var(--tone);
+  flex: none; display: grid; place-items: center; cursor: default; color: var(--tone);
   background: color-mix(in srgb, var(--tone) 12%, transparent); border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
   box-shadow: 0 0 16px color-mix(in srgb, var(--tone) 22%, transparent);
 }

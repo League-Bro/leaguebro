@@ -407,6 +407,7 @@ mod tests {
             pick_rate: 5.0,
             ban_rate: 1.0,
             games: 5000,
+            kda: None,
         }
     }
 
