@@ -2,11 +2,12 @@ import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, injec
 import { RiftService } from '../core/rift.service';
 import { championIcon, clock, formatTier, kdaRatio, queueLabel, rankCrest, rankRecord, tierClass } from '../core/assets';
 import { kilo, perMin, signed } from '../core/format';
-import { PlayerRanks, PostGame, PostPlayer, PostTeam, RankLine } from '../core/models';
+import { MatchLine, PlayerRanks, PostGame, PostPlayer, PostTeam, RankLine } from '../core/models';
 import { gradeTitle, gradeTone, kdaOf, killShare, review, reviewText } from '../core/roast';
 import { GoldGraph } from './gold-graph';
 import { ItemTip } from './item-tip';
 import { LpChangeTag } from './lp-change';
+import { PlaystyleRadar } from './playstyle-radar';
 
 /** 2 → "2nd", 3 → "3rd", 11 → "11th". */
 function ordinal(n: number): string {
@@ -19,7 +20,7 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
 @Component({
   selector: 'rl-post-game',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ItemTip, GoldGraph, LpChangeTag],
+  imports: [ItemTip, GoldGraph, LpChangeTag, PlaystyleRadar],
   template: `
     @let g = game();
     @if (me(); as m) {
@@ -95,9 +96,10 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
       </section>
     }
 
+    <div class="sec-head"><h3>Scoreboard</h3></div>
     <div class="teams" [class.solo]="g.teams.length < 2">
       @for (t of g.teams; track t.teamId) {
-        <div class="team">
+        <div class="team" [class.ally]="t.isMine" [class.enemy]="!t.isMine">
           <div class="team-head" [class.ally]="t.isMine" [class.enemy]="!t.isMine">
             <h3>{{ t.isMine ? 'Your team' : 'Enemy team' }}</h3>
             @if (g.result !== 'remake') { <span [class]="t.win ? 'win' : 'loss'">{{ t.win ? 'Victory' : 'Defeat' }}</span> }
@@ -183,8 +185,12 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
       }
     </div>
 
+    @if (myLine(); as ml) {
+      <rl-playstyle-radar class="playstyle" [matches]="ml" [single]="true" [tier]="myTier()" />
+    }
+
     <section class="graphs">
-      <div class="graphs-head">
+      <div class="graphs-head sec-head">
         <h3>Graphs</h3>
         @if (g.teams.length > 1) {
           <span class="legend">
@@ -257,8 +263,16 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
   styles: `
     /* Chart colors: validated for the dark surface (dataviz validator, OKLCH L
        0.48-0.67, CVD ΔE 26.8). Kept apart from the win/loss status colors. */
-    .graphs { --team-ally: #3987e5; --team-enemy: #d95926; margin-top: 26px; }
-    .graphs-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 10px; }
+    .playstyle { margin-top: 30px; }
+    .graphs { --team-ally: #3987e5; --team-enemy: #d95926; }
+    .graphs-head { margin-bottom: 12px; }
+    /* Every part of the summary (Scoreboard, Graphs) opens with the same heading: a pink
+       paint tick, the name, and a line running out to the edge, so the parts don't
+       run into each other. */
+    .sec-head { display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; margin: 30px 0 12px; }
+    .sec-head h3 { display: flex; align-items: center; gap: 9px; margin: 0; font-size: 12.5px; color: var(--text); letter-spacing: 0.14em; }
+    .sec-head h3::before { content: ''; width: 4px; height: 15px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 10px var(--accent-glow); transform: skewX(-12deg); }
+    .sec-head::after { content: ''; order: 9; flex: 1 1 60px; height: 1px; background: linear-gradient(90deg, var(--line-strong), transparent); }
     .graphs-head h3 { margin: 0; }
     .legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-dim); }
     .legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -382,10 +396,14 @@ const RESULT_LABEL = { win: 'Victory', loss: 'Defeat', remake: 'Remake' } as con
     @container (min-width: 780px) {
       .teams:not(.solo) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
-    .team { min-width: 0; }
+    /* Each team its own panel, topped with its colour. */
+    .team { min-width: 0; padding: 0 12px 12px; border-radius: 14px; background: rgba(255, 255, 255, 0.015); border: 1px solid var(--line); border-top: 2px solid var(--line-strong); }
+    .team.ally { border-top-color: var(--ally); }
+    .team.enemy { border-top-color: var(--enemy); }
+    .teams { row-gap: 14px; }
     /* Name and result on one line, the numbers on the next, never wrapping: both teams' headers
        stay the same height, so the two scoreboards start level. */
-    .team-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 12px; margin: 22px 0 8px; font-size: 13px; }
+    .team-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 12px; margin: 12px 0 8px; font-size: 13px; }
     .team-head .stats { flex-basis: 100%; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .team-head h3 { margin: 0; }
     .team-head.ally h3 { color: var(--ally); }
@@ -514,6 +532,26 @@ export class PostGameView {
   protected readonly myTeam = computed(() => this.game().teams.find((t) => t.isMine) ?? null);
   protected readonly me = computed(() => this.myTeam()?.players.find((p) => p.isMe) ?? null);
   protected readonly label = computed(() => RESULT_LABEL[this.game().result]);
+  /** This game as a match-history line, for the one-game Playstyle chart; null for remakes. */
+  protected readonly myLine = computed<MatchLine[] | null>(() => {
+    const g = this.game();
+    const m = this.me();
+    if (!m || g.result === 'remake') return null;
+    const mine = this.myTeam();
+    return [{
+      gameId: g.gameId, queueId: g.queueId, gameMode: g.gameMode, created: 0, duration: g.duration, result: g.result,
+      championId: m.championId, level: m.level, kills: m.kills, deaths: m.deaths, assists: m.assists, cs: m.cs,
+      gold: m.gold, damage: m.damage, vision: g.noVision ? 0 : m.vision, items: m.items, spells: m.spells,
+      laneOpponent: null, enemies: [], teams: [], lpChange: null, opggGame: null,
+      teamKills: g.teams.length > 1 && mine ? mine.kills : null, objectiveDamage: m.objectiveDamage ?? null, position: m.position,
+    }];
+  });
+  /** Your Solo/Duo (else Flex) tier, once the scoreboard ranks load: the chart's default rank to compare with. */
+  protected readonly myTier = computed(() => {
+    const m = this.me();
+    const r = m ? this.ranks()[m.puuid] : undefined;
+    return r?.solo?.tier ?? r?.flex?.tier ?? null;
+  });
   /** Roasts are on in Settings (on until the settings load). */
   protected readonly roastsOn = computed(() => this.rift.config()?.showRoasts ?? true);
   /** The scoreboard player whose review is shown (team id and seat); null = you. */

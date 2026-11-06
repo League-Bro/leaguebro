@@ -272,7 +272,11 @@ const REGIONS = [
         @for (day of days(); track day.key) {
           <div class="day">
             <span class="day-label">{{ day.label }}</span>
-            <span class="faint">{{ day.summary }}</span>
+            <span class="day-count">{{ day.summary }}</span>
+            <span class="day-wl">
+              @if (day.wins) { <span class="chip win">{{ day.wins }}W</span> }
+              @if (day.losses) { <span class="chip loss">{{ day.losses }}L</span> }
+            </span>
           </div>
           @for (m of day.matches; track m.gameId) {
           <div class="item" [class.open]="openId() === m.gameId" [class.shown]="openId() === m.gameId && detail()">
@@ -339,7 +343,7 @@ const REGIONS = [
             }
             <div class="players c-players">
               @for (team of m.teams; track $index) {
-                <ul>
+                <ul [class.mine]="mineTeam(team)">
                   @for (pl of team; track $index) {
                     <li [class.me]="pl.isMe" [title]="pl.name + ' · ' + rift.champName(pl.championId)">
                       <img [src]="champIcon(pl.championId)" alt="" />
@@ -442,12 +446,23 @@ const REGIONS = [
     .bar span { display: block; height: 100%; background: var(--accent); opacity: 0.8; }
     .history-head { align-items: baseline; gap: 12px; margin: 24px 0 10px; flex-wrap: wrap; }
     .matches { display: flex; flex-direction: column; gap: 10px; }
+    /* Each day is its own section: marker-font date, its record as chips, and a neon
+       pink-to-teal line under it, so where one day ends and the next starts is obvious. */
     .day {
-      display: flex; align-items: baseline; gap: 12px; margin-top: 14px; padding: 0 2px 6px;
-      border-bottom: 1px solid var(--line); font-size: 12.5px;
+      position: relative; display: flex; align-items: center; gap: 10px; margin-top: 22px; padding: 0 2px 9px; font-size: 12.5px;
     }
-    .match-head + .day { margin-top: 2px; }
-    .day-label { font-weight: 700; color: var(--text-dim); letter-spacing: 0.02em; }
+    .day::after {
+      content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; border-radius: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2) 35%, transparent 80%);
+      box-shadow: 0 0 10px var(--accent-glow); opacity: 0.75;
+    }
+    .match-head + .day { margin-top: 4px; }
+    .day-label { font: 400 19px/1 var(--marker); color: var(--accent); text-shadow: 0 0 14px var(--accent-glow); transform: rotate(-1.5deg); letter-spacing: 0.01em; }
+    .day-count { color: var(--text-faint); }
+    .day-wl { display: flex; gap: 4px; }
+    .chip { padding: 1px 8px; border-radius: 999px; font: 700 11.5px/18px var(--display); letter-spacing: 0.03em; }
+    .chip.win { color: var(--win); background: rgba(60, 207, 142, 0.12); border: 1px solid rgba(60, 207, 142, 0.35); }
+    .chip.loss { color: var(--loss); background: rgba(255, 90, 78, 0.12); border: 1px solid rgba(255, 90, 78, 0.35); }
     /* An opened match: its row and scoreboard framed as one card while the scoreboard
        loads. The negative margin keeps the row lined up with the column headers; the
        frame is an outline so it takes no space and can't throw that off. */
@@ -463,7 +478,7 @@ const REGIONS = [
     .item.shown > .detail { padding: 0; }
     .match, .match-head {
       display: grid; grid-template-columns: 66px minmax(150px, 1.3fr) 92px 40px 64px 76px 68px 190px 300px; align-items: center; gap: 14px;
-      padding: 8px 14px; border: 1px solid var(--line); border-left: 3px solid var(--text-faint); border-radius: 12px;
+      padding: 10px 14px; border: 1px solid var(--line); border-left: 4px solid var(--text-faint); border-radius: 12px;
     }
     .match { width: 100%; text-align: left; background: var(--glass), var(--bg-raised); color: var(--text); content-visibility: auto; contain-intrinsic-size: auto 130px; transition: transform 0.15s var(--ease-out), border-color 0.15s; }
     .match:hover { transform: translateX(3px); }
@@ -478,13 +493,21 @@ const REGIONS = [
     .center { justify-content: center; gap: 8px; }
     .link { background: none; border: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; }
     .link:hover { text-decoration: underline; }
-    .match.win { border-left-color: var(--win); }
-    .match.loss { border-left-color: var(--loss); }
+    /* A win or a loss reads from across the room: a green or red wash in from the
+       result edge, not just the thin edge colour. */
+    .match.win { border-left-color: var(--win); background: linear-gradient(90deg, rgba(60, 207, 142, 0.13), rgba(60, 207, 142, 0.03) 38%, transparent 60%), var(--glass), var(--bg-raised); }
+    .match.loss { border-left-color: var(--loss); background: linear-gradient(90deg, rgba(255, 90, 78, 0.13), rgba(255, 90, 78, 0.03) 38%, transparent 60%), var(--glass), var(--bg-raised); }
     .match.win .res { color: var(--win); }
     .match.loss .res { color: var(--loss); }
+    .match.remake { opacity: 0.7; }
     .match.remake .res { color: var(--text-dim); }
-    .res { font-weight: 600; }
-    .res .lp { margin-left: 6px; font-size: 12.5px; }
+    .res { font: 700 16px/1.2 var(--display); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+    .res .lp { margin-left: 6px; font: 600 12.5px var(--font); text-transform: none; letter-spacing: 0; }
+    .match.win .champ-icon { border-color: var(--win); }
+    .match.loss .champ-icon { border-color: var(--loss); }
+    /* Stat numbers bright, their labels small and quiet, so the numbers are what you see. */
+    .st > .mono:first-child { color: var(--text); font-weight: 600; font-size: 14px; }
+    .st > .small { font-size: 11px; }
     .items { display: flex; gap: 3px; }
     .slot { width: 24px; height: 24px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line-strong); background: var(--bg-sunken); flex: none; }
     .slot img { display: block; width: 100%; height: 100%; }
@@ -495,19 +518,26 @@ const REGIONS = [
     .spell { width: 19px; height: 19px; border-radius: 5px; overflow: hidden; border: 1px solid var(--line-strong); background: var(--bg-sunken); }
     .spell img { display: block; width: 100%; height: 100%; }
     /* Both teams' champions and names, so a game with a certain player can be found without opening each one. */
-    .players { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; min-width: 0; }
-    .players ul { margin: 0; padding: 0; list-style: none; min-width: 0; }
+    /* Both teams in their own darker panel, each with a blue (yours) or red tick, so
+       they don't run into the stats and build. */
+    .players {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: 0;
+      padding: 6px 8px; border-radius: 10px; background: var(--bg-sunken); border: 1px solid var(--line);
+    }
+    .players:empty { display: none; }
+    .players ul { margin: 0; padding: 0 0 0 7px; list-style: none; min-width: 0; border-left: 2px solid var(--enemy); }
+    .players ul.mine { border-left-color: var(--ally); }
     .players li { display: flex; align-items: center; gap: 6px; height: 20px; font-size: 12.5px; line-height: 20px; color: var(--text-dim); min-width: 0; }
     .players li img { width: 18px; height: 18px; border-radius: 4px; flex: none; }
     .players li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .players li.me { color: var(--text); font-weight: 600; }
+    .players li.me { color: var(--accent); font-weight: 700; }
     /* Wide: one line, every stat in its own column under the headers, and the Bro's
        preview on a second line under them (champion and players span both). */
     .stats { display: contents; }
     .match { row-gap: 0; }
     .match > .who { grid-row: 1 / span 2; }
     .match > .c-players { grid-column: 9; grid-row: 1 / span 2; }
-    .match > .c-bro { grid-column: 2 / 9; grid-row: 2; margin-top: 8px; }
+    .match > .c-bro { grid-column: 2 / 9; grid-row: 2; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line-strong); }
     .match > .what, .match > .c-build, .match > .stats > .st { grid-row: 1; }
     .bro { display: flex; align-items: center; gap: 12px; min-width: 0; }
     .bro .grade { width: 38px; height: 38px; border-radius: 11px; font: 700 18px/1 var(--display); }
@@ -541,7 +571,7 @@ const REGIONS = [
         grid-template-areas: 'who what bro players' 'who stats bro players' 'who build bro players';
         column-gap: 28px;
       }
-      .match > .c-bro { display: flex; grid-area: bro; align-self: center; margin-top: 0; }
+      .match > .c-bro { display: flex; grid-area: bro; align-self: center; margin-top: 0; padding: 0 0 0 20px; border-top: none; border-left: 1px dashed var(--line-strong); }
       .verdict { white-space: normal; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
     }
     /* Narrowest: the players go under everything else. */
@@ -602,25 +632,30 @@ export class ProfileView {
   });
   /** Matches grouped by local calendar day, newest first. */
   protected readonly days = computed(() => {
-    const groups: { key: string; label: string; summary: string; matches: MatchLine[] }[] = [];
+    const groups: { key: string; label: string; summary: string; wins: number; losses: number; matches: MatchLine[] }[] = [];
     for (const m of this.matches()) {
       const d = new Date(m.created);
       const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
       let g = groups.at(-1);
       if (!g || g.key !== key) {
-        g = { key, label: this.dayLabel(d), summary: '', matches: [] };
+        g = { key, label: this.dayLabel(d), summary: '', wins: 0, losses: 0, matches: [] };
         groups.push(g);
       }
       g.matches.push(m);
     }
     for (const g of groups) {
-      const wins = g.matches.filter((m) => m.result === 'win').length;
-      const losses = g.matches.filter((m) => m.result === 'loss').length;
+      g.wins = g.matches.filter((m) => m.result === 'win').length;
+      g.losses = g.matches.filter((m) => m.result === 'loss').length;
       const n = g.matches.length;
-      g.summary = `${n} ${n === 1 ? 'game' : 'games'} · ${wins}W ${losses}L`;
+      g.summary = `${n} ${n === 1 ? 'game' : 'games'}`;
     }
     return groups;
   });
+
+  /** Whether this team list is yours, for its blue tick (the enemy team gets red). */
+  protected mineTeam(team: { isMe?: boolean }[]): boolean {
+    return team.some((p) => p.isMe);
+  }
 
   protected readonly matches = computed(() => {
     const all = this.profile()?.matches ?? [];

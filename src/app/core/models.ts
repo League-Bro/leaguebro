@@ -570,6 +570,8 @@ export interface PostPlayer {
   position: 'top' | 'jungle' | 'mid' | 'adc' | 'support' | null;
   /** League's own grade ("S-", "A+"…), when the client gave one: yours, plus your party's. */
   clientGrade: string | null;
+  /** Damage to turrets, dragons, Baron and the rest; null from OP.GG (missing in demo data). */
+  objectiveDamage?: number | null;
   championId: number;
   level: number;
   kills: number;

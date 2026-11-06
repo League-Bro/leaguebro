@@ -230,6 +230,8 @@ function rankScale(id: string): number {
   selector: 'rl-playstyle-radar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RankPicker],
+  // A single game that isn't on Summoner's Rift (ARAM, Arena…) shows nothing at all.
+  host: { '[style.display]': "single() && offRift() ? 'none' : null" },
   template: `
     <section class="card stack">
       <div class="card-head">
@@ -237,13 +239,13 @@ function rankScale(id: string): number {
           <div class="info" tabindex="0" aria-describedby="playstyle-info">
             <h3>Playstyle</h3>
             <div class="hover-card info-card" id="playstyle-info" role="tooltip">
-              <span class="small">Your recent Summoner's Rift games (not ARAM or Arena) against the average player of the rank you pick.</span>
+              <span class="small">{{ single() ? 'This game' : "Your recent Summoner's Rift games (not ARAM or Arena)" }} against the average player of the rank you pick, in the role you played.</span>
               <span class="small">{{ footNote() }}</span>
               <span class="faint small">Hover a section name for your number, the goal and how to improve it.</span>
             </div>
           </div>
           @if (games() > 0) {
-            <span class="faint small note">Last {{ games() }} Rift {{ games() === 1 ? 'game' : 'games' }}</span>
+            <span class="faint small note">{{ single() ? 'This game' : 'Last ' + games() + ' Rift ' + (games() === 1 ? 'game' : 'games') }}</span>
           }
         </div>
         <div class="head-right">
@@ -295,7 +297,11 @@ function rankScale(id: string): number {
                 <div class="hc-row"><span class="faint">Best game</span><span class="mono">{{ d.axis.best }}</span></div>
                 <div class="hc-row"><span class="faint">Worst game</span><span class="mono">{{ d.axis.worst }}</span></div>
               }
-              <div class="faint small">Hit the goal in {{ d.axis.hits }} of {{ d.axis.games }} {{ d.axis.games === 1 ? 'game' : 'games' }}</div>
+              @if (!single()) {
+                <div class="faint small">Hit the goal in {{ d.axis.hits }} of {{ d.axis.games }} {{ d.axis.games === 1 ? 'game' : 'games' }}</div>
+              } @else {
+                <div class="faint small">{{ pct(d.axis.ofGoal) }}% of the goal</div>
+              }
             </div>
           }
           @if (hovered(); as h) {
@@ -389,6 +395,8 @@ export class PlaystyleRadar {
   readonly who = input('You');
   /** Their Solo/Duo (or Flex) tier, e.g. "GOLD"; the goals default to it. Null for unranked. */
   readonly tier = input<string | null>(null);
+  /** One game (post-game summary, an opened match): no game-count minimum, and no best/worst game. */
+  readonly single = input(false);
 
   /** The rank picked to compare with ('' = their own rank). Kept across visits. */
   protected readonly chosen = signal(readLocal(RANK_KEY) ?? '');
@@ -520,7 +528,8 @@ export class PlaystyleRadar {
 
   protected readonly axes = computed<Axis[]>(() => {
     const games = this.riftGames();
-    if (games.length < MIN_GAMES) return [];
+    const minGames = this.single() ? 1 : MIN_GAMES;
+    if (games.length < minGames) return [];
     const mins = (m: MatchLine) => m.duration / 60;
     const sum = (list: MatchLine[], f: (m: MatchLine) => number) => list.reduce((a, m) => a + f(m), 0);
     /** A per-game target (or baseline) over `list`, weighted by `w` (game length for per-minute stats). */
@@ -638,7 +647,7 @@ export class PlaystyleRadar {
           break;
         }
       }
-      if (list.length < MIN_GAMES || !(want > 0) || !(base > 0)) continue;
+      if (list.length < minGames || !(want > 0) || !(base > 0)) continue;
       // Against the all-ranks average: above 1 is better than average. Fewer-is-better stats flip, with a floor
       // so a nearly deathless run doesn't go off the chart.
       const rel = (x: number) => (fewerIsBetter ? base / Math.max(x, base / GAME_CAP) : x / base);

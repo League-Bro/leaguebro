@@ -446,6 +446,20 @@ fn drag_overlay(app: AppHandle, state: State<'_, AppState>, step: String) {
     }
 }
 
+/// The main window starts big enough to show the whole Profile page
+/// (tauri.conf.json); on a smaller screen it shrinks to fit and stays centered.
+fn fit_to_screen(w: &tauri::WebviewWindow) {
+    let (Ok(Some(monitor)), Ok(size)) = (w.current_monitor(), w.outer_size()) else { return };
+    let screen = monitor.size();
+    // Leave room for the taskbar.
+    let (max_w, max_h) = (screen.width * 95 / 100, screen.height * 90 / 100);
+    if size.width <= max_w && size.height <= max_h {
+        return;
+    }
+    let _ = w.set_size(tauri::PhysicalSize::new(size.width.min(max_w), size.height.min(max_h)));
+    let _ = w.center();
+}
+
 /// Sizes the overlay window to its contents (CSS px), then puts it back at
 /// the player's spot for that size, kept on screen (`engine::place_overlay`).
 #[tauri::command]
@@ -527,6 +541,9 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             if let Some(main) = app.get_webview_window("main") {
                 let _ = main.set_decorations(true);
+            }
+            if let Some(main) = app.get_webview_window("main") {
+                fit_to_screen(&main);
             }
             if let Some(overlay) = app.get_webview_window("overlay") {
                 let _ = overlay.set_ignore_cursor_events(true);

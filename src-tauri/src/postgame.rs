@@ -66,6 +66,8 @@ pub struct PostPlayer {
     /// League's own grade for the game ("S-", "A+"…, champion mastery), when
     /// the client gave one: yours, plus your party's (`client_grades`).
     pub client_grade: Option<String>,
+    /// Damage to turrets, dragons, Baron and the rest (the one-game Playstyle chart); None from OP.GG.
+    pub objective_damage: Option<i64>,
     #[serde(flatten)]
     pub line: PlayerLine,
 }
@@ -139,7 +141,7 @@ pub fn parse(game: &Value, my_puuid: &str, queue_name: &str, lanes: &HashMap<i64
                 (g, t) => Some(format!("{g}#{t}")),
             };
             let is_me = !puuid.is_empty() && puuid == my_puuid;
-            (int(p, "teamId"), PostPlayer { puuid, name, is_me, position: None, client_grade: None, line: PlayerLine::parse(p) }, p)
+            (int(p, "teamId"), PostPlayer { puuid, name, is_me, position: None, client_grade: None, objective_damage: Some(int(p, "/stats/damageDealtToObjectives")), line: PlayerLine::parse(p) }, p)
         })
         .collect();
     // A solo custom game may not carry the puuid we know; one player means it's us.

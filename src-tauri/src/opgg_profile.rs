@@ -303,7 +303,7 @@ pub fn parse_game(v: &Value, puuid: &str, queue_name: &str) -> Option<PostGame> 
                         (n, t) => Some(format!("{n}#{t}")),
                     };
                     let is_me = id == puuid;
-                    PostPlayer { puuid: id, name, is_me, position: lane.filter(|_| rift), client_grade: None, line: player_line(p) }
+                    PostPlayer { puuid: id, name, is_me, position: lane.filter(|_| rift), client_grade: None, objective_damage: None, line: player_line(p) }
                 })
                 .collect();
             // Top to support, so each row sits across from its lane opponent.
